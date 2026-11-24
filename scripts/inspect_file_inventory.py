@@ -128,7 +128,7 @@ def analyze_item(item: dict, inventory: dict) -> dict:
     durations = [f["duration_seconds"] for f in files if f.get("duration_seconds") is not None]
     total = sum(durations)
     names = " ".join(str(f.get("name", "")) for f in files).lower()
-    fanmade = bool(__import__("re").search(r"\\b(fan[ -]?made|custom)\\b", low) and __import__("re").search(r"\\b(vhs|tape|special|compilation)\\b", low))
+    fanmade = bool(re.search(r"\b(fan[ -]?made|custom)\b", low) and __import__("re").search(r"\b(vhs|tape|special|compilation)\b", low))
     segment_words = sum(word in names for word in ("opening", "closing", "episode", "part", "bonus", "cartoon", "feature"))
     promo_words = sum(word in names for word in ("trailer", "commercial", "promo", "advert"))
     # Runtime bands are clues, not hard category gates. Multi-file sets are treated as
