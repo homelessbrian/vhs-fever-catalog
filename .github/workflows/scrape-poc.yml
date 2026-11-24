@@ -77,10 +77,18 @@ jobs:
             --output data/vhsvault-program-catalog.jsonl \
             --review-output data/vhsvault-program-review-queue.jsonl
 
+      - name: Match each program filename to TMDB (human review only)
+        env:
+          TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+        run: |
+          python scripts/enrich_program_tmdb.py \
+            --input data/vhsvault-program-catalog.jsonl \
+            --output data/vhsvault-program-catalog-matched.jsonl
+
       - name: Suggest alternate-source title groups (review only)
         run: |
           python scripts/build_title_groups.py \
-            --input data/vhsvault-program-catalog.jsonl \
+            --input data/vhsvault-program-catalog-matched.jsonl \
             --output data/vhsvault-title-groups.jsonl
 
       - name: Build human-approved final catalog (approval required)
@@ -99,6 +107,7 @@ jobs:
               "data/vhsvault-scrape-poc-inventory.jsonl",
               "data/vhsvault-scrape-poc-enriched.jsonl",
               "data/vhsvault-program-catalog.jsonl",
+              "data/vhsvault-program-catalog-matched.jsonl",
               "data/vhsvault-program-review-queue.jsonl",
               "data/vhsvault-title-groups.jsonl",
               "data/vhsvault-final-catalog.jsonl",
