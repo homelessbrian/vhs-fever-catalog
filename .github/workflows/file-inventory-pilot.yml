@@ -8,6 +8,7 @@ on:
       - 'tests/**'
       - '.github/workflows/file-inventory-pilot.yml'
       - 'docs/program-assembly.md'
+      - 'docs/metadata-artwork.md'
   workflow_dispatch:
     inputs:
       sample_size:
@@ -88,9 +89,16 @@ jobs:
             --output data/artwork-review/vhs-artwork-ai-review-manifest.json \
             --limit 40
 
+      - name: Evaluate AI suggestions against the manually reviewed pilot set
+        run: |
+          python scripts/evaluate_artwork_ai.py \
+            --manifest data/artwork-review/vhs-artwork-ai-review-manifest.json \
+            --labels tests/fixtures/artwork_ground_truth_sample.jsonl \
+            --output data/artwork-review/ai-evaluation.json
+
       - name: Run program assembly and catalog tests
         run: |
-          python -m py_compile scripts/build_program_catalog.py scripts/enrich_metadata_artwork.py scripts/build_artwork_contact_sheet.py
+          python -m py_compile scripts/build_program_catalog.py scripts/enrich_metadata_artwork.py scripts/build_artwork_contact_sheet.py scripts/classify_artwork_ai.py scripts/evaluate_artwork_ai.py
           python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Upload pilot results
@@ -110,5 +118,6 @@ jobs:
             data/artwork-review/vhs-artwork-contact-sheet.jpg
             data/artwork-review/vhs-artwork-review-manifest.json
             data/artwork-review/vhs-artwork-ai-review-manifest.json
+            data/artwork-review/ai-evaluation.json
           if-no-files-found: error
           retention-days: 30
