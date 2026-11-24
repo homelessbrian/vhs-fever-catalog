@@ -1,0 +1,39 @@
+name: VHS Vault discovery test
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Number of result pages to fetch (1 for the initial test)"
+        required: true
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run VHS Vault discovery
+        run: |
+          python scripts/discover_vhsvault.py --max-pages "${{ inputs.max_pages }}"
+
+      - name: Upload discovery report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhsvault-discovery-test
+          path: |
+            data/vhsvault-discovery.jsonl
+            data/vhsvault-discovery.summary.json
+          if-no-files-found: error
+          retention-days: 7
