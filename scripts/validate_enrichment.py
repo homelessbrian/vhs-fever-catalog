@@ -209,6 +209,18 @@ def validate_enrichment_record(record: Any) -> list[str]:
                 errors.append(f"{prefix}.source_url must be an absolute HTTP(S) URL")
             if not _is_member(edition.get("authenticity"), {"official", "fan_made", "unknown"}):
                 errors.append(f"{prefix}.authenticity must be official, fan_made, or unknown")
+            source_id = edition.get("source_id")
+            if source_id is not None and not _is_text(source_id):
+                errors.append(f"{prefix}.source_id must be a non-empty string or null")
+            retrieved_at = edition.get("retrieved_at")
+            if retrieved_at is not None and not _is_datetime(retrieved_at):
+                errors.append(f"{prefix}.retrieved_at must be an ISO 8601 datetime or null")
+            attribution = edition.get("attribution")
+            if attribution is not None and not _is_text(attribution):
+                errors.append(f"{prefix}.attribution must be a non-empty string or null")
+            edition_evidence = edition.get("evidence", [])
+            if not isinstance(edition_evidence, list) or any(not _is_text(item) for item in edition_evidence):
+                errors.append(f"{prefix}.evidence must be an array of non-empty strings")
             release_year = edition.get("release_year")
             if release_year is not None and (
                 not _is_integer(release_year) or not 1900 <= release_year <= 2200
