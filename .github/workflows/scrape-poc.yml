@@ -8,7 +8,7 @@ on:
       - 'scripts/discover_vhsvault.py'
       - 'scripts/discover_vhsvault_candidates.py'
       - 'scripts/inspect_file_inventory.py'
-      - 'scripts/build_program_catalog.py'
+      - 'scripts/build_program_catalog.py'\n      - 'scripts/enrich_program_tmdb.py'
       - 'scripts/build_program_candidates.py'
       - 'scripts/build_title_groups.py'
       - 'scripts/build_final_catalog.py'
@@ -85,7 +85,7 @@ jobs:
 
       - name: Build human-approved final catalog (approval required)
         run: |
-          python scripts/build_final_catalog.py --candidates data/vhsvault-program-catalog.jsonl --decisions data/approved-decisions.json --output data/vhsvault-final-catalog.jsonl
+          python scripts/build_final_catalog.py --candidates data/vhsvault-program-catalog-matched.jsonl --decisions data/approved-decisions.json --output data/vhsvault-final-catalog.jsonl
 
       - name: Validate scraped JSONL output
         run: |
@@ -123,7 +123,7 @@ jobs:
         run: |
           mkdir -p data/published
           cat data/vhsvault-scrape-poc-classified.jsonl data/vhsvault-scrape-poc-enriched.jsonl > data/published/latest.jsonl
-          cp data/vhsvault-program-catalog.jsonl data/published/programs.jsonl
+          cp data/vhsvault-program-catalog-matched.jsonl data/published/programs.jsonl
           cp data/vhsvault-final-catalog.jsonl data/published/final-catalog.jsonl
           cp data/vhsvault-program-review-queue.jsonl data/published/program-review-queue.jsonl
           cp data/vhsvault-title-groups.jsonl data/published/title-groups.jsonl
