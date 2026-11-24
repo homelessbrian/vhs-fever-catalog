@@ -20,14 +20,20 @@ def evaluate(manifest: dict[str, Any], labels: list[dict[str, Any]]) -> dict[str
     excluded = set()
     for group in (manifest.get("frame_filter") or {}).get("excluded_items", []):
         for f in group.get("files", []): excluded.add((group.get("archive_identifier"), f.get("file_name")))
-    counts = {"tp":0,"fp":0,"tn":0,"fn":0,"abstain_positive":0,"abstain_negative":0,"missing_prediction":0}
+    counts = {"tp":0,"fp":0,"tn":0,"fn":0,"abstain_positive":0,"abstain_negative":0,"skipped_low_resolution":0,"missing_prediction":0}
     rows=[]; component_correct=0; component_total=0
     for label in labels:
         key=(label.get("archive_identifier"),label.get("source_file_name")); item=by_key.get(key); truth=label["ground_truth"]
         if item is None and key in excluded: item={"frame_filtered":True}; pred="negative"
         elif item is None:
             counts["missing_prediction"]+=1; rows.append({"key":key,"truth":truth,"prediction":"missing"}); continue
-        else: pred=prediction(item)
+        else:
+            classification=item.get("ai_visual_classification") or {}
+            if classification.get("final_decision") == "skipped_low_resolution":
+                counts["skipped_low_resolution"]+=1
+                rows.append({"archive_identifier":key[0],"source_file_name":key[1],"truth":truth,"prediction":"skipped_low_resolution","correct":None,"skip_reason":"below_minimum_artwork_resolution","image_dimensions":classification.get("image_dimensions"),"excluded_by_frame_filter":False})
+                continue
+            pred=prediction(item)
         if pred=="uncertain": counts["abstain_positive" if truth=="positive" else "abstain_negative"]+=1
         elif truth=="positive" and pred=="positive": counts["tp"]+=1
         elif truth=="negative" and pred=="positive": counts["fp"]+=1
@@ -40,7 +46,8 @@ def evaluate(manifest: dict[str, Any], labels: list[dict[str, Any]]) -> dict[str
     decided=counts["tp"]+counts["fp"]+counts["tn"]+counts["fn"]
     precision=counts["tp"]/(counts["tp"]+counts["fp"]) if counts["tp"]+counts["fp"] else None
     recall=counts["tp"]/(counts["tp"]+counts["fn"]) if counts["tp"]+counts["fn"] else None
-    return {"sample_size":len(labels),"matched_predictions":len(labels)-counts["missing_prediction"],"decided_count":decided,"counts":counts,"precision":precision,"recall":recall,"false_positive_rate":counts["fp"]/(counts["fp"]+counts["tn"]) if counts["fp"]+counts["tn"] else None,"coverage":decided/len(labels) if labels else 0,"component_accuracy":component_correct/component_total if component_total else None,"component_evaluated_count":component_total,"rows":rows,"warning":"Small manually reviewed pilot sample only. Uncertain predictions are abstentions; do not scale or auto-approve from these metrics."}
+    eligible=len(labels)-counts["missing_prediction"]-counts["skipped_low_resolution"]
+    return {"sample_size":len(labels),"matched_predictions":len(labels)-counts["missing_prediction"],"eligible_after_resolution_filter":eligible,"decided_count":decided,"counts":counts,"precision":precision,"recall":recall,"false_positive_rate":counts["fp"]/(counts["fp"]+counts["tn"]) if counts["fp"]+counts["tn"] else None,"coverage":decided/len(labels) if labels else 0,"coverage_after_resolution_filter":decided/eligible if eligible else 0,"component_accuracy":component_correct/component_total if component_total else None,"component_evaluated_count":component_total,"rows":rows,"warning":"Small manually reviewed pilot sample only. Low-resolution skips are excluded from classifier abstentions and metrics; uncertain predictions are abstentions. Do not scale or auto-approve from these metrics."}
 
 def main() -> None:
     parser=argparse.ArgumentParser(description=__doc__); parser.add_argument("--manifest",type=Path,required=True); parser.add_argument("--labels",type=Path,required=True); parser.add_argument("--output",type=Path); args=parser.parse_args()
