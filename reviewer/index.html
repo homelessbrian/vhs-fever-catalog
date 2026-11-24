@@ -17,6 +17,8 @@ input,select,textarea,button{font:inherit;color:inherit}input[type=search],selec
 .list{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#171513;max-height:72vh;overflow-y:auto}.item{padding:13px 14px;border-bottom:1px solid #302b26;cursor:pointer}.item:last-child{border:0}.item:hover,.item.active{background:#29231f}.item.active{box-shadow:inset 3px 0 var(--red)}.item strong{display:block;font-size:14px;line-height:1.35;margin-bottom:5px}.meta{color:var(--muted);font-size:12px;display:flex;gap:8px;flex-wrap:wrap}.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#d7c9b8}.pill.good{color:var(--green);border-color:#42634b}.pill.warn{color:var(--gold);border-color:#70582f}
 .detail{background:var(--panel);border:1px solid var(--line);border-radius:12px;min-height:440px;overflow:hidden}.empty{padding:60px 24px;text-align:center;color:var(--muted)}.detailhead{padding:22px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px}.detailhead h2{font-size:24px;line-height:1.2;margin:0 0 8px}.detailbody{padding:20px 24px;display:grid;gap:18px}.section h3{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);margin:0 0 9px}.kv{display:grid;grid-template-columns:150px minmax(0,1fr);gap:7px 14px;font-size:13px}.kv .k{color:var(--muted)}.artgrid{display:flex;gap:12px;flex-wrap:wrap}.art{width:150px}.art img{width:100%;height:190px;object-fit:contain;background:#0d0c0b;border:1px solid var(--line);border-radius:6px}.art a{color:var(--gold);font-size:12px}.note{color:var(--muted);font-size:12px}.review{display:grid;grid-template-columns:180px 1fr;gap:12px}.review textarea{min-height:76px;resize:vertical}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button.selected{border-color:var(--gold);background:#403020}.source{color:var(--gold);text-decoration:none}.source:hover{text-decoration:underline}
 @media(max-width:850px){.layout{grid-template-columns:1fr}.list{max-height:38vh}.toolbar{grid-template-columns:1fr 1fr}.toolbar input{grid-column:1/-1}.stats{grid-template-columns:repeat(2,1fr)}.detailhead{padding:18px}.detailbody{padding:18px}.review{grid-template-columns:1fr}.kv{grid-template-columns:115px 1fr}}
+
+.editionpanel{margin:24px 0 0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.editionhead{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.editiongrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:14px}.editioncard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}.editioncard h3{margin:0 0 6px;font-size:16px}.editionart{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.editionart img{width:90px;height:125px;object-fit:contain;background:#0d0c0b;border:1px solid var(--line);border-radius:5px}.editionfiles{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.editioncard a{color:var(--gold)}
 </style></head>
 <body>
 <header><div class="brand"><div class="mark">VHS</div><div><h1>VHS FEVER</h1><div class="sub">Catalog research desk</div></div></div><div class="sub">Metadata review · Local workspace</div></header>
@@ -31,7 +33,7 @@ input,select,textarea,button{font:inherit;color:inherit}input[type=search],selec
 <div class="layout">
 <aside><div class="filters"><select id="classFilter"><option value="">All classifications</option></select><select id="tmdbFilter"><option value="">All TMDB states</option><option value="matched">Matched</option><option value="ambiguous_title_match">Ambiguous</option><option value="not_found_by_title">Not found</option><option value="likely_archive_recording_or_compilation">Skipped archive/compilation</option><option value="not_applicable_to_classification">Not applicable</option></select><select id="reviewFilter"><option value="">All review states</option><option value="unreviewed">Unreviewed</option><option value="keep">Keep</option><option value="reject">Reject</option><option value="investigate">Investigate</option></select></div><div class="list" id="list"><div class="empty">Connecting to the latest catalog…</div></div></aside>
 <section class="detail" id="detail"><div class="empty"><div style="font-size:36px">▣</div><h2>Choose a record</h2><p>Review the title, Archive file inventory, TMDB suggestions and possible sleeve artwork.</p></div></section>
-</div></main>
+</div><section class="editionpanel"><div class="editionhead"><div><h2 style="margin:0">VHS Editions · First Batch</h2><div class="note">Archive packaging scans and source-file variants, kept together as edition candidates.</div></div><button id="editionRefresh">↻ Refresh editions</button></div><div class="note" id="editionStatus">Loading edition candidates…</div><div class="editiongrid" id="editionGrid"></div></section></main>
 <script>
 const $=id=>document.getElementById(id);let records=[],selected=null,decisions={};
 try{decisions=JSON.parse(localStorage.getItem("vhsfever-review-decisions")||"{}")}catch{}
@@ -133,5 +135,30 @@ function saveDecision(s,note){const id=selected,old=decisions[id]||{};decisions[
 ["search","classFilter","tmdbFilter","reviewFilter"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",()=>render()));
 $("refresh").onclick=()=>loadPublishedData();
 loadPublishedData();
+
+async function loadEditionCandidates(){
+ const statusEl=$("editionStatus"),grid=$("editionGrid"),button=$("editionRefresh");
+ button.disabled=true;statusEl.textContent="Loading first-batch edition candidates…";
+ try{
+  const url="https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/main/data/first-batch-edition-candidates.json?"+Date.now();
+  const response=await fetch(url,{cache:"no-store"});if(!response.ok)throw Error("HTTP "+response.status);
+  const data=await response.json();
+  grid.innerHTML=(data.records||[]).map(item=>{
+   const base="https://archive.org/download/"+encodeURIComponent(item.archive_identifier)+"/";
+   const art=(item.packaging_assets||[]).map(name=>{
+    const role=/back/i.test(name)?"Back":/spine/i.test(name)?"Spine":/label/i.test(name)?"Label":/front|case/i.test(name)?"Front":"Packaging";
+    const href=base+name.split("/").map(encodeURIComponent).join("/");
+    return '<a href="'+esc(href)+'" target="_blank" rel="noopener" title="'+esc(role+" · "+name)+'"><img loading="lazy" src="'+esc(href)+'" alt="'+esc(role)+'"></a>';
+   }).join("");
+   const sources=(item.video_sources||[]).map(name=>'<div>• '+esc(name)+'</div>').join("");
+   return '<article class="editioncard"><h3>'+esc(item.edition_title_candidate||item.archive_title)+'</h3><div class="meta"><span class="pill warn">Candidate · needs review</span><span>'+esc(item.edition_year_candidate||"Year unknown")+'</span></div><div class="note" style="margin-top:6px">'+esc(item.archive_title)+'</div><div class="editionart">'+art+'</div><div class="editionfiles"><b>Playable source variants ('+(item.video_sources||[]).length+')</b>'+sources+'</div><p><a href="https://archive.org/details/'+encodeURIComponent(item.archive_identifier)+'" target="_blank" rel="noopener">Open original Archive item ↗</a></p><div class="note">'+esc(item.note||"Packaging images and video variants remain attached to this Archive item. No title or edition approval has been made.")+'</div></article>';
+  }).join("");
+  statusEl.textContent=(data.records||[]).length+" edition candidates loaded · Original Archive files remain unchanged.";
+ }catch(e){statusEl.textContent="Could not load edition candidates: "+e.message}
+ finally{button.disabled=false}
+}
+$("editionRefresh").onclick=loadEditionCandidates;
+loadEditionCandidates();
+
 $("export").onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),source:"VHS FEVER Research Desk",decisions},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vhs-fever-review-decisions.json";a.click();URL.revokeObjectURL(url)};
 </script></body></html>
