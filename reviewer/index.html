@@ -26,7 +26,7 @@ input,select,textarea,button{font:inherit;color:inherit}input[type=search],selec
 <label class="filebutton">＋ Load JSONL data<input id="files" type="file" accept=".jsonl,.ndjson,.txt,application/json" multiple></label>
 <button id="export" class="primary">Export review decisions</button>
 </div>
-<div class="note" id="loadnote">Load the workflow artifact's JSONL files (or just the enriched file). Data is read in this browser; decisions stay on this device.</div>
+<div class="note" id="loadnote">Checking for the latest published scrape…</div>
 <div class="stats"><div class="stat"><b id="total">0</b><span>Records loaded</span></div><div class="stat"><b id="matched">0</b><span>TMDB matches</span></div><div class="stat"><b id="artcount">0</b><span>Artwork candidates</span></div><div class="stat"><b id="reviewed">0</b><span>Reviewed here</span></div></div>
 <div class="layout">
 <aside><div class="filters"><select id="classFilter"><option value="">All classifications</option></select><select id="tmdbFilter"><option value="">All TMDB states</option><option value="matched">Matched</option><option value="ambiguous_title_match">Ambiguous</option><option value="not_found_by_title">Not found</option><option value="likely_archive_recording_or_compilation">Skipped archive/compilation</option><option value="not_applicable_to_classification">Not applicable</option></select><select id="reviewFilter"><option value="">All review states</option><option value="unreviewed">Unreviewed</option><option value="keep">Keep</option><option value="reject">Reject</option><option value="investigate">Investigate</option></select></div><div class="list" id="list"><div class="empty">Load JSONL data to begin.</div></div></aside>
@@ -43,6 +43,20 @@ vhs_fever_classification:row.vhs_fever_classification||old.vhs_fever_classificat
 vhs_fever_file_inventory:row.vhs_fever_file_inventory||old.vhs_fever_file_inventory,
 vhs_fever_analysis:row.vhs_fever_analysis||old.vhs_fever_analysis,
 vhs_fever_metadata_artwork:row.vhs_fever_metadata_artwork||old.vhs_fever_metadata_artwork})}return [...map.values()]}
+function parseJSONL(raw){return raw.split(/\\r?\\n/).filter(x=>x.trim()).map((line,i)=>{try{return JSON.parse(line)}catch(e){throw Error("Published data line "+(i+1)+": "+e.message)}})}
+async function loadPublishedData(){try{
+ const [cr,er,mr]=await Promise.all([
+  fetch("./data/latest-classified.jsonl?"+Date.now(),{cache:"no-store"}),
+  fetch("./data/latest-enriched.jsonl?"+Date.now(),{cache:"no-store"}),
+  fetch("./data/latest.json?"+Date.now(),{cache:"no-store"})
+ ]);
+ if(!cr.ok||!er.ok||!mr.ok)throw Error("Latest scrape data is not published yet.");
+ const [classified,enriched,manifest]=await Promise.all([cr.text(),er.text(),mr.json()]);
+ records=mergeRows([...parseJSONL(classified),...parseJSONL(enriched)]);
+ selected=null;populateFilters();render();
+ const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"unknown time";
+ $("loadnote").textContent="✓ Automatically loaded latest scrape · "+records.length+" unique records ("+manifest.classified_records+" classified, "+manifest.enriched_records+" enriched) · Updated "+date+". Manual file loading is still available.";
+ }catch(e){$("loadnote").textContent="Latest scrape data is not available yet. "+e.message+" You can still load JSONL files manually."}}
 async function loadFiles(fileList){let rows=[],names=[];for(const file of fileList){const raw=await file.text();let count=0;for(const [i,line] of raw.split(/\r?\n/).entries()){if(!line.trim())continue;try{rows.push(JSON.parse(line));count++}catch(e){throw Error(file.name+" line "+(i+1)+": "+e.message)}}names.push(file.name+" ("+count+")")}records=mergeRows(rows);$("loadnote").textContent="Loaded "+names.join(" · ")+" — "+records.length+" unique Archive records. Load order is merged automatically; enriched records take precedence.";selected=null;populateFilters();render()}
 function tmdb(r){return r.vhs_fever_metadata_artwork?.tmdb||{}}
 function status(r){const t=tmdb(r);return t.tmdb_id?"matched":t.status||"unknown"}
@@ -67,5 +81,5 @@ $("detail").innerHTML='<div class="detailhead"><div><div class="sub">'+esc(id)+'
 document.querySelectorAll("[data-status]").forEach(b=>b.onclick=()=>saveDecision(b.dataset.status));$("reviewNote").onchange=()=>saveDecision(d.status||"", $("reviewNote").value)}
 function saveDecision(s,note){const id=selected,old=decisions[id]||{};decisions[id]={status:s||old.status||"",notes:note??$("reviewNote")?.value??old.notes??"",updated_at:new Date().toISOString()};localStorage.setItem("vhsfever-review-decisions",JSON.stringify(decisions));render()}
 $("files").onchange=e=>loadFiles(e.target.files).catch(err=>alert("Could not load data: "+err.message));["search","classFilter","tmdbFilter","reviewFilter"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",()=>render()));
-$("export").onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),source:"VHS FEVER Research Desk",decisions},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vhs-fever-review-decisions.json";a.click();URL.revokeObjectURL(url)};
+loadPublishedData();\n$("export").onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),source:"VHS FEVER Research Desk",decisions},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vhs-fever-review-decisions.json";a.click();URL.revokeObjectURL(url)};
 </script></body></html>
