@@ -112,15 +112,22 @@ def _decision(ranked: list[dict[str, Any]], threshold: float, margin: float) -> 
     return {"label": top["label"], "status": "needs_review", "reason": "contextual_zero_shot_similarity", "top_score": round(score, 4), "score_margin": round(gap, 4)}
 
 def _contextual_prompt(description: str, title: str, filename: str) -> str:
+    """Add compact source clues without pushing CLIP's visual prompt out of context."""
     clues = []
-    if title.strip(): clues.append(f'Archive item title: "{title.strip()[:180]}"')
-    if filename.strip(): clues.append(f'original image filename: "{filename.strip()[:180]}"')
-    prefix = ("Context clues (not proof): " + "; ".join(clues) + ". ") if clues else ""
-    return prefix + description
+    if title.strip():
+        clues.append("title " + title.strip()[:55])
+    if filename.strip():
+        clues.append("file " + filename.strip()[:45])
+    context = ("Source clues (not proof): " + "; ".join(clues) + ". ") if clues else ""
+    # Put the visual description first so any tokenizer truncation preserves it.
+    return description + (" " + context if context else "")
 
 def _score_stage(image, processor, model, torch, labels, title="", filename=""):
     prompts = [_contextual_prompt(description, title, filename) for _, description in labels]
-    inputs = processor(text=prompts, images=image, return_tensors="pt", padding=True)
+    # CLIP has a hard 77-token context window. Truncate only the appended
+    # source clues, never fail the entire item because a filename is verbose.
+    inputs = processor(text=prompts, images=image, return_tensors="pt",
+                       padding=True, truncation=True, max_length=77)
     with torch.inference_mode():
         logits = model(**inputs).logits_per_image[0]; scores = logits.softmax(dim=0).tolist()
     return _rank_scores(scores, labels)
@@ -167,7 +174,7 @@ def main() -> None:
             item["ai_visual_classification"] = {"stage_a": {"label": "uncertain", "status": "needs_review", "reason": "preview_or_inference_error"}, "stage_b": None, "suggested_role": None, "is_vhs_packaging_candidate": False, "final_decision": "uncertain", "review_status": "needs_review", "auto_approved": False, "error": str(exc)[:200]}
         enriched.append(item); time.sleep(max(0, args.delay))
     manifest["schema_version"] = max(3, int(manifest.get("schema_version", 1))); decisions = [x.get("ai_visual_classification", {}) for x in enriched]
-    manifest["ai_review"] = {"enabled": True, "model": args.model, "method": "local_two_stage_contextual_clip", "items_classified": sum(bool(x.get("ai_context", {}).get("context_used")) for x in enriched), "stage_a_vhs_packaging_candidates": sum(x.get("stage_a", {}).get("label") == "vhs_packaging" for x in decisions), "stage_a_video_frame_predictions": sum(x.get("stage_a", {}).get("label") == "video_frame_or_screenshot" for x in decisions), "auto_approved": 0, "scores_are_calibrated_probabilities": False, "context_fields": ["item_title", "original_filename"], "note": "Two-stage contextual CLIP suggestions only. Scores are relative within each stage and are not calibrated probabilities. All predictions require manual review."}
+    manifest["ai_review"] = {"enabled": True, "model": args.model, "method": "local_two_stage_contextual_clip", "items_classified": sum("error" not in x.get("ai_visual_classification", {}) for x in enriched), "items_with_inference_errors": sum("error" in x.get("ai_visual_classification", {}) for x in enriched), "stage_a_vhs_packaging_candidates": sum(x.get("stage_a", {}).get("label") == "vhs_packaging" for x in decisions), "stage_a_video_frame_predictions": sum(x.get("stage_a", {}).get("label") == "video_frame_or_screenshot" for x in decisions), "auto_approved": 0, "scores_are_calibrated_probabilities": False, "context_fields": ["item_title", "original_filename"], "note": "Two-stage contextual CLIP suggestions only. Scores are relative within each stage and are not calibrated probabilities. All predictions require manual review."}
     manifest["items"] = enriched; args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); print(json.dumps(manifest["ai_review"], indent=2))
 
 
