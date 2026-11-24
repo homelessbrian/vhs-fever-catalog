@@ -18,43 +18,6 @@ from pathlib import Path
 from typing import Any
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
-FRAME_TITLE_RE = re.compile(r"\b(?:frames?|screenshots?|stills?|fotogramas?|fotograma|imagen\s+fija)\b", re.I)
-PACKAGING_TITLE_RE = re.compile(r"\b(?:vhs|videocassette|video\s*tape|sleeve|cover|box|cassette|packaging)\b", re.I)
-FRAME_FILE_RE = re.compile(r"(?:^|[_ .-])(?:frame|still|screenshot)[_ .-]*\d+|[_ .-]\d{4,}$", re.I)
-
-def is_thumbnail_derivative(filename: str, candidate: dict[str, Any]) -> bool:
-    path = Path(filename)
-    parts = [p.casefold() for p in path.parts]
-    return (any(p.endswith(".thumbs") for p in parts)
-            or str(candidate.get("source_hint", "")).casefold() == "derivative"
-            or str(candidate.get("format", "")).casefold() == "thumbnail"
-            or path.stem.casefold().endswith("_thumb"))
-
-def frame_filter_decision(item: dict[str, Any], candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    inv = item.get("vhs_fever_file_inventory") or {}
-    has_video = bool(inv.get("has_video_candidate"))
-    title = str(item.get("title") or "")
-    description = str(item.get("description") or "")
-    explicit_frames = bool(FRAME_TITLE_RE.search(title) or FRAME_TITLE_RE.search(description[:1200]))
-    packaging_context = bool(PACKAGING_TITLE_RE.search(title))
-    safe, filtered = [], []
-    for candidate in candidates:
-        name = str(candidate.get("file_name") or candidate.get("name") or "")
-        reason = None
-        if is_thumbnail_derivative(name, candidate):
-            reason = "archive_thumbnail_derivative"
-        elif has_video and explicit_frames:
-            reason = "item_metadata_identifies_video_frames"
-        elif has_video and not packaging_context and FRAME_FILE_RE.search(Path(name).stem):
-            reason = "numbered_video_frame_pattern"
-        if reason:
-            filtered.append({"file_name": name, "reason": reason})
-        else:
-            kept = dict(candidate)
-            if has_video and FRAME_FILE_RE.search(Path(name).stem) and packaging_context:
-                kept["frame_filter_status"] = "ambiguous_numbered_image_kept_for_review"
-            safe.append(kept)
-    return safe, filtered
 
 
 def preview_name(filename: str) -> str:
@@ -80,36 +43,50 @@ def infer_geometry_role(width: int, height: int, filename_role: str | None = Non
     return "generic_packaging_art", "unclassified_geometry", "low"
 
 
-def collect_previews(input_path: Path, limit: int, include_filter_summary: bool = False):
+def collect_previews(input_path: Path, limit: int) -> list[dict[str, Any]]:
     selected: dict[tuple[str, str], dict[str, Any]] = {}
-    filtered_summary: list[dict[str, Any]] = []
     with input_path.open(encoding="utf-8") as stream:
         for line in stream:
-            if not line.strip(): continue
+            if not line.strip():
+                continue
             item = json.loads(line)
             enrichment = item.get("vhs_fever_metadata_artwork") or {}
-            eligible = []
             for candidate in enrichment.get("artwork_candidates") or []:
                 name = str(candidate.get("file_name") or "")
-                if Path(name).suffix.casefold() not in IMAGE_EXTS or candidate.get("private"): continue
-                eligible.append(candidate)
-            safe, rejected = frame_filter_decision(item, eligible)
-            if rejected:
-                filtered_summary.append({"archive_identifier": item.get("identifier"), "item_title": item.get("title"), "excluded_count": len(rejected), "reasons": sorted({x["reason"] for x in rejected}), "files": rejected[:30]})
-            for candidate in safe:
-                name = str(candidate.get("file_name") or "")
-                if str(candidate.get("source_hint", "")).casefold() == "derivative" or Path(name).stem.casefold().endswith("_thumb"): continue
-                key = (str(item.get("identifier") or ""), name.casefold())
-                if not key[0]: continue
+                ext = Path(name).suffix.casefold()
+                if ext not in IMAGE_EXTS or candidate.get("private"):
+                    continue
+                if re.search(r"(?:^|[/\\])(?:__ia_thumb|.*\.thumbs)(?:[/\\]|$)", name, re.I):
+                    continue
+                stem = Path(name).stem
+                stem = re.sub(r"_thumb$", "", stem, flags=re.I)
+                key = (str(candidate.get("archive_identifier") or ""), stem.casefold())
+                if not key[0]:
+                    continue
                 preview = preview_name(name)
                 url = candidate.get("asset_url")
-                if preview != name and url:
-                    url = str(url).replace(urllib.parse.quote(name, safe="/"), urllib.parse.quote(preview, safe="/"))
-                selected[key] = {"archive_identifier": key[0], "item_title": item.get("title"), "item_description": str(item.get("description") or "")[:1000], "item_has_video": bool((item.get("vhs_fever_file_inventory") or {}).get("has_video_candidate")), "file_name": preview, "source_file_name": name, "candidate_role": candidate.get("candidate_role", "generic_packaging_art"), "asset_url": url, "licenseurl": item.get("licenseurl"), "review_status": "visual_review_required", "frame_filter_status": candidate.get("frame_filter_status", "passed")}
-                if len(selected) >= limit: break
-            if len(selected) >= limit: break
-    result = list(selected.values())
-    return (result, filtered_summary) if include_filter_summary else result
+                if preview != name:
+                    url = str(url or "").replace(urllib.parse.quote(name, safe="/"), urllib.parse.quote(preview, safe="/"))
+                entry = {
+                    "archive_identifier": key[0],
+                    "item_title": item.get("title"),
+                    "file_name": preview,
+                    "source_file_name": name,
+                    "candidate_role": candidate.get("candidate_role", "generic_packaging_art"),
+                    "asset_url": url,
+                    "licenseurl": item.get("licenseurl"),
+                    "review_status": "visual_review_required",
+                }
+                # Prefer a thumbnail record when available.
+                if key not in selected or stem.casefold().endswith("_thumb"):
+                    selected[key] = entry
+                if len(selected) >= limit:
+                    break
+            if len(selected) >= limit:
+                break
+    return list(selected.values())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True)
@@ -118,7 +95,7 @@ def main() -> None:
     parser.add_argument("--delay", type=float, default=0.15)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    entries, filtered_items = collect_previews(args.input, max(1, args.limit), include_filter_summary=True)
+    entries = collect_previews(args.input, max(1, args.limit))
 
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -176,16 +153,15 @@ def main() -> None:
 
     sheet.save(args.output_dir / "vhs-artwork-contact-sheet.jpg", quality=88, optimize=True)
     manifest = {
-        "schema_version": 3,
+        "schema_version": 2,
         "role_inference": "Filename labels take precedence; otherwise scan aspect ratio suggests spine, cover-panel, or full-wrap candidates. Geometry is a review hint, not visual confirmation.",
         "preview_count": len(entries),
-        "frame_filter": {"version": 1, "excluded_candidate_count": sum(x["excluded_count"] for x in filtered_items), "affected_item_count": len(filtered_items), "excluded_items": filtered_items},
         "downloaded_preview_count": sum(e.get("preview_status") == "downloaded" for e in entries),
         "full_resolution_images_downloaded": False,
         "video_payloads_downloaded": False,
         "rights_determined": False,
         "items": downloaded,
-        "note": "Original image candidates are selected; Archive thumbnail derivatives and likely video frames are excluded with reasons recorded. Ambiguous numbered assets remain for review. Contact sheet previews are for human review only. Filename roles are not visually verified; Archive access and rights must be checked before display or playback.",
+        "note": "Contact sheet previews are for human review only. Filename roles are not visually verified; Archive access and rights must be checked before display or playback.",
     }
     (args.output_dir / "vhs-artwork-review-manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

@@ -168,7 +168,7 @@ def main() -> None:
         enriched.append(item); time.sleep(max(0, args.delay))
     manifest["schema_version"] = max(3, int(manifest.get("schema_version", 1))); decisions = [x.get("ai_visual_classification", {}) for x in enriched]
     manifest["ai_review"] = {"enabled": True, "model": args.model, "method": "local_two_stage_contextual_clip", "items_classified": sum(bool(x.get("ai_context", {}).get("context_used")) for x in enriched), "stage_a_vhs_packaging_candidates": sum(x.get("stage_a", {}).get("label") == "vhs_packaging" for x in decisions), "stage_a_video_frame_predictions": sum(x.get("stage_a", {}).get("label") == "video_frame_or_screenshot" for x in decisions), "auto_approved": 0, "scores_are_calibrated_probabilities": False, "context_fields": ["item_title", "original_filename"], "note": "Two-stage contextual CLIP suggestions only. Scores are relative within each stage and are not calibrated probabilities. All predictions require manual review."}
-    manifest["items"] = enriched; args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"); print(json.dumps(manifest["ai_review"], indent=2))
+    manifest["items"] = enriched; args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); print(json.dumps(manifest["ai_review"], indent=2))
 
 
 

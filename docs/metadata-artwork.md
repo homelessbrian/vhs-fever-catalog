@@ -89,22 +89,3 @@ Model references:
 - [OpenAI CLIP model card and limitations](https://huggingface.co/openai/clip-vit-base-patch32)
 
 The first pilot uses CPU inference and up to 40 small previews to keep resource use bounded. The manifest records model name, ranked labels, score margin, review status, and whether the top label is a VHS packaging candidate. No automatic approval is possible.
-
-## Recognition precision work — two-stage review and baseline
-
-The contact-sheet builder now excludes Archive thumbnail derivatives and likely video frames before AI inference. It checks .thumbs path components, source_hint=derivative, Archive thumbnail format, and _thumb names. For video items, explicit frame/still/screenshot clues in title or description exclude associated images; sequential frame-like filenames are also excluded when packaging context is absent. Numbered images in packaging-related items are retained but marked ambiguous. Each exclusion is recorded by Archive identifier, filename, and reason. Source inventory records are not changed.
-
-The AI review is split into two decisions:
-
-- Stage A — image type: VHS packaging, other physical media packaging, poster/promotional art, video frame/screenshot, photograph/other, or uncertain.
-- Stage B — package component: front, back, spine, full wrap, cassette label, or insert/other. Stage B runs only when Stage A supports VHS packaging.
-
-Both stages receive the Archive item title and original source filename. Image-only and contextual candidate scores are preserved separately; contextual scores drive the suggestion. Scores remain relative CLIP similarities, not calibrated probabilities. All results remain needs_review and no item is automatically approved.
-
-A manually visually reviewed 10-image set from pilot #41 is stored in tests/fixtures/artwork_ground_truth_sample.jsonl. The legacy single-stage classifier baseline was precision 0.60 (3/5), recall 0.50 (3/6 decided positive cases), false-positive rate 1.00 (2/2 negative decisions), and coverage 0.80 (8/10). There were two false positives, both video frames from the Gonzalo Marcuzzi item; the third frame was an abstention. The three frame images are now removed by metadata filtering before AI inference. Seven Thomas & Friends package/cassette scans remain in the sample. These metrics are diagnostic only: the sample is small and deliberately mixed, not representative of the full Archive collection.
-
-Run the evaluation against an AI manifest:
-
-    python scripts/evaluate_artwork_ai.py --manifest data/artwork-review/vhs-artwork-ai-review-manifest.json --labels tests/fixtures/artwork_ground_truth_sample.jsonl --output data/artwork-review/ai-evaluation.json
-
-The evaluator reports precision, recall, false-positive rate, coverage, abstentions, and component accuracy when two-stage component predictions exist. The inventory workflow runs this evaluation and uploads the report. Expand and independently verify the labeled set before considering larger samples. Do not scale AI across the full Archive collection or auto-approve artwork.
