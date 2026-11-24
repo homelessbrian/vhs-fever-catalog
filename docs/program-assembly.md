@@ -105,10 +105,23 @@ Initial roles: `opening`, `main_program`, `intermission`, `bonus`, `bonus_cartoo
 
 Roles describe presentation order, not legal status or content suitability.
 
-## Next implementation steps
+## Candidate generator (implemented)
 
-1. Add a read-only candidate generator that consumes classified records and file inventories.
-2. Emit suggested program manifests with evidence and confidence; do not alter source JSONL.
-3. Add review/approval data to promote suggestions to confirmed or rejected.
-4. Validate manifests (unique segment IDs, explicit ordering, source references, duration arithmetic).
-5. Expose confirmed manifests to the future Android TV player as sequential queues.
+`scripts/build_program_candidates.py` consumes enriched inventory JSONL and emits separate JSONL program manifests. It does not modify the source records or download media.
+
+- Exact normalized-title matches can connect explicitly labeled opening/closing/bonus records with a plain-title long-form feature.
+- Filename role clues can identify segments within an archive item.
+- Candidate segments are sorted by semantic role order, not API response order.
+- Every segment retains its exact archive identifier and filename.
+- Candidates are always emitted as `suggested`; the generator never confirms a relationship automatically.
+- Unknown segment durations make the total duration incomplete (null).
+- Candidates include evidence, confidence, and a review warning.
+
+The current inventory workflow runs the candidate generator against its balanced pilot sample and includes the candidate manifests in its artifact. The pilot is not a complete-catalog assembly pass.
+
+## Remaining implementation steps
+
+1. Add a review/approval data store to promote suggestions to confirmed or rejected.
+2. Validate manifests (unique segment IDs, explicit ordering, source references, duration arithmetic).
+3. Run inventory and candidate generation at broader catalog scale.
+4. Expose confirmed manifests to the future Android TV player as sequential queues.
