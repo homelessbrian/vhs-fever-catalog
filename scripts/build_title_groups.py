@@ -39,7 +39,7 @@ def stable_group_id(provider_id: str, title_key: str, entries: list[dict[str, An
         f"{(e.get('segments') or [{}])[0].get('file_name','')}"
         for e in entries
     )
-    raw = "\\n".join([provider_id, title_key, *source_keys])
+    raw = "\n".join([provider_id, title_key, *source_keys])
     return "vhsf-title-group-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -130,7 +130,7 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\\n" for row in rows), encoding="utf-8")
+    path.write_text("".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
 
 
 def main() -> None:
