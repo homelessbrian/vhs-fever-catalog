@@ -144,3 +144,16 @@ The current workflow is still a balanced **pilot sample** (up to 500 records), n
 2. Validate manifests (unique segment IDs, explicit ordering, source references, duration arithmetic).
 3. Run inventory and candidate generation at broader catalog scale.
 4. Expose confirmed manifests to the future Android TV player as sequential queues.
+
+
+## Manifest validation (implemented)
+
+`scripts/validate_program_manifests.py` validates generated program-catalog JSONL before it is used by later enrichment or playback stages.
+
+It checks required program/source identifiers, unique segment IDs and source references, contiguous explicit segment ordering, playback-mode constraints, finite non-negative durations, duration totals/completeness, and duplicate program IDs across the catalog. Assembled candidates must remain suggested and review-required. The command exits non-zero when any validation error is found and can optionally write a JSON report:
+
+```bash
+python scripts/validate_program_manifests.py --input data/vhsvault-program-catalog.jsonl --report data/vhsvault-program-catalog.validation.json
+```
+
+Validation checks data integrity only; it does not establish title identity, playback availability, or rights.
