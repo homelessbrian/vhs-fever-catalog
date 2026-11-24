@@ -16,24 +16,24 @@ from pathlib import Path
 
 RULES = [
     ("artwork_or_packaging", re.compile(
-        r"\\b(cover|sleeve|box ?art|poster|jacket|disc label|dvd menu background|"
+        r"\b(cover|sleeve|box ?art|poster|jacket|disc label|dvd menu background|"
         r"vhs label|case art|scan|artwork|packaging)\\b", re.I)),
     ("promo_or_commercial", re.compile(
-        r"\\b(promo|promotional|commercial|advert|advertisement|ad break|station ident|"
+        r"\b(promo|promotional|commercial|advert|advertisement|ad break|station ident|"
         r"continuity|bumper|tv break|idents?)\\b", re.I)),
     ("vhs_or_dvd_extra", re.compile(
-        r"\\b(dvd opening|dvd closing|opening and closing|opening to|closing to|"
+        r"\b(dvd opening|dvd closing|opening and closing|opening to|closing to|"
         r"menu|bonus feature|special feature|behind the scenes|making of|easter egg|"
         r"vhs opening|vhs closing)\\b", re.I)),
     ("trailer_or_clip", re.compile(
-        r"\\b(trailer|teaser|preview|clip|excerpt|snippet|scene from)\\b", re.I)),
+        r"\b(trailer|teaser|preview|clip|excerpt|snippet|scene from)\\b", re.I)),
     ("cartoon_or_animation", re.compile(
-        r"\\b(cartoon|animated|animation|anime|toon|looney tunes|merrie melodies)\\b", re.I)),
+        r"\b(cartoon|animated|animation|anime|toon|looney tunes|merrie melodies)\\b", re.I)),
     ("tv_episode_or_recording", re.compile(
-        r"\\b(episode|tv recording|television recording|broadcast|aircheck|recorded off|"
+        r"\b(episode|tv recording|television recording|broadcast|aircheck|recorded off|"
         r"taped off|full episode|sitcom|news broadcast|newscast|telecast)\\b", re.I)),
 ]
-MOVIE_TITLE = re.compile(r"\\b(movie|film|feature film|motion picture)\\b", re.I)
+MOVIE_TITLE = re.compile(r"\b(movie|film|feature film|motion picture)\\b", re.I)
 
 
 def as_text(value: object) -> str:
@@ -93,7 +93,7 @@ def main() -> int:
                     "reason": reason,
                     "needs_review": level == "low",
                 }
-                dest.write(json.dumps(result, ensure_ascii=False, sort_keys=True) + "\\n")
+                dest.write(json.dumps(result, ensure_ascii=False, sort_keys=True) + "\n")
                 counts[label] += 1
                 confidence[level] += 1
                 total += 1
@@ -115,7 +115,7 @@ def main() -> int:
         "rights_determined": False,
     }
     summary_path = args.output.with_suffix(".summary.json")
-    summary_path.write_text(json.dumps(summary, indent=2) + "\\n", encoding="utf-8")
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
     return 0
 
