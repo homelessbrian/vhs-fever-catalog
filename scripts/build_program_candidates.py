@@ -74,7 +74,10 @@ def role_target_title(filename: str) -> str | None:
     return norm(match.group(1)) if match else None
 
 def title_similarity(left: str, right: str) -> float:
-    a, b = set(left.split()), set(right.split())
+    # Ignore one-character fragments such as the possessive "s" left
+    # behind by punctuation normalization.
+    a = {token for token in left.split() if len(token) > 1}
+    b = {token for token in right.split() if len(token) > 1}
     if not a or not b:
         return 0.0
     return len(a & b) / max(len(a), len(b))
