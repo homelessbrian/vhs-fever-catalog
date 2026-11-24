@@ -43,7 +43,7 @@ vhs_fever_classification:row.vhs_fever_classification||old.vhs_fever_classificat
 vhs_fever_file_inventory:row.vhs_fever_file_inventory||old.vhs_fever_file_inventory,
 vhs_fever_analysis:row.vhs_fever_analysis||old.vhs_fever_analysis,
 vhs_fever_metadata_artwork:row.vhs_fever_metadata_artwork||old.vhs_fever_metadata_artwork})}return [...map.values()]}
-function parseJSONL(raw){return raw.split(/\\r?\\n/).filter(x=>x.trim()).map((line,i)=>{try{return JSON.parse(line)}catch(e){throw Error("Published data line "+(i+1)+": "+e.message)}})}
+function parseJSONL(raw){return raw.split(/\r?\n/).filter(x=>x.trim()).map((line,i)=>{try{return JSON.parse(line)}catch(e){throw Error("Published data line "+(i+1)+": "+e.message)}})}
 async function loadPublishedData(){try{
  const [cr,er,mr]=await Promise.all([
   fetch("./data/latest-classified.jsonl?"+Date.now(),{cache:"no-store"}),
