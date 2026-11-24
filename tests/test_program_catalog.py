@@ -53,7 +53,7 @@ class ProgramCatalogTests(unittest.TestCase):
         catalog, _ = build_catalog([item])
         self.assertEqual(sum(x["entry_type"] == "standalone" for x in catalog), 1)
 
-    def test_derivative_is_not_listed_when_its_original_is_present(self):
+    def test_derivative_is_preserved_as_an_alternate_source_when_original_is_present(self):
         item = self.item("movie", "Movie", [
             {
                 "name": "Movie.ia.mp4",
@@ -70,8 +70,8 @@ class ProgramCatalogTests(unittest.TestCase):
         ])
         catalog, _ = build_catalog([item])
         standalone = [x for x in catalog if x["entry_type"] == "standalone"]
-        self.assertEqual(len(standalone), 1)
-        self.assertEqual(standalone[0]["segments"][0]["file_name"], "Movie.mp4")
+        self.assertEqual(len(standalone), 2)
+        self.assertEqual({x["segments"][0]["file_name"] for x in standalone}, {"Movie.mp4", "Movie.ia.mp4"})
 
     def test_derivative_is_retained_when_original_is_missing(self):
         item = self.item("movie", "Movie", [
