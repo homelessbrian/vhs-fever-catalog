@@ -154,7 +154,7 @@ Every automatic decision should be reversible. Preserve original Archive metadat
 
 ## Implementation sequence
 
-1. Merge and retain the existing program-manifest validation gate before enriching the full catalogue.
+1. **Implemented:** merge and retain the program-manifest validation gate before enriching the full catalogue.
 2. **Implemented:** add a versioned enrichment schema and validation tests.
 3. Implement TMDB primary matching and metadata/artwork retrieval with rate-limit handling and cached lookup results.
 4. Add the optional Video Tapes dot io adapter, token-based authentication, batch lookup, regional editions, panel/spread URLs, and withdrawn-artwork handling.
