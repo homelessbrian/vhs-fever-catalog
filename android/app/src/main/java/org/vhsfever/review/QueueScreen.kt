@@ -107,7 +107,7 @@ fun QueueScreen(m: AppModel) {
                 colors = fieldColors(), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QueueMode.entries.forEach { q -> Chip(q.label, m.mode == q, { m.mode = q }) }
-                Chip("English only", m.englishOnly, { m.setEnglishOnly(!m.englishOnly) }, C.good)
+                Chip("English only", m.englishOnly, { m.changeEnglishOnly(!m.englishOnly) }, C.good)
                 Chip("Sound problems", m.soundOnly, { m.soundOnly = !m.soundOnly }, C.warn)
             }
             if (m.englishOnly && m.foreign.isNotEmpty()) Text("${m.foreign.size} files that look non-English are hidden. Tap “English only” to show them.",

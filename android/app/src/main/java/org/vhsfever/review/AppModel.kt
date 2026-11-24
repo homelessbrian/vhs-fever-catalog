@@ -121,7 +121,7 @@ class AppModel(private val ctx: Context) {
     // ------------------------------------------------------------------ language
     private val langCache get() = File(ctx.filesDir, "item-languages.json")
 
-    fun setEnglishOnly(on: Boolean) { englishOnly = on; prefs.edit().putBoolean("english_only", on).apply() }
+    fun changeEnglishOnly(on: Boolean) { englishOnly = on; prefs.edit().putBoolean("english_only", on).apply() }
 
     fun foreignReason(f: FileItem): String? = foreign[f.id]
 
