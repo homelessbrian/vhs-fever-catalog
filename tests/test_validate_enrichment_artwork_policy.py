@@ -54,6 +54,46 @@ def valid_record() -> dict:
 
 
 class ArtworkStoragePolicyTests(unittest.TestCase):
+    def test_edition_provenance_fields_are_validated(self) -> None:
+        record = valid_record()
+        record["vhs_sleeve_lookup"].update({
+            "status": "found",
+            "checked_at": "2026-11-24T12:00:00Z",
+            "editions": [{
+                "edition_id": "edition-1",
+                "provider": "videotapes_io",
+                "source_url": "https://videotapes.io/sleeves/edition-1",
+                "authenticity": "official",
+                "source_id": "edition-1",
+                "retrieved_at": "2026-11-24T12:00:00Z",
+                "attribution": "Video Tapes dot io",
+                "evidence": ["Provider record labels this as an official release"],
+            }],
+        })
+        self.assertEqual(validate_enrichment_record(record), [])
+
+    def test_rejects_invalid_edition_provenance(self) -> None:
+        record = valid_record()
+        record["vhs_sleeve_lookup"].update({
+            "status": "found",
+            "checked_at": "2026-11-24T12:00:00Z",
+            "editions": [{
+                "edition_id": "edition-1",
+                "provider": "videotapes_io",
+                "source_url": "https://videotapes.io/sleeves/edition-1",
+                "authenticity": "official",
+                "source_id": " ",
+                "retrieved_at": "not-a-date",
+                "attribution": " ",
+                "evidence": ["", 4],
+            }],
+        })
+        errors = validate_enrichment_record(record)
+        self.assertTrue(any("source_id" in error for error in errors))
+        self.assertTrue(any("retrieved_at" in error for error in errors))
+        self.assertTrue(any("attribution" in error for error in errors))
+        self.assertTrue(any("evidence" in error for error in errors))
+
     def test_source_url_reference_is_valid_without_local_image_file(self) -> None:
         self.assertEqual(validate_enrichment_record(valid_record()), [])
 
