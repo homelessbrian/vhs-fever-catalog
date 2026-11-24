@@ -19,7 +19,7 @@ input,select,textarea,button{font:inherit;color:inherit}input[type=search],selec
 @media(max-width:850px){.layout{grid-template-columns:1fr}.list{max-height:38vh}.toolbar{grid-template-columns:1fr 1fr}.toolbar input{grid-column:1/-1}.stats{grid-template-columns:repeat(2,1fr)}.detailhead{padding:18px}.detailbody{padding:18px}.review{grid-template-columns:1fr}.kv{grid-template-columns:115px 1fr}}
 
 .editionpanel{margin:24px 0 0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.editionhead{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.editiongrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:14px}.editioncard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}.editioncard h3{margin:0 0 6px;font-size:16px}.editionart{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.editionart img{width:90px;height:125px;object-fit:contain;background:#0d0c0b;border:1px solid var(--line);border-radius:5px}.editionfiles{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.editioncard a{color:var(--gold)}
-</style></head>
+ .programgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:12px}.programcard{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px;min-width:0}.programcard b{display:block;color:var(--text)}.programmeta{font-size:11px;color:var(--gold);margin:4px 0 8px}.programsource{font-size:11px;color:var(--muted);overflow-wrap:anywhere;padding:4px 0;border-top:1px solid var(--line)}.programsource span{color:#d4c6b7}</style></head>
 <body>
 <header><div class="brand"><div class="mark">VHS</div><div><h1>VHS FEVER</h1><div class="sub">Catalog research desk</div></div></div><div class="sub">Metadata review · Local workspace</div></header>
 <main>
@@ -120,6 +120,35 @@ function render(){const rows=filtered();$("total").textContent=records.length;$(
 $("list").innerHTML=rows.length?rows.map(r=>{const id=idOf(r),d=decisions[id]||{},t=tmdb(r);return '<div class="item '+(id===selected?'active':'')+'" data-id="'+esc(id)+'"><strong>'+esc(r.title||id)+'</strong><div class="meta"><span>'+esc(label(r))+'</span><span>· '+esc(status(r))+'</span>'+(d.status?'<span class="pill good">'+esc(d.status)+'</span>':'')+'</div></div>'}).join(""):'<div class="empty">No records match these filters.</div>';
 document.querySelectorAll(".item").forEach(el=>el.onclick=()=>{selected=el.dataset.id;render();showDetail()});if(selected&&records.some(r=>idOf(r)===selected))showDetail()}
 function kv(items){return '<div class="kv">'+items.map(([k,v])=>'<div class="k">'+esc(k)+'</div><div>'+v+'</div>').join("")+'</div>'}
+
+function renderVideoPrograms(files){
+ const groups=new Map();
+ for(const file of files){
+  let name=String(file.name||"");
+  let stem=name.replace(/\.[^.\/]+$/,"");
+  stem=stem.replace(/\.ia$/i,"");
+  const versionMatch=stem.match(/\s*\((Version\s*\d+)\)\s*$/i);
+  const version=versionMatch?versionMatch[1].replace(/\s+/g," "):"";
+  if(versionMatch)stem=stem.slice(0,versionMatch.index).trim();
+  const yearMatch=stem.match(/\((18|19|20)\d{2}\s+(VHS|DVD|Blu[\s-]?ray)\)/i);
+  let year="",media="";
+  if(yearMatch){year=yearMatch[1]+yearMatch[0].match(/(18|19|20)\d{2}/)[0].slice(4);media=yearMatch[2].toUpperCase();stem=stem.replace(yearMatch[0],"").trim();}
+  else{
+   const plainYear=stem.match(/\(((18|19|20)\d{2})\s+(VHS|DVD)\)/i);
+   if(plainYear){year=plainYear[1];media=plainYear[3].toUpperCase();stem=stem.replace(plainYear[0],"").trim();}
+  }
+  const title=stem.replace(/\s+/g," ").replace(/[._-]+$/,"").trim()||name;
+  const key=[title.toLowerCase(),year,media,version.toLowerCase()].join("|");
+  if(!groups.has(key))groups.set(key,{title,year,media,version,files:[]});
+  groups.get(key).files.push(file);
+ }
+ return [...groups.values()].sort((a,b)=>a.title.localeCompare(b.title)||a.year.localeCompare(b.year)||a.version.localeCompare(b.version)).map(g=>{
+  const label=[g.title,g.year,g.media,g.version].filter(Boolean).join(" · ");
+  const sources=g.files.map(file=>'<div class="programsource">'+esc(file.name)+' <span>· '+esc(file.format||"format unknown")+' · '+(file.duration_seconds?Math.round(file.duration_seconds/60)+" min":"duration unknown")+'</span></div>').join("");
+  return '<article class="programcard"><b>'+esc(label)+'</b><div class="programmeta">'+g.files.length+' source file'+(g.files.length===1?"":"s")+'</div>'+sources+'</article>';
+ }).join("")||'<div class="note">No video files listed.</div>';
+}
+
 function showDetail(){const r=records.find(x=>idOf(x)===selected);if(!r)return;const id=idOf(r),c=r.vhs_fever_classification||{},inv=r.vhs_fever_file_inventory||{},a=r.vhs_fever_analysis||{},e=r.vhs_fever_metadata_artwork||{},t=e.tmdb||{},d=decisions[id]||{},archive='https://archive.org/details/'+encodeURIComponent(id);
 let arts=(e.artwork_candidates||[]).map(x=>'<div class="art"><a href="'+esc(x.asset_url)+'" target="_blank" rel="noopener"><img loading="lazy" src="'+esc(x.asset_url)+'" alt=""></a><div>'+esc(x.candidate_role)+'</div><a href="'+esc(x.asset_url)+'" target="_blank" rel="noopener">Open source file ↗</a><div class="note">'+esc(x.file_name)+'</div></div>').join("");
 let tmdbhtml=t.tmdb_id?'<a class="source" href="'+esc(t.tmdb_url||('https://www.themoviedb.org/movie/'+t.tmdb_id))+'" target="_blank" rel="noopener">'+esc(t.title)+' ('+esc(t.release_date||"year unknown")+')</a> · TMDB '+esc(t.tmdb_id)+(t.tmdb_poster?'<div class="art"><a href="'+esc(t.tmdb_poster)+'" target="_blank"><img src="'+esc(t.tmdb_poster)+'" alt="TMDB poster"></a><div class="note">TMDB poster · title-level art, not VHS packaging</div></div>':''): (t.candidate_results||[]).map(x=>'<div>'+esc(x.title)+' ('+esc(x.release_date||"—")+') · similarity '+esc(x.similarity)+' · TMDB '+esc(x.tmdb_id)+'</div>').join("")||esc(t.status||"No TMDB lookup");
@@ -128,7 +157,7 @@ $("detail").innerHTML='<div class="detailhead"><div><div class="sub">'+esc(id)+'
 <div class="section"><h3>File inventory & runtime clues</h3>'+kv([["Inventory status",text(inv.inventory_status)],["Video files",text(inv.video_file_count)],["Video durations found",text(inv.video_files_with_duration)],["Known total duration",inv.video_duration_min_seconds!=null?Math.round(inv.video_duration_min_seconds/60)+"–"+Math.round((inv.video_duration_max_seconds||0)/60)+" min": "—"],["File analysis",text(a.content_type)],["Collection format",text(a.collection_format)],["Analysis review",text(a.needs_review)],["Audio / images",text(inv.audio_file_count)+" / "+text(inv.image_file_count)]])+'</div>\
 <div class="section"><h3>TMDB identity suggestion</h3>'+kv([["Status",text(t.status||"matched")],["Match confidence",text(t.match_confidence)],["Search title",text(t.search_title)],["TMDB title",tmdbhtml||"—"]])+'</div>\
 <div class="section"><h3>Possible VHS sleeve artwork</h3>'+(arts?'<div class="artgrid">'+arts+'</div>':'<div class="note">No filename-based packaging candidates found. Absence does not mean the item has no sleeve scan.</div>')+'</div>\
-<div class="section"><h3>Video file names (metadata only)</h3><div class="note">'+(inv.video_files||[]).slice(0,30).map(f=>'<div>'+esc(f.name)+' · '+esc(f.format||"format unknown")+' · '+(f.duration_seconds?Math.round(f.duration_seconds/60)+" min":"duration unknown")+'</div>').join("")+'</div></div>\
+<div class="section"><h3>Movies & editions found inside this Archive item</h3><div class="note">Each distinct filename-derived title is shown separately. Versions and encodes are retained as source variants; DVD and VHS releases are not merged.</div><div class="programgrid">'+renderVideoPrograms(inv.video_files||[])+'</div></div>\
 <div class="section"><h3>Your review decision</h3><div class="actions">'+["keep","investigate","reject"].map(s=>'<button data-status="'+s+'" class="'+(d.status===s?"selected":"")+'">'+({keep:"✓ Keep",investigate:"? Investigate",reject:"✕ Reject"}[s])+'</button>').join("")+'</div><div class="review" style="margin-top:12px"><div><label class="note">Reviewer notes</label><textarea id="reviewNote" placeholder="Why is this a good candidate? What needs checking?">'+esc(d.notes||"")+'</textarea></div><div class="note">Decisions are saved in this browser only. Export them to keep a portable review file. This app does not change source data or approve reuse rights.</div></div></div></div>'
 document.querySelectorAll("[data-status]").forEach(b=>b.onclick=()=>saveDecision(b.dataset.status));$("reviewNote").onchange=()=>saveDecision(d.status||"", $("reviewNote").value)}
 function saveDecision(s,note){const id=selected,old=decisions[id]||{};decisions[id]={status:s||old.status||"",notes:note??$("reviewNote")?.value??old.notes??"",updated_at:new Date().toISOString()};localStorage.setItem("vhsfever-review-decisions",JSON.stringify(decisions));render()}
