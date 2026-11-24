@@ -134,8 +134,10 @@ def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
         if movies:
             return tmdb_payload(movies[0], "imdb_external_id", "high")
         return {"status": "not_found_by_imdb", "imdb_id": imdb_id, "review_status": "needs_review"}
+    title, title_status = tmdb_search_title(item)
     if not title:
-        return {"status": "missing_title", "review_status": "needs_review"}
+        return {"status": title_status, "review_status": "not_attempted",
+                "original_title": str(item.get("title") or "")}
     year = item.get("year")
     if not year:
         date = str(item.get("date") or "")
@@ -164,7 +166,7 @@ def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
 def enrich_record(item: dict[str, Any], token: str | None = None, do_tmdb: bool = True) -> dict[str, Any]:
     result = dict(item)
     enrichment = {
-        "schema_version": 1,
+        "schema_version": 2,
         "archive_identifier": item.get("identifier"),
         "artwork_candidates": build_artwork_candidates(item),
         "tmdb": {"status": "skipped_no_api_token", "review_status": "needs_review"},
