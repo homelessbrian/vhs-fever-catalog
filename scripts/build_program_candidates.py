@@ -114,6 +114,9 @@ def candidate_from_group(key: str, members: list[dict[str, Any]]) -> dict[str, A
     if unlabelled:
         max(unlabelled, key=lambda m: m.get("duration_seconds") or 0)["role"] = "main_program"
         roles.add("main_program")
+    # Do not create a sequential program from an opening/closing pair alone.
+    if "main_program" not in roles:
+        return None
     role_order = {"opening": 10, "main_program": 20, "intermission": 30, "bonus_cartoon": 40,
                   "bonus": 45, "trailer": 50, "credits": 60, "closing": 70, "unknown": 90}
     members.sort(key=lambda m: (role_order.get(m["role"], 90), m["archive_identifier"], m["file_name"]))
@@ -202,11 +205,15 @@ def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 evidence.append("segment_role_in_filename:" + f_role)
             if t_role and not f_role:
                 evidence.append("segment_role_in_item_title:" + t_role[1])
-            if (role is None and title_key in known_title_keys
-                    and (file.get("duration_seconds") or 0) >= 300
-                    and title_similarity(title_key, norm(Path(filename).stem)) >= 0.6):
-                role = "main_program"
-                evidence.append("filename_title_match_to_labeled_segments")
+            if role is None and title_key in known_title_keys and (file.get("duration_seconds") or 0) >= 300:
+                # A cross-archive feature can have a generic filename, but its
+                # sole item's title must match exactly. In multi-file archives,
+                # require the filename itself to match the target title.
+                exact_single_record_title = len(item_videos) == 1 and t_role is None and norm(title) == title_key
+                matching_segment_filename = len(item_videos) > 1 and title_similarity(title_key, norm(Path(filename).stem)) >= 0.6
+                if exact_single_record_title or matching_segment_filename:
+                    role = "main_program"
+                    evidence.append("exact_item_title_match" if exact_single_record_title else "filename_title_match_to_labeled_segments")
             if not role or len(title_key) < 4:
                 continue
             groups["title:" + title_key].append({
