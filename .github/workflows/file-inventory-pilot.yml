@@ -97,6 +97,8 @@ jobs:
             data/vhsvault-program-catalog.summary.json
             data/vhsvault-program-review-queue.jsonl
             data/vhsvault-metadata-artwork.jsonl
-            data/vhsvault-metadata-artwork.summary.json\n            data/artwork-review/vhs-artwork-contact-sheet.jpg\n            data/artwork-review/vhs-artwork-review-manifest.json
+            data/vhsvault-metadata-artwork.summary.json
+            data/artwork-review/vhs-artwork-contact-sheet.jpg
+            data/artwork-review/vhs-artwork-review-manifest.json
           if-no-files-found: error
           retention-days: 30
