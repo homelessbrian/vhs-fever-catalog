@@ -69,7 +69,14 @@ jobs:
             --input data/vhsvault-file-inventory-pilot.jsonl \
             --output data/vhsvault-metadata-artwork.jsonl
 
-      - name: Build visual VHS artwork contact sheet\n        run: |\n          python scripts/build_artwork_contact_sheet.py \\\n            --input data/vhsvault-metadata-artwork.jsonl \\\n            --output-dir data/artwork-review \\\n            --limit 40\n\n      - name: Run program assembly and catalog tests
+      - name: Build visual VHS artwork contact sheet
+        run: |
+          python scripts/build_artwork_contact_sheet.py \
+            --input data/vhsvault-metadata-artwork.jsonl \
+            --output-dir data/artwork-review \
+            --limit 40
+
+      - name: Run program assembly and catalog tests
         run: |
           python -m py_compile scripts/build_program_catalog.py scripts/enrich_metadata_artwork.py scripts/build_artwork_contact_sheet.py
           python -m unittest discover -s tests -p 'test_*.py' -v
