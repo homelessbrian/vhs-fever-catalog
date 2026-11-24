@@ -1,0 +1,63 @@
+name: Classify VHS Vault catalog
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download completed VHS Vault import
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data
+          gh release download vhsvault-import-state \
+            --pattern "vhsvault-import-state.tar.gz" \
+            --dir data
+          tar -xzf data/vhsvault-import-state.tar.gz -C data
+
+      - name: Verify source import
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = Path("data/vhsvault-discovery.jsonl")
+          summary = json.loads(Path("data/vhsvault-discovery.summary.json").read_text())
+          if not source.is_file():
+              raise SystemExit("Discovery JSONL is missing from the import archive")
+          expected = summary.get("unique_items_written")
+          actual = sum(1 for line in source.open(encoding="utf-8") if line.strip())
+          if actual != expected:
+              raise SystemExit(f"Import count mismatch: summary={expected}, JSONL={actual}")
+          print(f"Verified {actual} source records")
+          PY
+
+      - name: Classify catalog metadata
+        run: |
+          python scripts/classify_catalog.py \
+            --input data/vhsvault-discovery.jsonl \
+            --output data/vhsvault-classified.jsonl
+
+      - name: Upload classified catalog and summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhs-fever-classified-catalog
+          path: |
+            data/vhsvault-classified.jsonl
+            data/vhsvault-classified.summary.json
+          if-no-files-found: error
+          retention-days: 30
