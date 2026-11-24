@@ -119,6 +119,25 @@ Roles describe presentation order, not legal status or content suitability.
 
 The current inventory workflow runs the candidate generator against its balanced pilot sample and includes the candidate manifests in its artifact. The pilot is not a complete-catalog assembly pass.
 
+
+## Standalone catalog builder (implemented)
+
+`scripts/build_program_catalog.py` builds the library catalog from enriched inventory JSONL.
+
+- Every distinct inventoried video file becomes a standalone, one-segment program entry with its exact Archive identifier and filename.
+- This includes files that may also participate in a multi-segment suggestion. The standalone entry is retained; an assembled suggestion is additive, never a replacement.
+- Multi-segment suggestions from `scripts/build_program_candidates.py` are included as separate `assembled_candidate` entries and remain review-only.
+- Items with failed/missing inventory, no video candidates, Archive access restrictions, or private video files are recorded in a separate review queue.
+- Unknown durations remain null and are flagged for review.
+- The builder does not download media, modify source records, decide rights, or guarantee that a file is playable.
+
+The inventory pilot now uploads:
+- `vhsvault-program-catalog.jsonl` — standalone entries plus assembled suggestions.
+- `vhsvault-program-catalog.summary.json` — entry counts and safety flags.
+- `vhsvault-program-review-queue.jsonl` — source items requiring attention.
+
+The current workflow is still a balanced **pilot sample** (up to 500 records), not yet a full 129,572-record inventory. A full-catalog inventory run is a separate scale-up step after validating the expanded pilot.
+
 ## Remaining implementation steps
 
 1. Add a review/approval data store to promote suggestions to confirmed or rejected.
