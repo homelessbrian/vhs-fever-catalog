@@ -131,6 +131,13 @@ def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         parsed = title_role(str(item.get("title") or ""))
         if parsed:
             known_title_keys.add(parsed[0])
+        inv = item.get("vhs_fever_file_inventory") or {}
+        detected_roles = {
+            filename_role(str(file.get("name") or ""))
+            for file in inv.get("video_files", [])
+        } - {None}
+        if len(detected_roles) >= 2:
+            known_title_keys.add(norm(title))
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in records:
         identifier = str(item.get("identifier") or "").strip()
