@@ -221,3 +221,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated catalog exports and local run state
+data/
+*.checkpoint.json
