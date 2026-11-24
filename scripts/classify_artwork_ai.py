@@ -142,10 +142,29 @@ def decide_two_stage(stage_a: list[dict[str, Any]], stage_b: list[dict[str, Any]
     result.update({"stage_b": second, "stage_b_candidates": (stage_b or [])[:6], "suggested_role": second["label"], "is_vhs_packaging_candidate": True, "final_decision": "vhs_packaging_component_uncertain" if second["label"] == "uncertain" else "vhs_packaging_candidate"})
     return result
 
+MIN_ARTWORK_LONG_EDGE = 300
+
+
+def image_dimensions(payload: bytes) -> tuple[int, int]:
+    from io import BytesIO
+    from PIL import Image
+    with Image.open(BytesIO(payload)) as image:
+        return image.size
+
+
 def classify_image(payload: bytes, classifier, title: str = "", filename: str = "") -> dict[str, Any]:
     torch, Image, processor, model = classifier
     from io import BytesIO
     image = Image.open(BytesIO(payload)).convert("RGB")
+    if max(image.size) < MIN_ARTWORK_LONG_EDGE:
+        return {"stage_a": {"label": "uncertain", "status": "skipped",
+                "reason": "below_minimum_artwork_resolution"},
+                "stage_b": None, "suggested_role": None,
+                "is_vhs_packaging_candidate": False,
+                "final_decision": "skipped_low_resolution",
+                "review_status": "skipped", "auto_approved": False,
+                "image_dimensions": list(image.size),
+                "minimum_long_edge_pixels": MIN_ARTWORK_LONG_EDGE}
     # Preserve image-only and contextual scores separately for later comparison.
     a_image = _score_stage(image, processor, model, torch, STAGE_A_LABELS)
     a_context = _score_stage(image, processor, model, torch, STAGE_A_LABELS, title, filename)
@@ -161,11 +180,20 @@ def classify_image(payload: bytes, classifier, title: str = "", filename: str = 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__); parser.add_argument("--manifest", type=Path, required=True); parser.add_argument("--output", type=Path, required=True); parser.add_argument("--model", default=MODEL_ID); parser.add_argument("--delay", type=float, default=0.1); parser.add_argument("--limit", type=int, default=40)
-    args = parser.parse_args(); manifest = json.loads(args.manifest.read_text(encoding="utf-8")); entries = manifest.get("items") or []; classifier = load_classifier(args.model); enriched = []
+    args = parser.parse_args(); manifest = json.loads(args.manifest.read_text(encoding="utf-8")); entries = manifest.get("items") or []; classifier = None; enriched = []
     for entry in entries[:max(0, args.limit)]:
         item = dict(entry)
         try:
             payload = fetch_preview(str(item.get("asset_url") or ""))
+            dimensions = image_dimensions(payload)
+            if max(dimensions) < MIN_ARTWORK_LONG_EDGE:
+                item["ai_visual_classification"] = {"stage_a": {"label": "uncertain", "status": "skipped", "reason": "below_minimum_artwork_resolution"}, "stage_b": None, "suggested_role": None, "is_vhs_packaging_candidate": False, "final_decision": "skipped_low_resolution", "review_status": "skipped", "auto_approved": False, "image_dimensions": list(dimensions), "minimum_long_edge_pixels": MIN_ARTWORK_LONG_EDGE}
+                item["ai_context"] = {"context_used": False}
+                item["ai_method"] = "skipped_minimum_resolution"
+                enriched.append(item)
+                continue
+            if classifier is None:
+                classifier = load_classifier(args.model)
             result = classify_image(payload, classifier, str(item.get("item_title") or ""), str(item.get("source_file_name") or item.get("file_name") or ""))
             item["ai_visual_classification"] = result
             item["ai_context"] = {"item_title": item.get("item_title"), "original_filename": item.get("source_file_name") or item.get("file_name"), "context_used": True}
@@ -174,7 +202,7 @@ def main() -> None:
             item["ai_visual_classification"] = {"stage_a": {"label": "uncertain", "status": "needs_review", "reason": "preview_or_inference_error"}, "stage_b": None, "suggested_role": None, "is_vhs_packaging_candidate": False, "final_decision": "uncertain", "review_status": "needs_review", "auto_approved": False, "error": str(exc)[:200]}
         enriched.append(item); time.sleep(max(0, args.delay))
     manifest["schema_version"] = max(3, int(manifest.get("schema_version", 1))); decisions = [x.get("ai_visual_classification", {}) for x in enriched]
-    manifest["ai_review"] = {"enabled": True, "model": args.model, "method": "local_two_stage_contextual_clip", "items_classified": sum("error" not in x.get("ai_visual_classification", {}) for x in enriched), "items_with_inference_errors": sum("error" in x.get("ai_visual_classification", {}) for x in enriched), "stage_a_vhs_packaging_candidates": sum(x.get("stage_a", {}).get("label") == "vhs_packaging" for x in decisions), "stage_a_video_frame_predictions": sum(x.get("stage_a", {}).get("label") == "video_frame_or_screenshot" for x in decisions), "auto_approved": 0, "scores_are_calibrated_probabilities": False, "context_fields": ["item_title", "original_filename"], "note": "Two-stage contextual CLIP suggestions only. Scores are relative within each stage and are not calibrated probabilities. All predictions require manual review."}
+    manifest["ai_review"] = {"enabled": True, "model": args.model, "method": "local_two_stage_contextual_clip", "items_classified": sum(x.get("ai_visual_classification", {}).get("final_decision") != "skipped_low_resolution" and "error" not in x.get("ai_visual_classification", {}) for x in enriched), "items_skipped_low_resolution": sum(x.get("ai_visual_classification", {}).get("final_decision") == "skipped_low_resolution" for x in enriched), "minimum_long_edge_pixels": MIN_ARTWORK_LONG_EDGE, "items_with_inference_errors": sum("error" in x.get("ai_visual_classification", {}) for x in enriched), "stage_a_vhs_packaging_candidates": sum(x.get("stage_a", {}).get("label") == "vhs_packaging" for x in decisions), "stage_a_video_frame_predictions": sum(x.get("stage_a", {}).get("label") == "video_frame_or_screenshot" for x in decisions), "auto_approved": 0, "scores_are_calibrated_probabilities": False, "context_fields": ["item_title", "original_filename"], "note": "Two-stage contextual CLIP suggestions only. Scores are relative within each stage and are not calibrated probabilities. All predictions require manual review."}
     manifest["items"] = enriched; args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); print(json.dumps(manifest["ai_review"], indent=2))
 
 
