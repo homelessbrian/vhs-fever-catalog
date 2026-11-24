@@ -49,8 +49,20 @@ def title_role(title: str) -> tuple[str, str] | None:
     return None
 
 def filename_role(filename: str) -> str | None:
-    stem = Path(filename).stem.replace("_", " ").replace("-", " ")
-    for role, pattern in ROLE_PATTERNS:
+    # Only leading role labels count; "Opening Credits" inside an episode title
+    # is not sufficient evidence that the file is a separate opening segment.
+    stem = Path(filename).stem.replace("_", " ").replace("-", " ").strip()
+    stem = re.sub(r"^\\d+[ ._-]*", "", stem)
+    anchored = [
+        ("opening", r"^(?:opening|intro(?:duction)?)(?:\\b|\\s)"),
+        ("closing", r"^(?:closing|outro|end credits)(?:\\b|\\s)"),
+        ("bonus_cartoon", r"^(?:bonus cartoon|cartoon bonus)(?:\\b|\\s)"),
+        ("bonus", r"^(?:bonus|extra|special feature)(?:\\b|\\s)"),
+        ("trailer", r"^(?:trailer|teaser|preview)(?:\\b|\\s)"),
+        ("intermission", r"^intermission(?:\\b|\\s)"),
+        ("credits", r"^credits(?:\\b|\\s)"),
+    ]
+    for role, pattern in anchored:
         if re.search(pattern, stem, re.I):
             return role
     return None
@@ -129,6 +141,13 @@ def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if inv.get("inventory_status") != "ok":
             continue
         item_videos = [f for f in inv.get("video_files", []) if Path(str(f.get("name", ""))).suffix.lower() in VIDEO_EXTS or f.get("format")]
+        # Drop a streaming derivative when its referenced original is present.
+        originals = {str(f.get("name") or "") for f in item_videos if f.get("origin_hint") == "original"}
+        item_videos = [
+            f for f in item_videos
+            if not (f.get("origin_hint") == "derivative"
+                    and str(f.get("original_file_reference") or "") in originals)
+        ]
         t_role = title_role(title)
         title_key = t_role[0] if t_role else norm(title)
         for file in item_videos:
