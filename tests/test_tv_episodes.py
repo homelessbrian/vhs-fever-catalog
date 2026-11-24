@@ -143,7 +143,7 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual(r["status"], "no_episode_found")   # show alone isn't enough for a dash name
 
     def test_tvdb_backup_used_when_tmdb_misses(self):
-        tvdb = FakeSource("tvdb", {"The Maxx": (77, 1995, [ep(1, 8, "Chapter 8")])})
+        tvdb = FakeSource("tvdb", {"The Maxx": (77, 1995, [ep(1, 8, "Chapter 8")])})  # TMDB fake has no Maxx
         r = find([self.tmdb, tvdb], "The Maxx/Season 1/The Maxx - S01E08 - Chapter 8.mkv")
         self.assertEqual(r["source"], "tvdb")
         self.assertEqual(r["tried"], ["tmdb", "tvdb"])
@@ -184,6 +184,22 @@ class MatchingTests(unittest.TestCase):
         self.assertGreaterEqual(tv.similarity("The Messy Room", "Messy Room"), 0.95)
         self.assertGreaterEqual(tv.similarity("And Too Much Birthday", "The Berenstain Bears and Too Much Birthday"), 0.84)
         self.assertLess(tv.similarity("Toast", "Becca and the Band"), 0.5)
+        self.assertLess(tv.similarity("The Pirates", "Pirates with Dirty Faces"), 0.84)
+        self.assertLess(tv.similarity("Mighty Mouse", "Mighty Mouse: The New Adventures"), 0.8)
+
+    def test_generic_chapter_title_is_just_a_number(self):
+        self.assertEqual(episode_title_pieces("Chapter 8"), [])
+        tmdb = FakeSource("tmdb", {"The Maxx": (9, 1995, [ep(1, 8, "Episode 8")])})
+        r = find([tmdb], "The Maxx/Season 1/The Maxx - S01E08 - Chapter 8.mkv")
+        self.assertEqual(r["status"], "episode_by_number_only")
+
+    def test_year_in_name_must_fit(self):
+        tmdb = FakeSource("tmdb", {"Mighty Mouse": (8, 1955, [ep(1, 1, "The Pirates", "1955-01-01")])})
+        i = interpret_filename("Mighty Mouse - The Pirates (1945).mp4")
+        h = i["show_dash_hint"]
+        r = tv.find_episode([tmdb], show=h["show"], season=None, episode=None, episode_title=h["episode_title"],
+                            air_date=None, title_pieces=episode_title_pieces, require_title_match=True, hint_year=1945)
+        self.assertEqual(r["status"], "no_episode_found")
 
 
 if __name__ == "__main__":

@@ -52,7 +52,10 @@ def similarity(a: str | None, b: str | None) -> float:
     # "And Too Much Birthday" vs "The Berenstain Bears and Too Much Birthday",
     # "Life Goes On" vs "Life Goes On (and On and On)": one fully inside the other.
     short, long_ = sorted((x, y), key=len)
-    if len(short) >= 6 and re.search(r"\b" + re.escape(short) + r"\b", long_):
+    # Only when the shorter name is a real part of the longer one, not a single
+    # word inside a long title ("Pirates" vs "Pirates with Dirty Faces").
+    if (len(short) >= 6 and " " in short and len(short) >= 0.45 * len(long_)
+            and re.search(r"\b" + re.escape(short) + r"\b", long_)):
         r = max(r, 0.86 + 0.14 * len(short) / len(long_))
     return round(r, 3)
 
@@ -323,11 +326,14 @@ def strong(ep: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 
 def _candidate(show: dict[str, Any], ep: dict[str, Any] | None, show_sim: float,
-               ceiling: int | None) -> dict[str, Any]:
+               ceiling: int | None, hint_year: int | None = None) -> dict[str, Any]:
     year_ok = None
     when = (ep or {}).get("air_date") or show.get("first_air_date") or ""
     if ceiling and when[:4].isdigit():
         year_ok = int(when[:4]) <= ceiling
+    if hint_year and when[:4].isdigit():
+        # a year written in the file name ("(1945)") must fit the air date
+        year_ok = abs(int(when[:4]) - hint_year) <= 1 and year_ok is not False
     c = {
         "source": show["source"], "media_type": "tv",
         "tmdb_id": show["id"] if show["source"] == "tmdb" else None,
@@ -347,7 +353,7 @@ def _candidate(show: dict[str, Any], ep: dict[str, Any] | None, show_sim: float,
 def find_episode(sources: list[Any], *, show: str | None, season: int | None, episode: int | None,
                  episode_title: str | None, air_date: str | None, ceiling: int | None = None,
                  title_pieces: Callable[[str | None], list[str]] | None = None,
-                 require_title_match: bool = False) -> dict[str, Any]:
+                 require_title_match: bool = False, hint_year: int | None = None) -> dict[str, Any]:
     """Try each source in turn (TMDB, then TVDB). Stops at the first source that
     finds the episode convincingly. Returns {status, source, candidates, tried}."""
     titles = (title_pieces or (lambda t: [t] if t else []))(episode_title)
@@ -365,10 +371,11 @@ def find_episode(sources: list[Any], *, show: str | None, season: int | None, ep
                 for sim, s in scored:
                     eps = src.episodes(s["id"])
                     for ep in match_episodes(eps, season=season, episode=episode, titles=titles, air_date=air_date):
-                        found.append(_candidate(s, ep, sim, ceiling))
+                        found.append(_candidate(s, ep, sim, ceiling, hint_year))
                     if not found and not best_show_only:
-                        best_show_only.append(_candidate(s, None, sim, ceiling))
-                good = [c for c in found if strong(c["episode"])]
+                        best_show_only.append(_candidate(s, None, sim, ceiling, hint_year))
+                good = [c for c in found if strong(c["episode"])
+                        and not (require_title_match and c["year_consistent"] is False)]
                 if good:
                     return {"status": "one_likely_episode" if len(good) == 1 else "several_episode_candidates",
                             "source": src.name, "candidates": (good + [c for c in found if c not in good])[:5],
@@ -387,7 +394,7 @@ def find_episode(sources: list[Any], *, show: str | None, season: int | None, ep
                         continue
                     ep = {**ep, "basis": ["episode_title_search"] + (["season_and_episode_number"] if (ep["season"], ep["episode"]) == (season, episode) else []),
                           "title_similarity": sim}
-                    weak.append(_candidate(s, ep, 0.0, ceiling))
+                    weak.append(_candidate(s, ep, 0.0, ceiling, hint_year))
                 if weak:
                     return {"status": "show_found_from_episode_title", "source": src.name,
                             "candidates": weak[:5], "tried": tried}

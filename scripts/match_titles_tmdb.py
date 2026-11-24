@@ -208,12 +208,12 @@ def main() -> None:
                 # "Show Name - Episode Name": an episode only if TMDB/TVDB has a
                 # show by that name AND an episode by that name. Otherwise it
                 # is treated as a movie title like any other.
-                key = ("dash", title_key(dash["show"]), title_key(dash["episode_title"]), first_release.get(tid))
+                key = ("dash", title_key(dash["show"]), title_key(dash["episode_title"]), first_release.get(tid), hint_year)
                 if key not in ep_cache:
                     ep_cache[key] = tv_episodes.find_episode(
                         tv_sources(), show=dash["show"], season=None, episode=None,
                         episode_title=dash["episode_title"], air_date=None, ceiling=first_release.get(tid),
-                        title_pieces=episode_title_pieces, require_title_match=True)
+                        title_pieces=episode_title_pieces, require_title_match=True, hint_year=hint_year)
                     lookups += 1
                 r = ep_cache[key]
                 if r["status"] in {"one_likely_episode", "several_episode_candidates"}:

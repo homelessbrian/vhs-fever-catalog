@@ -227,14 +227,14 @@ object EpisodeMatch {
         if (x == y) return 1.0
         var r = 1.0 - lev(x, y).toDouble() / maxOf(x.length, y.length)
         val (short, long) = if (x.length <= y.length) x to y else y to x
-        if (short.length >= 6 && Regex("\\b" + Regex.escape(short) + "\\b").containsMatchIn(long))
+        if (short.length >= 6 && ' ' in short && short.length >= 0.45 * long.length && Regex("\\b" + Regex.escape(short) + "\\b").containsMatchIn(long))
             r = maxOf(r, 0.86 + 0.14 * short.length / long.length)
         return r
     }
 
     /** "Story One / Story Two" -> whole title plus each story. */
     fun titlePieces(t: String?): List<String> {
-        if (t.isNullOrBlank()) return emptyList()
+        if (t.isNullOrBlank() || Regex("\\s*(chapter|episode|ep\\.?|part|pt\\.?)\\s*#?\\d+\\s*", RegexOption.IGNORE_CASE).matches(t)) return emptyList()
         val out = mutableListOf(t.trim())
         Regex("\\s+[A-Z]{2,5}$").replace(t.trim(), "").trim().let { if (it.isNotEmpty() && it != out[0]) out += it }
         t.split(Regex("\\s{2,}|\\s*/\\s*|\\s+[-\u2013]\\s+|\\s*;\\s*")).map { it.trim(' ', '-', '.', ',', '!') }

@@ -127,8 +127,8 @@ def show_from_folder(folder: str | None) -> str | None:
 def episode_title_pieces(text: str | None) -> list[str]:
     """Ways an episode title may be written: whole, and each story of a
     two-story episode ("The Snack Helper   Buds", "Racing Time / All Tied Up")."""
-    if not text:
-        return []
+    if not text or re.fullmatch(r"\s*(?:chapter|episode|ep\.?|part|pt\.?)\s*#?\d+\s*", text, re.I):
+        return []   # "Chapter 8" says nothing the episode number doesn't
     out = [text.strip()]
     no_tag = re.sub(r"\s+[A-Z]{2,5}$", "", out[0]).strip()
     if no_tag and no_tag != out[0]:

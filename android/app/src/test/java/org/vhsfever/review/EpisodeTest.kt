@@ -36,6 +36,8 @@ class EpisodeTest {
         assertEquals(3, two.episode.season)
         assertTrue(EpisodeMatch.similarity("The Messy Room", "Messy Room") > 0.95)
         assertTrue(EpisodeMatch.similarity("Toast", "Becca and the Band") < 0.5)
+        assertTrue(EpisodeMatch.similarity("The Pirates", "Pirates with Dirty Faces") < 0.84)
+        assertTrue(EpisodeMatch.titlePieces("Chapter 8").isEmpty())
     }
 
     @Test fun absoluteNumberAndAirDate() {
