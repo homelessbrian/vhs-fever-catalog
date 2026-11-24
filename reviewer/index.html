@@ -11,8 +11,8 @@ header{padding:26px clamp(16px,4vw,48px) 20px;border-bottom:1px solid var(--line
 h1{font-size:20px;letter-spacing:.14em;margin:0;font-weight:850}.sub{color:var(--muted);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 main{max-width:1500px;margin:auto;padding:24px clamp(14px,3vw,40px) 60px}
 .toolbar,.stats,.layout{display:grid;gap:14px}.toolbar{grid-template-columns:minmax(240px,1fr) auto auto;align-items:center;margin-bottom:16px}
-input,select,textarea,button{font:inherit;color:inherit}input[type=search],select,textarea{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:11px 12px;min-width:0;width:100%}button,.filebutton{border:1px solid var(--line);background:var(--panel2);padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:650}button:hover,.filebutton:hover{border-color:var(--gold)}button.primary{background:var(--red);border-color:var(--red);color:#fff}.filebutton input{display:none}
-.stats{grid-template-columns:repeat(4,minmax(0,1fr));margin:16px 0 20px}.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 16px}.stat b{font-size:23px;display:block}.stat span{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+input,select,textarea,button{font:inherit;color:inherit}input[type=search],select,textarea{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:11px 12px;min-width:0;width:100%}button,.filebutton{border:1px solid var(--line);background:var(--panel2);padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:650}button:hover,.filebutton:hover{border-color:var(--gold)}button.primary{background:var(--red);border-color:var(--red);color:#fff}button:disabled{opacity:.55;cursor:wait}.filebutton input{display:none}
+.stats{grid-template-columns:repeat(4,minmax(0,1fr));margin:16px 0 20px}.loadstatus{margin:0 0 14px}.progress{height:5px;background:#302b26;border-radius:99px;overflow:hidden;margin-top:8px;display:none}.progress.active{display:block}.progress>span{display:block;height:100%;width:0;background:var(--red);transition:width .15s}.progress.indeterminate>span{width:35%;animation:loadmove 1.2s ease-in-out infinite}@keyframes loadmove{from{transform:translateX(-110%)}to{transform:translateX(310%)}}.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 16px}.stat b{font-size:23px;display:block}.stat span{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
 .layout{grid-template-columns:minmax(290px,390px) minmax(0,1fr);align-items:start}.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.filters select{width:auto;flex:1;min-width:120px}
 .list{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#171513;max-height:72vh;overflow-y:auto}.item{padding:13px 14px;border-bottom:1px solid #302b26;cursor:pointer}.item:last-child{border:0}.item:hover,.item.active{background:#29231f}.item.active{box-shadow:inset 3px 0 var(--red)}.item strong{display:block;font-size:14px;line-height:1.35;margin-bottom:5px}.meta{color:var(--muted);font-size:12px;display:flex;gap:8px;flex-wrap:wrap}.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#d7c9b8}.pill.good{color:var(--green);border-color:#42634b}.pill.warn{color:var(--gold);border-color:#70582f}
 .detail{background:var(--panel);border:1px solid var(--line);border-radius:12px;min-height:440px;overflow:hidden}.empty{padding:60px 24px;text-align:center;color:var(--muted)}.detailhead{padding:22px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px}.detailhead h2{font-size:24px;line-height:1.2;margin:0 0 8px}.detailbody{padding:20px 24px;display:grid;gap:18px}.section h3{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);margin:0 0 9px}.kv{display:grid;grid-template-columns:150px minmax(0,1fr);gap:7px 14px;font-size:13px}.kv .k{color:var(--muted)}.artgrid{display:flex;gap:12px;flex-wrap:wrap}.art{width:150px}.art img{width:100%;height:190px;object-fit:contain;background:#0d0c0b;border:1px solid var(--line);border-radius:6px}.art a{color:var(--gold);font-size:12px}.note{color:var(--muted);font-size:12px}.review{display:grid;grid-template-columns:180px 1fr;gap:12px}.review textarea{min-height:76px;resize:vertical}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button.selected{border-color:var(--gold);background:#403020}.source{color:var(--gold);text-decoration:none}.source:hover{text-decoration:underline}
@@ -24,9 +24,9 @@ input,select,textarea,button{font:inherit;color:inherit}input[type=search],selec
 <div class="toolbar">
 <input id="search" type="search" placeholder="Search titles, identifiers, descriptions…">
 
-<button id="export" class="primary">Export review decisions</button>
+<button id="refresh">↻ Refresh catalog</button><button id="export" class="primary">Export review decisions</button>
 </div>
-<div class="note" id="loadnote" role="status" aria-live="polite">Connecting to the latest VHS FEVER catalog data…</div>
+<div class="loadstatus"><div class="note" id="loadnote" role="status" aria-live="polite">Connecting to the latest VHS FEVER catalog data…</div><div class="progress" id="loadprogress" aria-hidden="true"><span id="progressfill"></span></div></div>
 <div class="stats"><div class="stat"><b id="total">0</b><span>Records loaded</span></div><div class="stat"><b id="matched">0</b><span>TMDB matches</span></div><div class="stat"><b id="artcount">0</b><span>Artwork candidates</span></div><div class="stat"><b id="reviewed">0</b><span>Reviewed here</span></div></div>
 <div class="layout">
 <aside><div class="filters"><select id="classFilter"><option value="">All classifications</option></select><select id="tmdbFilter"><option value="">All TMDB states</option><option value="matched">Matched</option><option value="ambiguous_title_match">Ambiguous</option><option value="not_found_by_title">Not found</option><option value="likely_archive_recording_or_compilation">Skipped archive/compilation</option><option value="not_applicable_to_classification">Not applicable</option></select><select id="reviewFilter"><option value="">All review states</option><option value="unreviewed">Unreviewed</option><option value="keep">Keep</option><option value="reject">Reject</option><option value="investigate">Investigate</option></select></div><div class="list" id="list"><div class="empty">Connecting to the latest catalog…</div></div></aside>
@@ -45,18 +45,31 @@ vhs_fever_analysis:row.vhs_fever_analysis||old.vhs_fever_analysis,
 vhs_fever_metadata_artwork:row.vhs_fever_metadata_artwork||old.vhs_fever_metadata_artwork})}return [...map.values()]}
 function parseJSONL(raw){return raw.split(/\r?\n/).filter(x=>x.trim()).map((line,i)=>{try{return JSON.parse(line)}catch(e){throw Error("Published data line "+(i+1)+": "+e.message)}})}
 async function loadPublishedData(){
- const note=$("loadnote");
+ const note=$("loadnote"),bar=$("loadprogress"),fill=$("progressfill"),button=$("refresh");
  const controller=new AbortController();
- const timeout=setTimeout(()=>controller.abort(),60000);
+ const timeout=setTimeout(()=>controller.abort(),90000);
+ button.disabled=true;button.textContent="Loading…";
+ bar.classList.add("active","indeterminate");fill.style.width="0%";
  try{
   note.textContent="Connecting to the catalog data feed…";
   const base="https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/";
-  note.textContent="Downloading the latest catalog records (this may take a moment on mobile)…";
   const response=await fetch(base+"latest.jsonl?"+Date.now(),{cache:"no-store",signal:controller.signal});
   if(!response.ok)throw Error("Catalog feed returned HTTP "+response.status+".");
-  const raw=await response.text();
+  if(!response.body)throw Error("This browser could not open the catalog download stream.");
+  const total=Number(response.headers.get("content-length"))||0;
+  let received=0,parts=[];
+  note.textContent="Downloading catalog records…";
+  const reader=response.body.getReader(),decoder=new TextDecoder();
+  while(true){
+   const {done,value}=await reader.read();if(done)break;
+   received+=value.length;parts.push(decoder.decode(value,{stream:true}));
+   if(total){bar.classList.remove("indeterminate");fill.style.width=Math.min(100,received/total*100)+"%";note.textContent="Downloading catalog records… "+(received/1048576).toFixed(1)+" MB"+(total?" of "+(total/1048576).toFixed(1)+" MB":"");}
+  }
+  parts.push(decoder.decode());
+  const raw=parts.join("");
   if(!raw.trim())throw Error("Catalog feed was empty.");
-  note.textContent="Parsing catalog records…";
+  fill.style.width="100%";bar.classList.remove("indeterminate");
+  note.textContent="Processing catalog records…";
   records=mergeRows(parseJSONL(raw));
   let manifest={};
   try{
@@ -64,11 +77,13 @@ async function loadPublishedData(){
    if(mr.ok)manifest=await mr.json();
   }catch(manifestError){console.warn("Catalog manifest unavailable; displaying loaded records.",manifestError)}
   selected=null;populateFilters();render();
-  const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"manifest unavailable";
-  note.textContent="✓ Automatically loaded latest scrape · "+records.length+" unique records · Updated "+date+".";
+  const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"not available";
+  note.textContent="✓ Catalog loaded · "+records.length.toLocaleString()+" records · Last published "+date+".";
  }catch(e){
-  note.textContent=(e.name==="AbortError"?"Catalog download timed out after 60 seconds. ":"Could not load catalog data. ")+e.message+" Check your connection and reload; no file upload is required.";
- }finally{clearTimeout(timeout)}
+  bar.classList.remove("indeterminate");
+  note.textContent=(e.name==="AbortError"?"Catalog download timed out. ":"Catalog load failed. ")+e.message+" Tap “Refresh catalog” to try again.";
+  if(records.length)render();
+ }finally{clearTimeout(timeout);button.disabled=false;button.textContent="↻ Refresh catalog";setTimeout(()=>bar.classList.remove("active"),700)}
 }
 async function loadFiles(fileList){let rows=[],names=[];for(const file of fileList){const raw=await file.text();let count=0;for(const [i,line] of raw.split(/\r?\n/).entries()){if(!line.trim())continue;try{rows.push(JSON.parse(line));count++}catch(e){throw Error(file.name+" line "+(i+1)+": "+e.message)}}names.push(file.name+" ("+count+")")}records=mergeRows(rows);$("loadnote").textContent="Loaded "+names.join(" · ")+" — "+records.length+" unique Archive records. Load order is merged automatically; enriched records take precedence.";selected=null;populateFilters();render()}
 function tmdb(r){return r.vhs_fever_metadata_artwork?.tmdb||{}}
@@ -94,6 +109,7 @@ $("detail").innerHTML='<div class="detailhead"><div><div class="sub">'+esc(id)+'
 document.querySelectorAll("[data-status]").forEach(b=>b.onclick=()=>saveDecision(b.dataset.status));$("reviewNote").onchange=()=>saveDecision(d.status||"", $("reviewNote").value)}
 function saveDecision(s,note){const id=selected,old=decisions[id]||{};decisions[id]={status:s||old.status||"",notes:note??$("reviewNote")?.value??old.notes??"",updated_at:new Date().toISOString()};localStorage.setItem("vhsfever-review-decisions",JSON.stringify(decisions));render()}
 ["search","classFilter","tmdbFilter","reviewFilter"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",()=>render()));
+$("refresh").onclick=()=>loadPublishedData();
 loadPublishedData();
 $("export").onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),source:"VHS FEVER Research Desk",decisions},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vhs-fever-review-decisions.json";a.click();URL.revokeObjectURL(url)};
 </script></body></html>
