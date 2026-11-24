@@ -81,5 +81,6 @@ $("detail").innerHTML='<div class="detailhead"><div><div class="sub">'+esc(id)+'
 document.querySelectorAll("[data-status]").forEach(b=>b.onclick=()=>saveDecision(b.dataset.status));$("reviewNote").onchange=()=>saveDecision(d.status||"", $("reviewNote").value)}
 function saveDecision(s,note){const id=selected,old=decisions[id]||{};decisions[id]={status:s||old.status||"",notes:note??$("reviewNote")?.value??old.notes??"",updated_at:new Date().toISOString()};localStorage.setItem("vhsfever-review-decisions",JSON.stringify(decisions));render()}
 $("files").onchange=e=>loadFiles(e.target.files).catch(err=>alert("Could not load data: "+err.message));["search","classFilter","tmdbFilter","reviewFilter"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",()=>render()));
-loadPublishedData();\n$("export").onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),source:"VHS FEVER Research Desk",decisions},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vhs-fever-review-decisions.json";a.click();URL.revokeObjectURL(url)};
+loadPublishedData();
+$("export").onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),source:"VHS FEVER Research Desk",decisions},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vhs-fever-review-decisions.json";a.click();URL.revokeObjectURL(url)};
 </script></body></html>
