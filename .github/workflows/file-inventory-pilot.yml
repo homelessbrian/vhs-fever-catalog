@@ -1,0 +1,52 @@
+name: VHS Vault file inventory pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample_size:
+        description: "Number of items to inspect (pilot limit 250)"
+        required: true
+        default: "120"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download classified catalog artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data
+          gh run download 45317770012 --repo "${{ github.repository }}" \
+            --name vhs-fever-classified-catalog --dir data
+
+      - name: Inspect a balanced sample of Archive file inventories
+        run: |
+          python scripts/inspect_file_inventory.py \
+            --input data/vhsvault-classified.jsonl \
+            --output data/vhsvault-file-inventory-pilot.jsonl \
+            --limit "${{ inputs.sample_size }}" \
+            --delay 0.5
+
+      - name: Upload pilot results
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhs-fever-file-inventory-pilot
+          path: |
+            data/vhsvault-file-inventory-pilot.jsonl
+            data/vhsvault-file-inventory-pilot.summary.json
+          if-no-files-found: error
+          retention-days: 30
