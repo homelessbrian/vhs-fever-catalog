@@ -35,6 +35,10 @@ def _is_text(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _is_member(value: Any, options: set[str]) -> bool:
+    return isinstance(value, str) and value in options
+
+
 def _is_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
@@ -73,14 +77,14 @@ def _validate_candidate(candidate: Any, prefix: str) -> list[str]:
         errors.append(f"{prefix}.provider must be tmdb")
     if not _is_text(candidate.get("provider_id")):
         errors.append(f"{prefix}.provider_id must be a non-empty TMDB identifier")
-    if candidate.get("media_type") not in MEDIA_TYPES:
+    if not _is_member(candidate.get("media_type"), MEDIA_TYPES):
         errors.append(f"{prefix}.media_type must be one of {sorted(MEDIA_TYPES)}")
     if not _is_text(candidate.get("title")):
         errors.append(f"{prefix}.title must be a non-empty string")
     year = candidate.get("year")
     if year is not None and (not _is_integer(year) or not 1888 <= year <= 2200):
         errors.append(f"{prefix}.year must be null or an integer from 1888 through 2200")
-    if candidate.get("confidence") not in {"high", "medium", "low"}:
+    if not _is_member(candidate.get("confidence"), {"high", "medium", "low"}):
         errors.append(f"{prefix}.confidence must be high, medium, or low")
     evidence = candidate.get("evidence")
     if not isinstance(evidence, list) or any(not _is_text(item) for item in evidence):
@@ -94,7 +98,7 @@ def validate_enrichment_record(record: Any) -> list[str]:
         return ["record must be a JSON object"]
 
     errors: list[str] = []
-    if record.get("schema_version") != 1:
+    if not _is_integer(record.get("schema_version")) or record.get("schema_version") != 1:
         errors.append("schema_version must be 1")
     if not _is_text(record.get("program_id")):
         errors.append("program_id must be a non-empty string")
@@ -105,7 +109,7 @@ def validate_enrichment_record(record: Any) -> list[str]:
         identity = {}
 
     identity_status = identity.get("status")
-    if identity_status not in IDENTITY_STATUSES:
+    if not _is_member(identity_status, IDENTITY_STATUSES):
         errors.append(f"identity_match.status must be one of {sorted(IDENTITY_STATUSES)}")
 
     provider = identity.get("provider")
@@ -116,7 +120,7 @@ def validate_enrichment_record(record: Any) -> list[str]:
         errors.append("identity_match.provider_id must be a non-empty string or null")
 
     media_type = identity.get("media_type")
-    if media_type is not None and media_type not in MEDIA_TYPES:
+    if media_type is not None and not _is_member(media_type, MEDIA_TYPES):
         errors.append(f"identity_match.media_type must be one of {sorted(MEDIA_TYPES)} or null")
     title = identity.get("title")
     if title is not None and not _is_text(title):
@@ -125,7 +129,7 @@ def validate_enrichment_record(record: Any) -> list[str]:
     if year is not None and (not _is_integer(year) or not 1888 <= year <= 2200):
         errors.append("identity_match.year must be null or an integer from 1888 through 2200")
     confidence = identity.get("confidence")
-    if confidence not in CONFIDENCE_LEVELS:
+    if not _is_member(confidence, CONFIDENCE_LEVELS):
         errors.append(f"identity_match.confidence must be one of {sorted(CONFIDENCE_LEVELS)}")
 
     evidence = identity.get("evidence")
@@ -146,11 +150,11 @@ def validate_enrichment_record(record: Any) -> list[str]:
             errors.append("confirmed identity_match requires provider tmdb")
         if not _is_text(provider_id):
             errors.append("confirmed identity_match requires a non-empty provider_id")
-        if media_type not in MEDIA_TYPES:
+        if not _is_member(media_type, MEDIA_TYPES):
             errors.append("confirmed identity_match requires media_type movie or tv")
         if not _is_text(title):
             errors.append("confirmed identity_match requires a title")
-        if confidence not in {"high", "medium", "low"}:
+        if not _is_member(confidence, {"high", "medium", "low"}):
             errors.append("confirmed identity_match requires a confidence level")
 
     external_ids = identity.get("external_ids")
@@ -166,10 +170,10 @@ def validate_enrichment_record(record: Any) -> list[str]:
         errors.append("vhs_sleeve_lookup must be an object")
         sleeve = {}
     sleeve_status = sleeve.get("status")
-    if sleeve_status not in SLEEVE_STATUSES:
+    if not _is_member(sleeve_status, SLEEVE_STATUSES):
         errors.append(f"vhs_sleeve_lookup.status must be one of {sorted(SLEEVE_STATUSES)}")
     sleeve_provider = sleeve.get("provider")
-    if sleeve_provider not in EDITION_PROVIDERS:
+    if not _is_member(sleeve_provider, EDITION_PROVIDERS):
         errors.append(f"vhs_sleeve_lookup.provider must be one of {sorted(EDITION_PROVIDERS)}")
     checked_at = sleeve.get("checked_at")
     if checked_at is not None and not _is_datetime(checked_at):
@@ -197,11 +201,11 @@ def validate_enrichment_record(record: Any) -> list[str]:
                 errors.append(f"{prefix}.edition_id is duplicated: {edition_id}")
             else:
                 edition_ids.add(edition_id)
-            if edition.get("provider") not in EDITION_PROVIDERS:
+            if not _is_member(edition.get("provider"), EDITION_PROVIDERS):
                 errors.append(f"{prefix}.provider must be one of {sorted(EDITION_PROVIDERS)}")
             if not _is_http_url(edition.get("source_url")):
                 errors.append(f"{prefix}.source_url must be an absolute HTTP(S) URL")
-            if edition.get("authenticity") not in {"official", "fan_made", "unknown"}:
+            if not _is_member(edition.get("authenticity"), {"official", "fan_made", "unknown"}):
                 errors.append(f"{prefix}.authenticity must be official, fan_made, or unknown")
             release_year = edition.get("release_year")
             if release_year is not None and (
@@ -239,20 +243,20 @@ def validate_enrichment_record(record: Any) -> list[str]:
                 assets_by_id[asset_id] = asset
 
             asset_provider = asset.get("provider")
-            if asset_provider not in ARTWORK_PROVIDERS:
+            if not _is_member(asset_provider, ARTWORK_PROVIDERS):
                 errors.append(f"{prefix}.provider must be one of {sorted(ARTWORK_PROVIDERS)}")
             kind = asset.get("kind")
-            if kind not in ARTWORK_KINDS:
+            if not _is_member(kind, ARTWORK_KINDS):
                 errors.append(f"{prefix}.kind must be one of {sorted(ARTWORK_KINDS)}")
             if not _is_http_url(asset.get("source_url")):
                 errors.append(f"{prefix}.source_url must be an absolute HTTP(S) URL")
 
             edition_id = asset.get("edition_id")
-            if edition_id is not None and edition_id not in edition_ids:
+            if edition_id is not None and (not _is_text(edition_id) or edition_id not in edition_ids):
                 errors.append(f"{prefix}.edition_id does not reference a known VHS edition")
-            if kind in VHS_ARTWORK_KINDS and not _is_text(edition_id):
+            if _is_member(kind, VHS_ARTWORK_KINDS) and not _is_text(edition_id):
                 errors.append(f"{prefix}.edition_id is required for VHS artwork")
-            if kind in VHS_ARTWORK_KINDS and asset_provider not in EDITION_PROVIDERS:
+            if _is_member(kind, VHS_ARTWORK_KINDS) and not _is_member(asset_provider, EDITION_PROVIDERS):
                 errors.append(f"{prefix}.provider must identify the VHS artwork source")
 
             for dimension in ("width", "height"):
@@ -261,14 +265,14 @@ def validate_enrichment_record(record: Any) -> list[str]:
                     errors.append(f"{prefix}.{dimension} must be a positive integer or null")
 
             reuse_policy = asset.get("reuse_policy")
-            if reuse_policy not in REUSE_POLICIES:
+            if not _is_member(reuse_policy, REUSE_POLICIES):
                 errors.append(f"{prefix}.reuse_policy must be one of {sorted(REUSE_POLICIES)}")
             display_status = asset.get("display_status")
-            if display_status not in DISPLAY_STATUSES:
+            if not _is_member(display_status, DISPLAY_STATUSES):
                 errors.append(f"{prefix}.display_status must be one of {sorted(DISPLAY_STATUSES)}")
-            if display_status == "approved" and reuse_policy in {
+            if display_status == "approved" and _is_member(reuse_policy, {
                 "link_only", "permission_required", "unknown"
-            }:
+            }):
                 errors.append(f"{prefix}.display_status approved conflicts with reuse_policy {reuse_policy}")
 
             retrieved_at = asset.get("retrieved_at")
@@ -287,7 +291,7 @@ def validate_enrichment_record(record: Any) -> list[str]:
                         errors.append(f"{prefix}.folds.right must be a number between 0 and 1")
                     if _is_number(left) and _is_number(right) and left >= right:
                         errors.append(f"{prefix}.folds.left must be less than folds.right")
-                    if folds.get("source") not in {"measured", "provider", "unknown"}:
+                    if not _is_member(folds.get("source"), {"measured", "provider", "unknown"}):
                         errors.append(f"{prefix}.folds.source must be measured, provider, or unknown")
 
     signature_id = artwork.get("signature_asset_id")
