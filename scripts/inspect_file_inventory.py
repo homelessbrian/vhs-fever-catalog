@@ -16,7 +16,7 @@ VIDEO_FORMATS = {"mpeg4", "h.264", "h.264 ia", "mpeg2", "mpeg2 iplayer", "matros
 AUDIO_EXTS = {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".aac"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff"}
 LABELS = [
-    "movie_or_film", "tv_episode_or_recording", "cartoon_or_animation",
+    "movie_or_film", "tv_episode_or_recording", "cartoon_or_animation", "fan_made_vhs_compilation", "holiday_special",
     "trailer_or_clip", "vhs_or_dvd_extra", "promo_or_commercial",
     "other_or_review", "artwork_or_packaging", "audio_only",
 ]
@@ -119,6 +119,68 @@ def inspect(identifier: str, retries: int = 3) -> dict:
             time.sleep(2 ** attempt)
 
 
+
+def analyze_item(item: dict, inventory: dict) -> dict:
+    """Infer content and collection format using title, filenames and file lengths."""
+    title = str(item.get("title", ""))
+    low = title.lower()
+    files = inventory.get("video_files", [])
+    durations = [f["duration_seconds"] for f in files if f.get("duration_seconds") is not None]
+    total = sum(durations)
+    names = " ".join(str(f.get("name", "")) for f in files).lower()
+    fanmade = bool(__import__("re").search(r"\\b(fan[ -]?made|custom)\\b", low) and __import__("re").search(r"\\b(vhs|tape|special|compilation)\\b", low))
+    segment_words = sum(word in names for word in ("opening", "closing", "episode", "part", "bonus", "cartoon", "feature"))
+    promo_words = sum(word in names for word in ("trailer", "commercial", "promo", "advert"))
+    # Runtime bands are clues, not hard category gates. Multi-file sets are treated as
+    # compilations when filenames suggest separately authored segments.
+    if fanmade or (len(files) >= 3 and segment_words >= 2):
+        fmt = "fan_made_vhs" if fanmade else "multi_segment_compilation"
+    elif "dvd opening" in low or "opening to" in low or "dvd closing" in low:
+        fmt = "dvd_extra"
+    elif len(files) > 1:
+        fmt = "multi_file_item"
+    else:
+        fmt = "standalone_or_unknown"
+    if fanmade and any(x in low for x in ("halloween", "christmas", "holiday")):
+        content = "holiday_special"
+    elif fanmade and "ice age" in low:
+        content = "movie_or_film"
+    elif "trailer" in low or ("trailer" in names and len(files) == 1 and total and total < 600):
+        content = "trailer_or_clip"
+    elif "commercial" in low or ("commercial" in names and total and total < 180):
+        content = "commercial_or_promo"
+    elif "episode" in low or "episode" in names:
+        content = "tv_episode_or_recording"
+    elif "cartoon" in low or "animation" in low:
+        content = "cartoon_or_animation"
+    elif total >= 3600:
+        content = "movie_or_film_or_long_form"
+    elif total >= 1200:
+        content = "special_or_long_program"
+    elif total and total < 120:
+        content = "short_clip_or_bumper"
+    else:
+        content = "unknown_needs_review"
+    if promo_words and (fanmade or segment_words >= 2):
+        conflict = "promo_words_in_file_names_but_multi_segment_context"
+    elif promo_words:
+        conflict = "promo_filename_clues"
+    else:
+        conflict = None
+    return {
+        "content_type": content,
+        "collection_format": fmt,
+        "video_file_count": len(files),
+        "total_known_video_duration_seconds": round(total, 2),
+        "longest_video_seconds": max(durations) if durations else None,
+        "shortest_video_seconds": min(durations) if durations else None,
+        "filename_segment_clues": segment_words,
+        "filename_promo_clues": promo_words,
+        "conflicting_evidence": conflict,
+        "needs_review": content == "unknown_needs_review" or conflict is not None or not durations,
+        "logic_version": 2,
+    }
+
 def read_results(path: Path):
     with path.open(encoding="utf-8") as source:
         for line in source:
@@ -164,7 +226,7 @@ def main() -> None:
         "sampling": "deterministic round-robin across classification labels",
         "inventory_status_counts": dict(status_counts),
         "items_with_video_file_candidates": sum(v["with_video_candidate"] for v in label_stats.values()),
-        "items_by_classification": label_stats,
+        "items_by_classification": label_stats,\n        "duration_logic_enabled": True,\n        "analysis_logic_version": 2,
         "video_file_count": len(all_video_files),
         "video_files_with_duration": sum(f["duration_seconds"] is not None for f in all_video_files),
         "video_origin_hints": dict(origin_counts),
