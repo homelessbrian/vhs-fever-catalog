@@ -199,3 +199,43 @@ print(match)
 ```
 
 TMDB v3 accepts the API Read Access Token as an `Authorization: Bearer` header. The token must be stored as a secret, not in source control. See the [official TMDB authentication documentation](https://developer.themoviedb.org/docs/authentication-application).
+
+
+### TMDB metadata and fallback artwork preparation
+
+The details stage uses the selected TMDB media type and ID to request title details with `append_to_response=external_ids,images`. Image language selection defaults to `en,null` so English-tagged and language-neutral artwork can both be considered. The image configuration endpoint is fetched once per client and supplies the secure base URL and supported image sizes; image URLs are assembled from that configuration rather than hard-coded CDN paths.
+
+The normalized metadata sidecar keeps the TMDB ID, media type, title/original title, year, release or first-air date, runtime, overview, original language, genres, and permitted external IDs separate from the original Internet Archive record.
+
+Poster, backdrop, and logo paths become individual artwork assets. The primary poster/backdrop paths are ordered first while matching image-list metadata is retained; duplicate paths are removed. The current builder selects `w500` posters, `w1280` backdrops, and original-size logos when those sizes are available, falling back to `original` where supported. It does not download images.
+
+TMDB artwork assets are created with `reuse_policy: provider_terms`, attribution `TMDB`, and `display_status: pending_review`. They are not selected as signature artwork automatically. A separate release-readiness review must confirm attribution placement and applicable TMDB terms before changing their display status to approved.
+
+
+## Pilot catalog enrichment runner
+
+`scripts/enrich_program_catalog.py` joins the program catalog JSONL to the Archive inventory JSONL using each standalone program's exact segment `archive_identifier`. It uses the original Archive title and year for matching rather than a filename-derived display title.
+
+The first pilot deliberately includes only standalone entries classified `movie_or_film`. It excludes assembled suggestions, multi-segment programs, TV episode/recording classifications, and other categories until their matching rules are designed separately. When source media type is unknown, the TMDB client searches both movie and TV endpoints. Repeated programs from the same Archive title/year reuse the same in-memory search results.
+
+Example (requires `TMDB_BEARER_TOKEN` in the environment):
+
+```bash
+python scripts/enrich_program_catalog.py \
+  --catalog data/vhsvault-program-catalog.jsonl \
+  --inventory data/vhsvault-file-inventory.jsonl \
+  --output data/vhsvault-enrichment-pilot.jsonl \
+  --summary data/vhsvault-enrichment-pilot.summary.json \
+  --limit 25
+```
+
+The runner writes a version 1 enrichment sidecar per eligible program and a summary of processed, skipped, and unique-search counts. It does not rewrite the program catalog or inventory, fetch VHS sleeves, or automatically confirm identity matches. Run a small pilot first, validate the resulting sidecar with `scripts/validate_enrichment.py`, and review every candidate before scaling.
+
+
+### Manually triggered GitHub pilot
+
+`.github/workflows/tmdb-enrichment-pilot.yml` runs only when manually dispatched. It downloads the existing inventory/catalog artifact from a selected Actions run, processes a small limit (default 25), and uploads a review-only JSONL sidecar plus summary. It does not modify repository data or download media/artwork.
+
+Before running it, add the TMDB API Read Access Token as a repository Actions secret named `TMDB_BEARER_TOKEN` (Repository Settings → Secrets and variables → Actions → New repository secret). Never put the token in workflow inputs, source files, artifacts, or logs. The default source run ID is the 250-item inventory pilot; the workflow can be given a different run ID if a newer compatible artifact is generated.
+
+The workflow is intended for development/non-commercial use only under the applicable TMDB terms and attribution requirements. It should not be run against the full catalog until the small pilot has been reviewed and the false-positive rate is understood.
