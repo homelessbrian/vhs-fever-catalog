@@ -372,8 +372,14 @@ def build_tmdb_artwork_assets(
             item for item in entries if isinstance(item, dict)
         ]
         if primary_key and isinstance(details.get(primary_key), str):
-            if not any(item.get("file_path") == details[primary_key] for item in candidates):
-                candidates.append({"file_path": details[primary_key]})
+            primary_path = details[primary_key]
+            primary_item = next(
+                (item for item in candidates if item.get("file_path") == primary_path),
+                {"file_path": primary_path},
+            )
+            candidates = [primary_item] + [
+                item for item in candidates if item.get("file_path") != primary_path
+            ]
         seen_paths: set[str] = set()
         for item in candidates:
             path = item.get("file_path")
