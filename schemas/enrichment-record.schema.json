@@ -132,7 +132,82 @@
             }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "candidate"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidates": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "unmatched",
+                  "candidate",
+                  "rejected"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "type": "null"
+              },
+              "provider_id": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "confirmed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "const": "tmdb"
+              },
+              "provider_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "media_type": {
+                "$ref": "#/$defs/mediaType"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "confidence": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              }
+            }
+          }
+        }
+      ]
     },
     "candidate": {
       "type": "object",
@@ -221,7 +296,41 @@
             "$ref": "#/$defs/edition"
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "found"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "editions": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_found"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "editions": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "edition": {
       "type": "object",
@@ -426,7 +535,29 @@
             "blocked"
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "tmdb"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "attribution"
+            ],
+            "properties": {
+              "attribution": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "folds": {
       "type": "object",
