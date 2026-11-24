@@ -128,7 +128,8 @@ def candidate_from_group(key: str, members: list[dict[str, Any]]) -> dict[str, A
 def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     known_title_keys = set()
     for item in records:
-        parsed = title_role(str(item.get("title") or ""))
+        title = str(item.get("title") or item.get("identifier") or "")
+        parsed = title_role(title)
         if parsed:
             known_title_keys.add(parsed[0])
         inv = item.get("vhs_fever_file_inventory") or {}
