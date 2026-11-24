@@ -157,7 +157,7 @@ Every automatic decision should be reversible. Preserve original Archive metadat
 1. **Implemented:** merge and retain the program-manifest validation gate before enriching the full catalogue.
 2. **Implemented:** add a versioned enrichment schema and validation tests.
 3. Implement TMDB primary matching and metadata/artwork retrieval with rate-limit handling and cached lookup results.
-4. Add the optional Video Tapes dot io adapter, token-based authentication, batch lookup, regional editions, panel/spread URLs, and withdrawn-artwork handling.
+4. **Partially implemented:** the metadata-only Video Tapes client supports bearer-token authentication, documented batch lookup (`tmdbIds`, maximum 500), regional preferred-sleeve lookup, sleeve metadata lookup, panel/spread URL references, 429 retry handling, and 410 withdrawn-sleeve handling. Response-to-enrichment-schema mapping and live API verification remain pending token access.
 5. Add an IMDb fallback adapter only after the project's intended use and permitted access method are confirmed.
 6. Run enrichment on a small, balanced sample; manually review false positives and sleeve coverage before scaling.
 7. Export provenance and unresolved-match queues alongside the enriched catalog.
@@ -171,6 +171,13 @@ Every automatic decision should be reversible. Preserve original Archive metadat
 - [Video Tapes dot io legal terms](https://videotapes.io/legal)
 - [IMDb non-commercial dataset terms](https://developer.imdb.com/non-commercial-datasets/)
 
+
+## Current implementation status
+
+- The legacy enrichment matcher now searches TMDB by cleaned title and optional year. IMDb IDs are not queried as the primary identity path.
+- `scripts/videotapes_client.py` provides metadata-only Video Tapes API calls and never downloads image bytes. Batch requests use the documented `tmdbIds` field and enforce the 500-ID limit.
+- Unit tests cover bearer authentication, batch limits and payload, 429 retry handling, 410 withdrawn sleeves, and panel URL references.
+- Live API response mapping, schema integration, and end-to-end verification remain pending read-token access. Unit tests do not prove live provider compatibility.
 
 ## Versioned enrichment sidecar (implemented)
 
