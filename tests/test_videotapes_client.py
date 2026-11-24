@@ -52,7 +52,7 @@ class VideoTapesClientTests(unittest.TestCase):
 
         client = VideoTapesClient("secret", opener=opener)
         client.lookup_preferred_batch([603, 604])
-        self.assertEqual(seen, [{"tmdb_ids": [603, 604]}])
+        self.assertEqual(seen, [{"tmdbIds": [603, 604]}])
 
     def test_429_retries_using_retry_after(self):
         calls, delays = [], []
