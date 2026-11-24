@@ -25,7 +25,7 @@ ROLE_PATTERNS = [
     ("vhs_back_cover", re.compile(r"\b(back|rear|backcover|case back|box back|sleeve back|jacket back)\b", re.I), 90),
     ("vhs_spine", re.compile(r"\b(spine|side panel|sidepanel)\b", re.I), 95),
     ("vhs_full_wrap", re.compile(r"\b(wrap|full.?cover|full.?scan|case.?scan|box.?scan|insert)\b", re.I), 75),
-    ("generic_packaging_art", re.compile(r"\b(vhs|video|tape|box|case|sleeve|jacket|label|artwork|cover|packaging)\b", re.I), 45),
+    ("generic_packaging_art", re.compile(r"\b(box|case|sleeve|jacket|label|artwork|cover|packaging)\b", re.I), 45),
 ]
 
 
@@ -92,7 +92,7 @@ def build_artwork_candidates(item: dict[str, Any]) -> list[dict[str, Any]]:
         stem = Path(name).stem
         if any(part.endswith(".thumbs") or part in {"__thumbs__", "thumbs"} for part in path_parts):
             continue
-        if re.search(r"_\d{5,}$", stem):
+        if re.search(r"_\d{5,}$", stem) or re.search(r"(?:^|[_ .-])thumb(?:nail)?(?:$|[_ .-])", stem, re.I) or stem.casefold().endswith(("_thumb", "-thumb", "_thumbnail", "-thumbnail")):
             continue
         seen.add(name)
         ext = Path(name).suffix.lower()
