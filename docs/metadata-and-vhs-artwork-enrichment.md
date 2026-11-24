@@ -106,6 +106,14 @@ The example URLs and IDs are placeholders, not real assets.
 
 Each asset should preserve its provider ID, original URL, dimensions, language, region/country, edition/release identity, attribution, retrieval time, and reuse policy where known. Keep the original spread as well as panel URLs when the source provides both. Do not fabricate a back or spine by stretching/cropping a front cover and label it as a genuine scan.
 
+## Artwork hosting decision
+
+VHS FEVER will not build or maintain its own artwork file store. For third-party sleeve scans, store only the provider's public image URL (or documented image endpoint reference), provider and sleeve identifiers, panel type, edition association, dimensions and attribution/provenance metadata when available. The app should load the image directly from the source URL at display time.
+
+Do not download, mirror, proxy, rehost, or persist image bytes in the catalog, repository, object storage, or application database. Do not create local artwork thumbnails or image caches for this provider. Any HTTP or image caching performed by the client, CDN, hosting platform, or provider must be reviewed against the source provider's terms; VHS FEVER should not add its own caching layer by default.
+
+If a source URL is withdrawn, unavailable, or no longer permitted for display, mark that asset unavailable and fall back to another separately permitted artwork source. Keep edition metadata and provenance even when the image cannot be displayed. A URL being publicly reachable is not, by itself, permission to display it; provider terms and rights-holder permissions still govern use.
+
 ## Video Tapes dot io integration notes
 
 The published API documentation describes:
