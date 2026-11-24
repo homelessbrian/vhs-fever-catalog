@@ -69,8 +69,8 @@ def filename_role(filename: str) -> str | None:
 
 def role_target_title(filename: str) -> str | None:
     stem = Path(filename).stem.strip()
-    stem = re.sub(r"^\\d+[ ._-]*", "", stem)
-    match = re.match(r"^(?:opening|intro(?:duction)?|closing|outro)\\s+(?:to\\s+)?(.+)$", stem, re.I)
+    stem = re.sub(r"^\d+[ ._-]*", "", stem)
+    match = re.match(r"^(?:opening|intro(?:duction)?|closing|outro)\s+(?:to\s+)?(.+)$", stem, re.I)
     return norm(match.group(1)) if match else None
 
 def title_similarity(left: str, right: str) -> float:
