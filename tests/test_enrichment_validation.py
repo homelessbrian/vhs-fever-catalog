@@ -151,7 +151,7 @@ class EnrichmentValidationTests(unittest.TestCase):
     def test_candidate_identity_requires_candidate_evidence(self):
         record = valid_record()
         record["identity_match"]["status"] = "candidate"
-        self.assertTrue(any("candidates" in error for error in validate_enrichment_record(record)))
+        self.assertTrue(any("candidate" in error for error in validate_enrichment_record(record)))
 
     def test_rejects_imdb_as_a_primary_provider(self):
         record = valid_record()
@@ -199,7 +199,7 @@ class EnrichmentValidationTests(unittest.TestCase):
         record = valid_record()
         record["vhs_sleeve_lookup"]["status"] = "found"
         record["vhs_sleeve_lookup"]["checked_at"] = "2026-11-24T12:00:00Z"
-        self.assertTrue(any("editions" in error for error in validate_enrichment_record(record)))
+        self.assertTrue(any("edition" in error for error in validate_enrichment_record(record)))
 
     def test_rejects_duplicate_edition_ids(self):
         record = confirmed_record_with_regional_editions()
@@ -208,6 +208,34 @@ class EnrichmentValidationTests(unittest.TestCase):
 
     def test_rejects_non_object_records_without_crashing(self):
         self.assertTrue(validate_enrichment_record([]))
+
+    def test_rejects_boolean_schema_version(self):
+        record = valid_record()
+        record["schema_version"] = True
+        self.assertTrue(any("schema_version" in error for error in validate_enrichment_record(record)))
+
+    def test_rejects_duplicate_program_ids_across_records(self):
+        from scripts.validate_enrichment import validate_enrichment_records
+        self.assertTrue(any(
+            "duplicate program_id" in error
+            for error in validate_enrichment_records([valid_record(), valid_record()])
+        ))
+
+    def test_malformed_enum_values_are_reported_without_crashing(self):
+        record = confirmed_record_with_regional_editions()
+        record["identity_match"]["status"] = []
+        record["identity_match"]["media_type"] = {}
+        record["identity_match"]["confidence"] = []
+        record["vhs_sleeve_lookup"]["status"] = {}
+        record["artwork"]["assets"][0]["kind"] = []
+        record["artwork"]["assets"][0]["display_status"] = {}
+        errors = validate_enrichment_record(record)
+        self.assertTrue(any("identity_match.status" in error for error in errors))
+        self.assertTrue(any("media_type" in error for error in errors))
+        self.assertTrue(any("confidence" in error for error in errors))
+        self.assertTrue(any("vhs_sleeve_lookup.status" in error for error in errors))
+        self.assertTrue(any(".kind" in error for error in errors))
+        self.assertTrue(any("display_status" in error for error in errors))
 
 
 if __name__ == "__main__":
