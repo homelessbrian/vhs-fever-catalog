@@ -76,7 +76,7 @@ jobs:
             --output data/vhsvault-program-catalog.jsonl \
             --review-output data/vhsvault-program-review-queue.jsonl
 
-      - name: Build human-approved final catalog (approval required)
+      - name: Suggest alternate-source title groups (review only)\n        run: |\n          python scripts/build_title_groups.py \\\n            --input data/vhsvault-program-catalog.jsonl \\\n            --output data/vhsvault-title-groups.jsonl\n\n      - name: Build human-approved final catalog (approval required)
         run: |
           python scripts/build_final_catalog.py --candidates data/vhsvault-program-catalog.jsonl --decisions data/approved-decisions.json --output data/vhsvault-final-catalog.jsonl
 
@@ -117,7 +117,7 @@ jobs:
           cat data/vhsvault-scrape-poc-classified.jsonl data/vhsvault-scrape-poc-enriched.jsonl > data/published/latest.jsonl
           cp data/vhsvault-program-catalog.jsonl data/published/programs.jsonl
           cp data/vhsvault-final-catalog.jsonl data/published/final-catalog.jsonl
-          cp data/vhsvault-program-review-queue.jsonl data/published/program-review-queue.jsonl
+          cp data/vhsvault-program-review-queue.jsonl data/published/program-review-queue.jsonl\n          cp data/vhsvault-title-groups.jsonl data/published/title-groups.jsonl
           python - <<'PY'
           import json, os
           from datetime import datetime, timezone
@@ -129,7 +129,7 @@ jobs:
               "classified_records": sum(1 for x in Path("data/vhsvault-scrape-poc-classified.jsonl").open() if x.strip()),
               "enriched_records": sum(1 for x in Path("data/vhsvault-scrape-poc-enriched.jsonl").open() if x.strip()),
               "program_entries": sum(1 for x in Path("data/vhsvault-program-catalog.jsonl").open() if x.strip()),
-              "program_review_queue_entries": sum(1 for x in Path("data/vhsvault-program-review-queue.jsonl").open() if x.strip()),
+              "program_review_queue_entries": sum(1 for x in Path("data/vhsvault-program-review-queue.jsonl").open() if x.strip()),\n              "suggested_title_groups": sum(1 for x in Path("data/vhsvault-title-groups.jsonl").open() if x.strip()),
               "human_approved_final_entries": sum(1 for x in Path("data/vhsvault-final-catalog.jsonl").open() if x.strip())
           }
           Path("data/published/latest.json").write_text(json.dumps(manifest, indent=2) + "\n")
