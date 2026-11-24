@@ -72,3 +72,20 @@ The contact-sheet builder now records the original preview dimensions and aspect
 - Other shapes remain generic packaging art.
 
 The manifest records the filename role, suggested role, basis, and confidence separately. Geometry-based suggestions are medium confidence and still require a person to inspect the image. This step does not alter source Archive metadata or automatically approve an asset for app display.
+
+
+## Experimental local AI artwork recognition
+
+The pilot includes a local, zero-shot CLIP review stage. It compares each small Archive preview with text descriptions of VHS front cover, back cover, spine, full wrap, cassette label, DVD packaging, movie poster, video screenshot, photograph, book or magazine cover, video-game packaging, and other or unclear imagery.
+
+The model runs on the GitHub Actions CPU runner. It does not call a hosted inference API. The model is downloaded from Hugging Face at workflow runtime; no model weights or image payloads are committed to this repository. The workflow uses openai/clip-vit-base-patch32 through Transformers.
+
+**Important limitations:** CLIP outputs relative similarity scores, not calibrated probabilities. The pipeline applies conservative thresholds, preserves the top candidates and score margin, and marks every result needs_review. It never auto-approves artwork, never changes the source Archive record, and never establishes the movie identity or edition. A VHS-looking image can still be a poster, a scan can contain multiple panels, and front-versus-back may require OCR and human inspection.
+
+This is an experimental catalog-research stage only. The upstream model card says the model is intended as a research output and lists deployed use as out of scope; do not use its output as an automated production decision or as the sole basis for public display. Validate it against a manually labeled sample before considering another model or a production workflow.
+
+Model references:
+- [Xenova CLIP ONNX model card and MIT listing](https://huggingface.co/Xenova/clip-vit-base-patch32)
+- [OpenAI CLIP model card and limitations](https://huggingface.co/openai/clip-vit-base-patch32)
+
+The first pilot uses CPU inference and up to 40 small previews to keep resource use bounded. The manifest records model name, ranked labels, score margin, review status, and whether the top label is a VHS packaging candidate. No automatic approval is possible.
