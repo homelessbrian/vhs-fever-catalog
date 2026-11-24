@@ -8,6 +8,8 @@ on:
       - 'scripts/discover_vhsvault.py'
       - 'scripts/discover_vhsvault_candidates.py'
       - 'scripts/inspect_file_inventory.py'
+      - 'scripts/build_program_catalog.py'
+      - 'scripts/build_program_candidates.py'
   workflow_dispatch:
     inputs:
       sample_size:
@@ -54,7 +56,7 @@ jobs:
           python scripts/inspect_file_inventory.py \
             --input data/vhsvault-scrape-poc-classified.jsonl \
             --output data/vhsvault-scrape-poc-inventory.jsonl \
-            --limit "${{ inputs.sample_size || '60' }}" \
+            --limit "${{ inputs.sample_size || '120' }}" \
             --delay 0.2
 
       - name: Match titles and collect artwork references
@@ -64,6 +66,13 @@ jobs:
           python scripts/enrich_metadata_artwork.py \
             --input data/vhsvault-scrape-poc-inventory.jsonl \
             --output data/vhsvault-scrape-poc-enriched.jsonl
+
+      - name: Build individual program catalog from Archive file inventories
+        run: |
+          python scripts/build_program_catalog.py \
+            --input data/vhsvault-scrape-poc-enriched.jsonl \
+            --output data/vhsvault-program-catalog.jsonl \
+            --review-output data/vhsvault-program-review-queue.jsonl
 
       - name: Validate scraped JSONL output
         run: |
@@ -76,6 +85,8 @@ jobs:
               "data/vhsvault-scrape-poc-classified.jsonl",
               "data/vhsvault-scrape-poc-inventory.jsonl",
               "data/vhsvault-scrape-poc-enriched.jsonl",
+              "data/vhsvault-program-catalog.jsonl",
+              "data/vhsvault-program-review-queue.jsonl",
           ):
               path = Path(name)
               count = 0
@@ -97,6 +108,8 @@ jobs:
         run: |
           mkdir -p data/published
           cat data/vhsvault-scrape-poc-classified.jsonl data/vhsvault-scrape-poc-enriched.jsonl > data/published/latest.jsonl
+          cp data/vhsvault-program-catalog.jsonl data/published/programs.jsonl
+          cp data/vhsvault-program-review-queue.jsonl data/published/program-review-queue.jsonl
           python - <<'PY'
           import json, os
           from datetime import datetime, timezone
@@ -106,7 +119,9 @@ jobs:
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "commit": os.environ["GITHUB_SHA"],
               "classified_records": sum(1 for x in Path("data/vhsvault-scrape-poc-classified.jsonl").open() if x.strip()),
-              "enriched_records": sum(1 for x in Path("data/vhsvault-scrape-poc-enriched.jsonl").open() if x.strip())
+              "enriched_records": sum(1 for x in Path("data/vhsvault-scrape-poc-enriched.jsonl").open() if x.strip()),
+              "program_entries": sum(1 for x in Path("data/vhsvault-program-catalog.jsonl").open() if x.strip()),
+              "program_review_queue_entries": sum(1 for x in Path("data/vhsvault-program-review-queue.jsonl").open() if x.strip())
           }
           Path("data/published/latest.json").write_text(json.dumps(manifest, indent=2) + "\n")
           print(json.dumps(manifest, indent=2))
@@ -134,5 +149,8 @@ jobs:
             data/vhsvault-scrape-poc-inventory.summary.json
             data/vhsvault-scrape-poc-enriched.jsonl
             data/vhsvault-scrape-poc-enriched.summary.json
+            data/vhsvault-program-catalog.jsonl
+            data/vhsvault-program-catalog.summary.json
+            data/vhsvault-program-review-queue.jsonl
           if-no-files-found: error
           retention-days: 14
