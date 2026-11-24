@@ -119,16 +119,6 @@ def build_artwork_candidates(item: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(candidates, key=lambda x: (-x["filename_score"], x["file_name"].casefold()))
 
 
-def extract_imdb_id(item: dict[str, Any]) -> str | None:
-    inv = item.get("vhs_fever_file_inventory") or {}
-    external = inv.get("external_ids") or {}
-    candidates = [external.get("imdb_id"), item.get("imdb"), item.get("imdb_id"), item.get("imdbid")]
-    for value in candidates:
-        if isinstance(value, str) and IMDB_RE.fullmatch(value.strip()):
-            return value.strip()
-    return None
-
-
 def request_json(url: str, token: str | None = None, timeout: int = 25) -> dict[str, Any]:
     headers = {"Accept": "application/json", "User-Agent": "VHS-FEVER-Catalog/0.3"}
     if token:
@@ -165,15 +155,7 @@ def tmdb_payload(movie: dict[str, Any], match_method: str, confidence: str) -> d
 
 
 def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
-    imdb_id = extract_imdb_id(item)
-    title = str(item.get("title") or "").strip()
-    if imdb_id:
-        url = "https://api.themoviedb.org/3/find/" + urllib.parse.quote(imdb_id) + "?external_source=imdb_id"
-        result = request_json(url, token)
-        movies = result.get("movie_results") or []
-        if movies:
-            return tmdb_payload(movies[0], "imdb_external_id", "high")
-        return {"status": "not_found_by_imdb", "imdb_id": imdb_id, "review_status": "needs_review"}
+    """Match by title/year through TMDB; external IMDb IDs are not queried."""
     title, title_status = tmdb_search_title(item)
     if not title:
         return {"status": title_status, "review_status": "not_attempted",
@@ -181,7 +163,7 @@ def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
     year = item.get("year")
     if not year:
         date = str(item.get("date") or "")
-        match = re.search(r"\b(18|19|20)\d{2}\b", date)
+        match = re.search(r"\\b(18|19|20)\\d{2}\\b", date)
         year = match.group(0) if match else None
     query = urllib.parse.urlencode({"query": title, **({"year": str(year)[:4]} if year else {})})
     results = request_json("https://api.themoviedb.org/3/search/movie?" + query, token).get("results") or []
