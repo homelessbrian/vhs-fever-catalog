@@ -91,6 +91,8 @@ def inspect(identifier: str, retries: int = 3) -> dict:
                         "original_file_reference": original,
                         "origin_hint": origin_hint,
                         "private": str(entry.get("private", "")).lower() in {"true", "1"},
+                        "md5": entry.get("md5"),
+                        "mtime": entry.get("mtime"),
                     })
                 elif ext in AUDIO_EXTS:
                     audio.append(name)
@@ -100,6 +102,7 @@ def inspect(identifier: str, retries: int = 3) -> dict:
                         "size_bytes": int(size),
                         "format": entry.get("format"),
                         "source_hint": str(entry.get("source", "")).lower() or None,
+                        "md5": entry.get("md5"),
                         "private": str(entry.get("private", "")).lower() in {"true", "1"},
                     })
                 elif ext in ARTWORK_DOC_EXTS:
