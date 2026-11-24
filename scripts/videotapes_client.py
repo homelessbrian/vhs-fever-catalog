@@ -106,7 +106,7 @@ class VideoTapesClient:
         if len(tmdb_ids) > 500:
             raise ValueError("Video Tapes batch lookups support at most 500 TMDB IDs")
         ids = [int(value) for value in tmdb_ids]
-        return self._request("POST", "/preferred/lookup", body={"tmdb_ids": ids})
+        return self._request("POST", "/preferred/lookup", body={"tmdbIds": ids})
 
     def get_sleeve(self, sleeve_id: int | str) -> dict[str, Any]:
         """Return sleeve metadata; a 410 response is represented as withdrawn."""
