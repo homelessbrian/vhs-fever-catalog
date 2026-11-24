@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p data
           python scripts/discover_vhsvault.py \
-            --count 100 \
+            --count 5000 \
             --max-pages 1 \
             --output data/vhsvault-scrape-poc.jsonl \
             --delay 1
@@ -50,8 +50,8 @@ jobs:
           python scripts/inspect_file_inventory.py \
             --input data/vhsvault-scrape-poc-classified.jsonl \
             --output data/vhsvault-scrape-poc-inventory.jsonl \
-            --limit "${{ inputs.sample_size || '20' }}" \
-            --delay 0.5
+            --limit "${{ inputs.sample_size || '60' }}" \
+            --delay 0.2
 
       - name: Match titles and collect artwork references
         env:
