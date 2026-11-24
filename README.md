@@ -46,3 +46,10 @@ The API requires a page size of at least 100. The script validates that returned
 
 - [Internet Archive Scraping API documentation](https://doc-tools.readthedocs.io/en/ia-test-gsod/item-search-apis.html)
 - [Internet Archive Item Metadata API](https://doc-tools.readthedocs.io/en/ia-test-gsod/metadata.html)
+
+
+## Metadata and VHS artwork enrichment
+
+The file-inventory workflow now records image and PDF file metadata and ranks likely VHS front covers, back covers, spines, and wrap scans by filename. It also supports optional TMDB matching using an IMDb external ID first and a conservative title/year fallback. See [Metadata and Artwork Enrichment](docs/metadata-artwork.md).
+
+TMDB lookups require the optional `TMDB_API_READ_ACCESS_TOKEN` Actions secret. Without it, the Archive artwork inventory still runs. TMDB's developer API is free for non-commercial use with attribution; commercial use requires separate licensing. All matches remain reviewable suggestions. No media payloads are downloaded.
