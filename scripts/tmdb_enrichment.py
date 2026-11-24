@@ -131,7 +131,6 @@ def build_identity_match(source: dict[str, Any], candidates: list[dict[str, Any]
             "year": scored["year"],
             "confidence": scored["confidence"],
             "evidence": scored["evidence"],
-            "score": scored["score"],
         }))
     ranked.sort(key=lambda item: (-item[0], item[1]["title"].casefold(), item[1]["provider_id"]))
     review_candidates = [item[1] for item in ranked[:MAX_CANDIDATES]]
