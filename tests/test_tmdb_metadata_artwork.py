@@ -96,7 +96,9 @@ class TMDBMetadataArtworkTests(unittest.TestCase):
     def test_artwork_builds_poster_backdrop_and_logo_urls(self):
         assets = build_tmdb_artwork_assets(movie_details(), image_configuration())
         self.assertEqual({a["kind"] for a in assets}, {"tmdb_poster", "tmdb_backdrop", "tmdb_logo"})
-        by_kind = {a["kind"]: a for a in assets}
+        by_kind = {}
+        for asset in assets:
+            by_kind.setdefault(asset["kind"], asset)
         self.assertEqual(by_kind["tmdb_poster"]["source_url"], "https://image.tmdb.org/t/p/w500/poster.jpg")
         self.assertEqual(by_kind["tmdb_poster"]["width"], 1000)
         self.assertEqual(by_kind["tmdb_backdrop"]["source_url"], "https://image.tmdb.org/t/p/w1280/backdrop.jpg")
