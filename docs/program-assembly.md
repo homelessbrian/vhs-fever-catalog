@@ -143,6 +143,29 @@ The inventory pilot now uploads:
 
 The current workflow is still a balanced pilot sample (120 records in the latest successful run), not a full Archive inventory. A full-catalog inventory run is a separate scale-up step after validating the matching and source-grouping behavior.
 
+## Mandatory human approval for final catalog publication
+
+TMDB and classification outputs are suggestions only. Automated matching must never promote a candidate into the final catalog.
+
+The workflow has three distinct data layers:
+
+1. **Source and discovery data** — raw Archive records, file inventories, source URLs, filenames, and durations. Preserve these regardless of match outcome.
+2. **Review candidates** — proposed TMDB identities, confidence scores, evidence, candidate artwork, and automated classifications. These belong in review data and may be regenerated as matching improves.
+3. **Final catalog** — only records with an explicit human-approved identity and human-approved content classification may be published as confirmed title entries.
+
+A human reviewer must be able to:
+- Confirm one proposed TMDB candidate.
+- Search for and select a different TMDB candidate.
+- Explicitly mark a record as having no suitable TMDB match.
+- Confirm or correct the content classification independently of title identity.
+- Leave a record pending without losing its source files or review history.
+
+A confirmed identity must retain the reviewer decision, confirmation timestamp, selected provider and ID, and the evidence/candidate context used at review time. A rejection or unmatched decision must not be interpreted as permission to delete the source.
+
+**Publication gate:** unreviewed, rejected, and unmatched records must never be represented as confirmed title identities in the final catalog JSON. They remain in the review queue/source data. The review website may display and play candidate sources, but that does not make them approved catalog entries.
+
+Title identity, content classification, and VHS edition identification are separate review decisions. Confirming a TMDB movie does not confirm a particular VHS edition or its packaging. Alternate uploads and encodes remain separate selectable sources under the confirmed title when later source-grouping evidence supports that relationship.
+
 ## Remaining implementation steps
 
 1. Add a review/approval data store to promote suggestions to confirmed or rejected.
