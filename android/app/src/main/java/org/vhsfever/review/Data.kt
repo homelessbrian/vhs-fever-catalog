@@ -120,7 +120,7 @@ val BUILT_IN_SHELVES = listOf(
     Shelf("not_catalog", "Not catalog", true),
 )
 
-val BAD_REASONS = listOf("No audio", "No video", "Out of sync", "Cuts off early", "Wrong movie", "Foreign language", "Poor quality", "Won’t play")
+val BAD_REASONS = listOf("Clip", "No audio", "No video", "Out of sync", "Cuts off early", "Wrong movie", "Foreign language", "Poor quality", "Won’t play")
 
 val SOUND_PROBLEMS = setOf("no_audio_track", "silent_audio", "could_not_open", "no_video_track")
 
