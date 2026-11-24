@@ -104,8 +104,7 @@ def candidate_from_group(key: str, members: list[dict[str, Any]]) -> dict[str, A
     for feature in feature_files:
         filename_title = norm(Path(feature["file_name"]).stem)
         if title_similarity(expected_title, filename_title) < 0.6:
-            feature["role"] = "rejected_mismatch"
-    members = [m for m in members if m["role"] != "rejected_mismatch"]
+            return None
     roles = {m["role"] for m in members if m["role"] != "unknown"}
     if len(members) < 2 or len(roles) < 2:
         return None
