@@ -105,8 +105,8 @@ jobs:
               "updated_at": datetime.now(timezone.utc).isoformat(),
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "commit": os.environ["GITHUB_SHA"],
-              "classified_records": sum(1 for x in Path("data/published/latest-classified.jsonl").open() if x.strip()),
-              "enriched_records": sum(1 for x in Path("data/published/latest-enriched.jsonl").open() if x.strip())
+              "classified_records": sum(1 for x in Path("data/vhsvault-scrape-poc-classified.jsonl").open() if x.strip()),
+              "enriched_records": sum(1 for x in Path("data/vhsvault-scrape-poc-enriched.jsonl").open() if x.strip())
           }
           Path("data/published/latest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
           print(json.dumps(manifest, indent=2))
