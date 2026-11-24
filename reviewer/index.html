@@ -46,45 +46,66 @@ vhs_fever_metadata_artwork:row.vhs_fever_metadata_artwork||old.vhs_fever_metadat
 function parseJSONL(raw){return raw.split(/\r?\n/).filter(x=>x.trim()).map((line,i)=>{try{return JSON.parse(line)}catch(e){throw Error("Published data line "+(i+1)+": "+e.message)}})}
 async function loadPublishedData(){
  const note=$("loadnote"),bar=$("loadprogress"),fill=$("progressfill"),button=$("refresh");
- const controller=new AbortController();
- const timeout=setTimeout(()=>controller.abort(),90000);
- button.disabled=true;button.textContent="Loading…";
+ const baseUrls=[
+  "https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/",
+  "https://cdn.jsdelivr.net/gh/homelessbrian/vhs-fever-catalog@catalog-data/"
+ ];
+ button.disabled=true;button.textContent="Connecting…";
  bar.classList.add("active","indeterminate");fill.style.width="0%";
+ let raw="",source="",lastError=null;
  try{
-  note.textContent="Connecting to the catalog data feed…";
-  const base="https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/";
-  const response=await fetch(base+"latest.jsonl?"+Date.now(),{cache:"no-store",signal:controller.signal});
-  if(!response.ok)throw Error("Catalog feed returned HTTP "+response.status+".");
-  if(!response.body)throw Error("This browser could not open the catalog download stream.");
-  const total=Number(response.headers.get("content-length"))||0;
-  let received=0,parts=[];
-  note.textContent="Downloading catalog records…";
-  const reader=response.body.getReader(),decoder=new TextDecoder();
-  while(true){
-   const {done,value}=await reader.read();
-   if(done)break;
-   received+=value.length;parts.push(decoder.decode(value,{stream:true}));
-   if(total){bar.classList.remove("indeterminate");fill.style.width=Math.min(100,received/total*100)+"%";note.textContent="Downloading catalog records… "+(received/1048576).toFixed(1)+" MB"+(total?" of "+(total/1048576).toFixed(1)+" MB":"");}
+  for(let i=0;i<baseUrls.length;i++){
+   const base=baseUrls[i],controller=new AbortController();
+   const timeout=setTimeout(()=>controller.abort(),18000);
+   note.textContent=(i===0?"Connecting to GitHub data…":"GitHub did not respond. Trying backup data host…");
+   try{
+    const response=await fetch(base+"latest.jsonl?"+Date.now(),{cache:"no-store",signal:controller.signal});
+    if(!response.ok)throw Error("Data host returned HTTP "+response.status+".");
+    if(!response.body)throw Error("Browser could not open the download stream.");
+    source=i===0?"GitHub":"backup host";
+    const total=Number(response.headers.get("content-length"))||0;
+    let received=0,parts=[];
+    note.textContent="Connected. Downloading catalog records…";
+    const reader=response.body.getReader(),decoder=new TextDecoder();
+    while(true){
+     const {done,value}=await reader.read();if(done)break;
+     received+=value.length;parts.push(decoder.decode(value,{stream:true}));
+     if(total){
+      bar.classList.remove("indeterminate");
+      fill.style.width=Math.min(100,received/total*100)+"%";
+      note.textContent="Downloading catalog… "+(received/1048576).toFixed(1)+" MB of "+(total/1048576).toFixed(1)+" MB";
+     }else{
+      note.textContent="Downloading catalog… "+(received/1048576).toFixed(1)+" MB received";
+     }
+    }
+    parts.push(decoder.decode());raw=parts.join("");
+    clearTimeout(timeout);
+    if(!raw.trim())throw Error("The catalog data file was empty.");
+    break;
+   }catch(e){clearTimeout(timeout);lastError=e;raw="";if(i===baseUrls.length-1)throw e;}
   }
-  parts.push(decoder.decode());
-  const raw=parts.join("");
-  if(!raw.trim())throw Error("Catalog feed was empty.");
-  fill.style.width="100%";bar.classList.remove("indeterminate");
-  note.textContent="Processing catalog records…";
+  bar.classList.remove("indeterminate");fill.style.width="100%";
+  note.textContent="Download complete. Processing catalog records…";
   records=mergeRows(parseJSONL(raw));
   let manifest={};
   try{
-   const mr=await fetch(base+"latest.json?"+Date.now(),{cache:"no-store",signal:controller.signal});
+   const manifestUrl=baseUrls[source==="GitHub"?0:1]+"latest.json?"+Date.now();
+   const mr=await fetch(manifestUrl,{cache:"no-store"});
    if(mr.ok)manifest=await mr.json();
-  }catch(manifestError){console.warn("Catalog manifest unavailable; displaying loaded records.",manifestError)}
+  }catch(manifestError){console.warn("Catalog manifest unavailable.",manifestError)}
   selected=null;populateFilters();render();
   const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"not available";
-  note.textContent="✓ Catalog loaded · "+records.length.toLocaleString()+" records · Last published "+date+".";
+  note.textContent="✓ Loaded "+records.length.toLocaleString()+" records from "+source+" · Last published "+date+".";
  }catch(e){
   bar.classList.remove("indeterminate");
-  note.textContent=(e.name==="AbortError"?"Catalog download timed out. ":"Catalog load failed. ")+e.message+" Tap “Refresh catalog” to try again.";
+  const reason=e.name==="AbortError"?"Connection timed out after 18 seconds. ":e.message+" ";
+  note.textContent="Catalog connection failed. "+reason+"Tried GitHub and the backup host. Tap Refresh catalog to retry.";
+  console.error("VHS FEVER catalog load failed",e,lastError);
   if(records.length)render();
- }finally{clearTimeout(timeout);button.disabled=false;button.textContent="↻ Refresh catalog";setTimeout(()=>bar.classList.remove("active"),700)}
+ }finally{
+  button.disabled=false;button.textContent="↻ Refresh catalog";
+  setTimeout(()=>bar.classList.remove("active"),700);
+ }
 }
 async function loadFiles(fileList){let rows=[],names=[];for(const file of fileList){const raw=await file.text();let count=0;for(const [i,line] of raw.split(/\r?\n/).entries()){if(!line.trim())continue;try{rows.push(JSON.parse(line));count++}catch(e){throw Error(file.name+" line "+(i+1)+": "+e.message)}}names.push(file.name+" ("+count+")")}records=mergeRows(rows);$("loadnote").textContent="Loaded "+names.join(" · ")+" — "+records.length+" unique Archive records. Load order is merged automatically; enriched records take precedence.";selected=null;populateFilters();render()}
 function tmdb(r){return r.vhs_fever_metadata_artwork?.tmdb||{}}
