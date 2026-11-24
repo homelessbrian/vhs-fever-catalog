@@ -170,3 +170,32 @@ Every automatic decision should be reversible. Preserve original Archive metadat
 - [Video Tapes dot io data and artwork reuse guidance](https://videotapes.io/data)
 - [Video Tapes dot io legal terms](https://videotapes.io/legal)
 - [IMDb non-commercial dataset terms](https://developer.imdb.com/non-commercial-datasets/)
+
+
+## TMDB title-matching adapter
+
+The first TMDB implementation is deliberately read-only and review-first. `scripts/tmdb_enrichment.py` provides:
+
+- Bearer-token authentication through the `TMDB_BEARER_TOKEN` environment variable (never a committed key or query-string credential).
+- Movie and TV search through the TMDB v3 search endpoints. When the source media type is unknown, both are searched; when known, only that type is queried.
+- Deterministic title normalization and candidate scoring using title similarity, release/first-air year, and media-type agreement.
+- Evidence labels such as `exact_title`, `year_match`, `year_conflict`, and `media_type_conflict`.
+- At most ten ranked candidates in the enrichment record's existing candidate shape.
+
+This initial adapter never promotes a search result to a confirmed identity, even when confidence is high. High-confidence candidates remain reviewable until a separately designed approval/acceptance step exists. It does not fetch details, external IDs, or artwork yet, and it makes no network calls unless the client is explicitly invoked with a configured bearer token.
+
+For a local smoke call after configuring a token:
+
+```python
+from scripts.tmdb_enrichment import TMDBClient, build_identity_match
+
+client = TMDBClient()
+results = client.search_candidates("The Thing", year=1982, media_type="movie")
+match = build_identity_match(
+    {"title": "The Thing", "year": 1982, "media_type": "movie"},
+    results,
+)
+print(match)
+```
+
+TMDB v3 accepts the API Read Access Token as an `Authorization: Bearer` header. The token must be stored as a secret, not in source control. See the [official TMDB authentication documentation](https://developer.themoviedb.org/docs/authentication-application).
