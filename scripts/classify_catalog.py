@@ -43,7 +43,7 @@ def classify(item):
             return label,"high","title_keyword:"+m.group(0).lower(),content,fmt
     # Archive titles commonly encode film release year as "(YYYY) Title".
     # Treat this as meaningful film evidence after stronger exclusion keywords.
-    if re.match(r"^\\s*\\((?:18|19|20)\\d{2}\\)\\s*\\S", title):
+    if re.match(r"^\s*\((?:18|19|20)\d{2}\)\s*\S", title):
         return "movie_or_film","medium","title_release_year_prefix","movie_or_film","standalone"
     # Description is deliberately low-weight: only use it when title itself is inconclusive,
     # and never allow generic promo/trailer words in the description to override title format.
