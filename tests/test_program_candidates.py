@@ -54,6 +54,22 @@ class ProgramCandidateTests(unittest.TestCase):
         ]
         self.assertEqual(build_candidates(records), [])
 
+    def test_rejects_ambiguous_duplicate_roles_across_archive_items(self):
+        records = [
+            self.record("opening-a", "Opening to Rugrats Halloween", [
+                {"name": "Opening to Rugrats Halloween.mp4", "duration_seconds": 540, "format": "MPEG4"}
+            ]),
+            self.record("opening-b", "Opening to Rugrats Halloween", [
+                {"name": "01 Opening.mp4", "duration_seconds": 1968, "format": "MPEG4"}
+            ]),
+            self.record("feature", "Rugrats Halloween", [
+                {"name": "Rugrats Halloween.mp4", "duration_seconds": 1800, "format": "MPEG4"}
+            ]),
+            self.record("closing", "Closing to Rugrats Halloween", [
+                {"name": "Closing to Rugrats Halloween.mp4", "duration_seconds": 300, "format": "MPEG4"}
+            ]),
+        ]
+        self.assertEqual(build_candidates(records), [])
     def test_rejects_mismatched_named_opening_and_closing(self):
         item = self.record("wrong-tape", "A Cartoon's Life (2000 VHS)", [
             {"name": "1. Opening to A Bug's Life 2000 VHS.mp4", "duration_seconds": 434, "format": "MPEG4"},
