@@ -4,13 +4,15 @@
 
 A program is a logical viewing experience composed of one or more playable video segments. The original Internet Archive records remain unchanged. Program assembly adds relationships; it never merges, edits, or deletes source records.
 
-## Three-layer model
+## Catalog identity and playback model
 
-1. **Archive item** — the original Internet Archive identifier and metadata record.
-2. **Program** — the single title presented in the VHS FEVER library and player.
-3. **Segment** — one exact playable file, identified by its archive item identifier and file name.
+1. **Title** — the logical movie or program shown once in the library, matched to TMDB when possible.
+2. **Edition** — a distinct VHS release, distributor, cut, or packaging variant of that title.
+3. **Source** — one actual Internet Archive upload/file that can be selected for playback. Alternate uploads and encodes remain selectable sources.
+4. **Segment** — an ordered part of a source when one viewing copy is split across multiple files.
+5. **Archive item** — the original Internet Archive identifier and metadata record, retained as provenance.
 
-A program may reference segments from multiple archive items.
+A title can have multiple editions; each edition can have multiple sources; each source can contain one or more ordered segments. A source can be attached to a matched title only when evidence supports that match.
 
 ## Playback manifest
 
@@ -120,12 +122,15 @@ Roles describe presentation order, not legal status or content suitability.
 The current inventory workflow runs the candidate generator against its balanced pilot sample and includes the candidate manifests in its artifact. The pilot is not a complete-catalog assembly pass.
 
 
-## Standalone catalog builder (implemented)
+## Standalone source catalog builder (implemented)
 
 `scripts/build_program_catalog.py` builds the library catalog from enriched inventory JSONL.
 
-- Every distinct inventoried video file becomes a standalone, one-segment program entry with its exact Archive identifier and filename.
-- This includes files that may also participate in a multi-segment suggestion. The standalone entry is retained; an assembled suggestion is additive, never a replacement.
+- Every inventoried video file becomes a selectable source entry with its exact Archive identifier and filename.
+- Alternate encodes and Archive derivatives are retained as sources; they are not silently discarded.
+- Each source has a stable source_id. matched_title_id, edition_id, and alternate_source_group_id remain null until a later matching stage establishes those relationships.
+- Matching is separate from source retention: duplicates should be grouped under a title as alternate sources, never deleted.
+- This includes files that may also participate in a multi-segment suggestion. Source entries are retained; an assembled suggestion is additive, never a replacement.
 - Multi-segment suggestions from `scripts/build_program_candidates.py` are included as separate `assembled_candidate` entries and remain review-only.
 - Items with failed/missing inventory, no video candidates, Archive access restrictions, or private video files are recorded in a separate review queue.
 - Unknown durations remain null and are flagged for review.
@@ -136,7 +141,7 @@ The inventory pilot now uploads:
 - `vhsvault-program-catalog.summary.json` — entry counts and safety flags.
 - `vhsvault-program-review-queue.jsonl` — source items requiring attention.
 
-The current workflow is still a balanced **pilot sample** (up to 500 records), not yet a full 129,572-record inventory. A full-catalog inventory run is a separate scale-up step after validating the expanded pilot.
+The current workflow is still a balanced pilot sample (120 records in the latest successful run), not a full Archive inventory. A full-catalog inventory run is a separate scale-up step after validating the matching and source-grouping behavior.
 
 ## Remaining implementation steps
 
@@ -157,3 +162,14 @@ python scripts/validate_program_manifests.py --input data/vhsvault-program-catal
 ```
 
 Validation checks data integrity only; it does not establish title identity, playback availability, or rights.
+
+
+## Title / edition / alternate-source matching policy
+
+- Preserve every playable source file, including Archive streaming derivatives and alternate encodes.
+- Match likely duplicate uploads to one logical title only when title evidence is sufficient; retain each upload as a separately selectable source.
+- Keep different VHS releases, distributors, cuts, and packaging as distinct editions under the same title when evidence supports that distinction.
+- Keep multipart files as ordered segments of one source, not as unrelated duplicate titles.
+- Do not equate every numbered file with a separate movie or assume numbered files are multipart without supporting title, sequence, and runtime evidence.
+- Never delete source records during matching. A source may be marked unavailable or restricted, but its provenance remains in the catalog.
+- When matching is uncertain, leave sources ungrouped and route them for review rather than making a destructive merge.
