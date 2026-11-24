@@ -230,3 +230,12 @@ python scripts/enrich_program_catalog.py \
 ```
 
 The runner writes a version 1 enrichment sidecar per eligible program and a summary of processed, skipped, and unique-search counts. It does not rewrite the program catalog or inventory, fetch VHS sleeves, or automatically confirm identity matches. Run a small pilot first, validate the resulting sidecar with `scripts/validate_enrichment.py`, and review every candidate before scaling.
+
+
+### Manually triggered GitHub pilot
+
+`.github/workflows/tmdb-enrichment-pilot.yml` runs only when manually dispatched. It downloads the existing inventory/catalog artifact from a selected Actions run, processes a small limit (default 25), and uploads a review-only JSONL sidecar plus summary. It does not modify repository data or download media/artwork.
+
+Before running it, add the TMDB API Read Access Token as a repository Actions secret named `TMDB_BEARER_TOKEN` (Repository Settings → Secrets and variables → Actions → New repository secret). Never put the token in workflow inputs, source files, artifacts, or logs. The default source run ID is the 250-item inventory pilot; the workflow can be given a different run ID if a newer compatible artifact is generated.
+
+The workflow is intended for development/non-commercial use only under the applicable TMDB terms and attribution requirements. It should not be run against the full catalog until the small pilot has been reviewed and the false-positive rate is understood.
