@@ -32,6 +32,14 @@ class MetadataArtworkTests(unittest.TestCase):
         self.assertEqual([x["file_name"] for x in candidates], ["actual_back_cover.jpg"])
         self.assertEqual(candidates[0]["candidate_role"], "vhs_back_cover")
 
+    def test_rejects_vhs_named_video_stills_and_thumbnail_derivatives(self):
+        item = {"identifier": "x", "vhs_fever_file_inventory": {"image_files": [
+            {"name": "Gonzalo Marcuzzi VHS still_thumb.jpg"},
+            {"name": "Gonzalo Marcuzzi VHS still.jpg"},
+            {"name": "random-video-frame.jpg"},
+        ]}}
+        self.assertEqual(build_artwork_candidates(item), [])
+
     def test_detects_pdf_packaging_scans(self):
         item = {"identifier": "x", "vhs_fever_file_inventory": {"artwork_document_files": [
             {"name": "full_wrap_insert.pdf"}
