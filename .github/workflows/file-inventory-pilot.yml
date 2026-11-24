@@ -1,6 +1,13 @@
 name: VHS Vault file inventory pilot
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/file-inventory-pilot.yml'
+      - 'docs/program-assembly.md'
   workflow_dispatch:
     inputs:
       sample_size:
@@ -41,7 +48,7 @@ jobs:
           python scripts/inspect_file_inventory.py \
             --input data/vhsvault-classified.jsonl \
             --output data/vhsvault-file-inventory-pilot.jsonl \
-            --limit "${{ inputs.sample_size }}" \
+            --limit "${{ inputs.sample_size || '120' }}" \
             --delay 0.5
 
       - name: Build sequential program candidates
