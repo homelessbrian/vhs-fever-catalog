@@ -89,8 +89,8 @@ jobs:
 
       - name: Build compact TMDB match audit
         run: |
-          python scripts/build_tmdb_audit.py \\
-            --input data/vhsvault-program-catalog-matched.jsonl \\
+          python scripts/build_tmdb_audit.py \
+            --input data/vhsvault-program-catalog-matched.jsonl \
             --output data/vhsvault-tmdb-match-audit.json
 
       - name: Suggest alternate-source title groups (review only)
