@@ -34,11 +34,10 @@ jobs:
       - name: Discover popular VHS Vault movie candidates
         run: |
           mkdir -p data
-          python scripts/discover_vhsvault.py \
-            --count 5000 \
-            --max-pages 1 \
-            --output data/vhsvault-scrape-poc.jsonl \
-            --delay 1
+          python scripts/discover_vhsvault_candidates.py \
+            --rows 1000 \
+            --page 1 \
+            --output data/vhsvault-scrape-poc.jsonl
 
       - name: Classify discovered records using title metadata
         run: |
