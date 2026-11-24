@@ -54,7 +54,7 @@ def main():
         raise SystemExit("Review decisions must be a JSON object keyed by program_id")
     final = build_final_catalog(candidates, decisions)
     a.output.parent.mkdir(parents=True, exist_ok=True)
-    a.output.write_text("".join(json.dumps(x, ensure_ascii=False, sort_keys=True) + "\\n" for x in final), encoding="utf-8")
+    a.output.write_text("".join(json.dumps(x, ensure_ascii=False, sort_keys=True) + "\n" for x in final), encoding="utf-8")
     print(json.dumps({"candidate_entries": len(candidates), "human_approved_final_entries": len(final),
                       "unapproved_excluded": len(candidates) - len(final)}, indent=2))
 
