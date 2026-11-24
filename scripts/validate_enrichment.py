@@ -244,6 +244,22 @@ def validate_enrichment_record(record: Any) -> list[str]:
                 asset_ids.add(asset_id)
                 assets_by_id[asset_id] = asset
 
+            allowed_asset_fields = {
+                "asset_id", "provider", "source_id", "edition_id", "kind", "source_url",
+                "region", "country", "language", "width", "height", "folds",
+                "attribution", "retrieved_at", "reuse_policy", "display_status",
+            }
+            unexpected_fields = sorted(set(asset) - allowed_asset_fields)
+            if unexpected_fields:
+                errors.append(
+                    f"{prefix} contains unsupported fields; artwork must remain URL/reference-only: "
+                    + ", ".join(unexpected_fields)
+                )
+
+            source_id = asset.get("source_id")
+            if source_id is not None and not _is_text(source_id):
+                errors.append(f"{prefix}.source_id must be a non-empty string or null")
+
             asset_provider = asset.get("provider")
             if not _is_member(asset_provider, ARTWORK_PROVIDERS):
                 errors.append(f"{prefix}.provider must be one of {sorted(ARTWORK_PROVIDERS)}")
