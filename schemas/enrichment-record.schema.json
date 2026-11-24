@@ -394,6 +394,37 @@
             "fan_made",
             "unknown"
           ]
+        },
+        "source_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "Stable edition identifier assigned by the source provider, when available."
+        },
+        "retrieved_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "Time this edition record was retrieved from its source."
+        },
+        "attribution": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Source or rights-holder attribution supplied with the edition record, when available."
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Observed source facts supporting edition details or authenticity; do not infer missing facts."
         }
       }
     },
