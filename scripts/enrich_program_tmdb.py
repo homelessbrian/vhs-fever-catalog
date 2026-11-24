@@ -27,7 +27,7 @@ def filename_title(program: dict[str, Any]) -> tuple[str | None, str | None]:
         return None, year
     return raw, year
 
-def enrich_programs(rows: list[dict[str, Any]], token: str | None, delay: float = 0.2) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def enrich_programs(rows: list[dict[str, Any]], token: str | None, delay: float = 0.05, max_lookups: int = 300) -> tuple[list[dict[str, Any]], dict[str, int]]:
     cache: dict[tuple[str, str | None], dict[str, Any]] = {}
     counts: dict[str, int] = {}
     output = []
@@ -69,10 +69,10 @@ def enrich_programs(rows: list[dict[str, Any]], token: str | None, delay: float 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input",type=Path,required=True);p.add_argument("--output",type=Path,required=True);p.add_argument("--delay",type=float,default=0.2)
-    a=p.parse_args(); rows=[json.loads(x) for x in a.input.read_text(encoding="utf-8").splitlines() if x.strip()]
-    result,counts=enrich_programs(rows,os.environ.get("TMDB_API_READ_ACCESS_TOKEN"),a.delay)
+    p.add_argument("--max-lookups",type=int,default=300)\n    a=p.parse_args(); rows=[json.loads(x) for x in a.input.read_text(encoding="utf-8").splitlines() if x.strip()]
+    result,counts=enrich_programs(rows,os.environ.get("TMDB_API_READ_ACCESS_TOKEN"),a.delay,a.max_lookups)
     a.output.parent.mkdir(parents=True,exist_ok=True)
     a.output.write_text("".join(json.dumps(x,ensure_ascii=False,sort_keys=True)+"\n" for x in result),encoding="utf-8")
-    summary={"program_entries":len(result),"tmdb_lookup_counts":counts,"matching_level":"individual_video_filename","human_approval_required":True}
+    summary={"program_entries":len(result),"tmdb_lookup_counts":counts,"matching_level":"individual_video_filename","human_approval_required":True,"max_unique_tmdb_lookups":a.max_lookups}
     a.output.with_suffix(".summary.json").write_text(json.dumps(summary,indent=2)+"\n",encoding="utf-8");print(json.dumps(summary,indent=2))
 if __name__=="__main__": main()
