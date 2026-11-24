@@ -12,7 +12,7 @@ A TMDB poster is never treated as a VHS cover. Packaging candidates retain their
 
 ## Archive artwork discovery
 
-The file inventory records image files and PDF artwork documents by metadata only. Candidate ranking uses filename clues such as front, back, spine, wrap, insert, box, and sleeve. The result is a reviewable suggestion, not a visual confirmation. The pipeline does not download the image or PDF payload.
+The file inventory records image files and PDF artwork documents by metadata only. Candidate ranking uses filename clues such as front, back, spine, wrap, insert, box, and sleeve. The result is a reviewable suggestion, not a visual confirmation. Video-generated `.thumbs` directories and numbered frame images are excluded so sampled frames are not mislabeled as VHS packaging. The pipeline does not download the image or PDF payload.
 
 Candidate URLs point to the exact Archive item and filename. Private files are excluded from public artwork candidates. Access and rights must still be checked before display or playback.
 
@@ -23,7 +23,7 @@ Set the repository Actions secret TMDB_API_READ_ACCESS_TOKEN to enable TMDB look
 Matching order:
 1. Use a valid Internet Archive IMDb external ID with TMDB's find-by-external-ID endpoint.
 2. If no IMDb ID is present, search by title and optional year.
-3. Only a single normalized exact-title result is emitted as a medium-confidence suggestion. Ambiguous or missing results remain in review.
+3. Title cleanup removes common VHS/variant/year suffixes. Search results are ranked with a conservative title-similarity score; a uniquely strong result (at least 0.88 similarity and a 0.04 lead over the next result) is emitted as a medium-confidence suggestion. Other results retain ranked candidates and similarity scores for review.
 4. Every match has review_status: needs_review; no TMDB match silently merges source items or confirms a program identity.
 
 TMDB image references are kept as movie-level poster, backdrop, and images endpoint fields. Logo candidates are available through the TMDB movie images endpoint and can be added after the match is reviewed.
