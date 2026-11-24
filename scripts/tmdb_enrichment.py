@@ -2,6 +2,7 @@
 """TMDB-first title search and conservative, reviewable candidate scoring."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -240,3 +241,159 @@ class TMDBClient:
                     result["media_type"] = kind
                     results.append(result)
         return results
+
+    def get_title_details(
+        self,
+        media_type: str,
+        provider_id: int | str,
+        *,
+        language: str = DEFAULT_LANGUAGE,
+        include_image_language: str = "en,null",
+    ) -> dict[str, Any]:
+        """Fetch title details, external IDs, and image metadata in one request."""
+        if media_type not in {"movie", "tv"}:
+            raise ValueError("media_type must be movie or tv")
+        try:
+            numeric_id = int(provider_id)
+        except (TypeError, ValueError):
+            raise ValueError("provider_id must be a positive TMDB integer") from None
+        if numeric_id < 1:
+            raise ValueError("provider_id must be a positive TMDB integer")
+        return self._get_json(
+            f"/{media_type}/{numeric_id}",
+            {
+                "language": language,
+                "append_to_response": "external_ids,images",
+                "include_image_language": include_image_language,
+            },
+        )
+
+    def get_configuration(self) -> dict[str, Any]:
+        """Fetch TMDB image configuration once per client instance."""
+        cached = getattr(self, "_configuration_cache", None)
+        if cached is None:
+            cached = self._get_json("/configuration", {})
+            self._configuration_cache = cached
+        return cached
+
+
+def build_tmdb_metadata(details: dict[str, Any], media_type: str) -> dict[str, Any]:
+    """Normalize useful TMDB title fields without mixing in source/archive metadata."""
+    if media_type not in {"movie", "tv"}:
+        raise ValueError("media_type must be movie or tv")
+    title = details.get("title") if media_type == "movie" else details.get("name")
+    original_title = details.get("original_title") if media_type == "movie" else details.get("original_name")
+    date_field = "release_date" if media_type == "movie" else "first_air_date"
+    date_value = details.get(date_field)
+    year = None
+    if isinstance(date_value, str) and len(date_value) >= 4:
+        try:
+            year = int(date_value[:4])
+        except ValueError:
+            year = None
+
+    runtime = details.get("runtime") if media_type == "movie" else None
+    if media_type == "tv":
+        runtimes = details.get("episode_run_time")
+        if isinstance(runtimes, list):
+            runtime = next((value for value in runtimes if isinstance(value, int) and not isinstance(value, bool) and value > 0), None)
+
+    external_ids = details.get("external_ids")
+    if not isinstance(external_ids, dict):
+        external_ids = {}
+    genres = details.get("genres")
+    if not isinstance(genres, list):
+        genres = []
+
+    return {
+        "provider_id": str(details["id"]) if details.get("id") is not None else None,
+        "media_type": media_type,
+        "title": title if isinstance(title, str) else None,
+        "original_title": original_title if isinstance(original_title, str) else None,
+        "year": year,
+        "release_or_first_air_date": date_value if isinstance(date_value, str) else None,
+        "runtime_minutes": runtime if isinstance(runtime, int) and not isinstance(runtime, bool) else None,
+        "overview": details.get("overview") if isinstance(details.get("overview"), str) else None,
+        "original_language": details.get("original_language") if isinstance(details.get("original_language"), str) else None,
+        "genres": [
+            {"id": genre.get("id"), "name": genre.get("name")}
+            for genre in genres if isinstance(genre, dict)
+        ],
+        "external_ids": {
+            "imdb_id": external_ids.get("imdb_id")
+            if isinstance(external_ids.get("imdb_id"), str) and external_ids.get("imdb_id").startswith("tt")
+            else None
+        },
+        "poster_path": details.get("poster_path") if isinstance(details.get("poster_path"), str) else None,
+        "backdrop_path": details.get("backdrop_path") if isinstance(details.get("backdrop_path"), str) else None,
+    }
+
+
+def _tmdb_image_url(base_url: str, sizes: Any, file_path: Any, preferred_size: str) -> str | None:
+    if not isinstance(base_url, str) or not base_url.startswith("https://"):
+        return None
+    if not isinstance(file_path, str) or not file_path.startswith("/") or file_path.startswith("//"):
+        return None
+    if "://" in file_path or "\\\\" in file_path:
+        return None
+    allowed_sizes = sizes if isinstance(sizes, list) else []
+    size = preferred_size if preferred_size in allowed_sizes else "original"
+    if size != "original" and "original" not in allowed_sizes:
+        return None
+    return base_url.rstrip("/") + "/" + size + file_path
+
+
+def build_tmdb_artwork_assets(
+    details: dict[str, Any],
+    configuration: dict[str, Any],
+    *,
+    display_status: str = "pending_review",
+) -> list[dict[str, Any]]:
+    """Build rights-aware poster/backdrop/logo asset records from TMDB image paths."""
+    if display_status not in {"pending_review", "approved", "link_only", "blocked"}:
+        raise ValueError("Unsupported artwork display_status")
+    image_config = configuration.get("images") if isinstance(configuration, dict) else None
+    if not isinstance(image_config, dict):
+        return []
+    base_url = image_config.get("secure_base_url")
+    images = details.get("images") if isinstance(details.get("images"), dict) else {}
+    groups = (
+        ("tmdb_poster", "posters", "poster_path", "poster_sizes", "w500"),
+        ("tmdb_backdrop", "backdrops", "backdrop_path", "backdrop_sizes", "w1280"),
+        ("tmdb_logo", "logos", None, "logo_sizes", "original"),
+    )
+    assets: list[dict[str, Any]] = []
+    for kind, list_key, primary_key, sizes_key, preferred_size in groups:
+        entries = images.get(list_key)
+        entries = entries if isinstance(entries, list) else []
+        candidates: list[dict[str, Any]] = []
+        if primary_key and isinstance(details.get(primary_key), str):
+            candidates.append({"file_path": details[primary_key]})
+        candidates.extend(item for item in entries if isinstance(item, dict))
+        seen_paths: set[str] = set()
+        for item in candidates:
+            path = item.get("file_path")
+            if not isinstance(path, str) or path in seen_paths:
+                continue
+            seen_paths.add(path)
+            url = _tmdb_image_url(base_url, image_config.get(sizes_key), path, preferred_size)
+            if not url:
+                continue
+            asset_hash = hashlib.sha256(f"{kind}:{path}".encode("utf-8")).hexdigest()[:16]
+            asset = {
+                "asset_id": f"tmdb-{asset_hash}",
+                "provider": "tmdb",
+                "edition_id": None,
+                "kind": kind,
+                "source_url": url,
+                "width": item.get("width") if isinstance(item.get("width"), int) else None,
+                "height": item.get("height") if isinstance(item.get("height"), int) else None,
+                "language": item.get("iso_639_1") if isinstance(item.get("iso_639_1"), str) else None,
+                "attribution": "TMDB",
+                "reuse_policy": "provider_terms",
+                "display_status": display_status,
+            }
+            assets.append(asset)
+            if len([a for a in assets if a["kind"] == kind]) >= 10:
+                break
+    return assets
