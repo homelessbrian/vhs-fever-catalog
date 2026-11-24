@@ -167,7 +167,7 @@ def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
         year = prefix_year.group(1) if prefix_year else None
     if not year:
         date = str(item.get("date") or "")
-        match = re.search(r"\\b(18|19|20)\\d{2}\\b", date)
+        match = re.search(r"\b(18|19|20)\d{2}\b", date)
         year = match.group(0) if match else None
     query = urllib.parse.urlencode({"query": title, **({"year": str(year)[:4]} if year else {})})
     results = request_json("https://api.themoviedb.org/3/search/movie?" + query, token).get("results") or []
