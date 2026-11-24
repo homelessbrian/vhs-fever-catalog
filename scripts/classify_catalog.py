@@ -41,6 +41,10 @@ def classify(item):
             content={"promo_or_commercial":"commercial_or_promo","trailer_or_clip":"trailer_or_clip","vhs_or_dvd_extra":"dvd_or_vhs_extra","cartoon_or_animation":"cartoon_or_animation","tv_episode_or_recording":"tv_episode_or_recording","artwork_or_packaging":"artwork"}[label]
             fmt="dvd_extra" if label=="vhs_or_dvd_extra" else "standalone"
             return label,"high","title_keyword:"+m.group(0).lower(),content,fmt
+    # Archive titles commonly encode film release year as "(YYYY) Title".
+    # Treat this as meaningful film evidence after stronger exclusion keywords.
+    if re.match(r"^\\s*\\((?:18|19|20)\\d{2}\\)\\s*\\S", title):
+        return "movie_or_film","medium","title_release_year_prefix","movie_or_film","standalone"
     # Description is deliberately low-weight: only use it when title itself is inconclusive,
     # and never allow generic promo/trailer words in the description to override title format.
     if re.search(r"\b(episode|full episode|broadcast|aircheck)\b",desc,re.I):
