@@ -59,6 +59,20 @@ class MetadataArtworkTests(unittest.TestCase):
         self.assertEqual(result["vhs_fever_metadata_artwork"]["tmdb"]["status"],
                          "not_applicable_to_classification")
 
+    def test_year_prefixed_archive_movie_title_is_cleaned_for_tmdb(self):
+        item = {"title": "(1954) Godzilla", "mediatype": "movies"}
+        self.assertEqual(tmdb_search_title(item), ("Godzilla", "cleaned_title"))
+
+    def test_other_or_review_archive_movie_with_named_title_is_tmdb_eligible(self):
+        import unittest.mock as mock
+        item = {"title": "(1954) Godzilla", "mediatype": "movies",
+                "vhs_fever_classification": {"label": "other_or_review"}}
+        with mock.patch("scripts.enrich_metadata_artwork.find_tmdb_match",
+                        return_value={"tmdb_id": 123, "title": "Godzilla", "status": "matched"}) as lookup:
+            result = enrich_record(item, token="token")
+        lookup.assert_called_once()
+        self.assertEqual(result["vhs_fever_metadata_artwork"]["tmdb"]["tmdb_id"], 123)
+
     def test_normalizes_titles_for_reviewable_exact_match(self):
         self.assertEqual(normalize_title("The Movie: Part II"), "movie part ii")
 
