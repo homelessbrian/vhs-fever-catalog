@@ -334,7 +334,9 @@ def _tmdb_image_url(base_url: str, sizes: Any, file_path: Any, preferred_size: s
         return None
     if not isinstance(file_path, str) or not file_path.startswith("/") or file_path.startswith("//"):
         return None
-    if "://" in file_path or "\\\\" in file_path:
+    if "://" in file_path or "\\\\" in file_path or "?" in file_path or "#" in file_path:
+        return None
+    if any(part == ".." for part in file_path.split("/")):
         return None
     allowed_sizes = sizes if isinstance(sizes, list) else []
     size = preferred_size if preferred_size in allowed_sizes else "original"
@@ -366,10 +368,12 @@ def build_tmdb_artwork_assets(
     for kind, list_key, primary_key, sizes_key, preferred_size in groups:
         entries = images.get(list_key)
         entries = entries if isinstance(entries, list) else []
-        candidates: list[dict[str, Any]] = []
+        candidates: list[dict[str, Any]] = [
+            item for item in entries if isinstance(item, dict)
+        ]
         if primary_key and isinstance(details.get(primary_key), str):
-            candidates.append({"file_path": details[primary_key]})
-        candidates.extend(item for item in entries if isinstance(item, dict))
+            if not any(item.get("file_path") == details[primary_key] for item in candidates):
+                candidates.append({"file_path": details[primary_key]})
         seen_paths: set[str] = set()
         for item in candidates:
             path = item.get("file_path")
