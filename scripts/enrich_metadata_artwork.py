@@ -56,6 +56,7 @@ def tmdb_search_title(item: dict[str, Any]) -> tuple[str | None, str]:
         return None, "likely_archive_recording_or_compilation"
     title = raw
     title = re.sub(r"^\s*\(((?:18|19|20)\d{2})\)\s*", "", title)
+    title = re.sub(r"^\s*\(((?:18|19|20)\d{2})\)\s*", "", title)
     title = re.sub(r"\s+(?:(?:us|uk)\s+)?vhs\s+variants?\s*$", "", title, flags=re.I)
     title = re.sub(r"\s*\([^()]*\b(?:vhs|dvd|animated|variant|variants|capture|part \d+)[^()]*\)\s*$", "", title, flags=re.I)
     title = re.sub(r"\s*\[[^\]]*(?:vhs|dvd|variant|capture|part \d+)[^\]]*\]\s*$", "", title, flags=re.I)
