@@ -1,0 +1,71 @@
+name: TMDB enrichment pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: GitHub Actions run ID containing the VHS FEVER inventory pilot artifact
+        required: true
+        type: string
+        default: "45327787381"
+      limit:
+        description: Maximum standalone movie_or_film programs to search
+        required: true
+        type: number
+        default: 25
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download inventory and catalog pilot artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vhs-fever-file-inventory-pilot
+          run-id: ${{ inputs.source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: source
+
+      - name: Validate configuration
+        env:
+          TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
+        run: |
+          if [ -z "${TMDB_BEARER_TOKEN:-}" ]; then
+            echo "::error::Add the TMDB_BEARER_TOKEN repository secret before running this workflow."
+            exit 1
+          fi
+          test -s source/vhsvault-file-inventory-pilot.jsonl
+          test -s source/vhsvault-program-catalog.jsonl
+
+      - name: Build review-only TMDB enrichment sidecar
+        env:
+          TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
+        run: |
+          mkdir -p output
+          python scripts/enrich_program_catalog.py \
+            --catalog source/vhsvault-program-catalog.jsonl \
+            --inventory source/vhsvault-file-inventory-pilot.jsonl \
+            --output output/vhsvault-enrichment-pilot.jsonl \
+            --summary output/vhsvault-enrichment-pilot.summary.json \
+            --limit "${{ inputs.limit }}"
+
+      - name: Upload enrichment review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhs-fever-tmdb-enrichment-pilot
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
