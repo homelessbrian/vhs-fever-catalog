@@ -25,23 +25,11 @@ def stable_id(value: str) -> str:
 
 
 def video_files(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return every listed video source; never discard alternate encodes."""
     inventory = item.get("vhs_fever_file_inventory") or {}
-    files = [
+    return [
         f for f in (inventory.get("video_files") or [])
         if str(f.get("name") or "").strip()
-    ]
-    # Internet Archive often lists both an uploaded original and an .ia.mp4
-    # streaming derivative. Keep the original as the canonical standalone
-    # source when the derivative explicitly references that original.
-    # If the original is absent, retain the derivative as a usable fallback.
-    available_names = {str(f.get("name") or "").strip() for f in files}
-    return [
-        file for file in files
-        if not (
-            file.get("origin_hint") == "derivative"
-            and str(file.get("original_file_reference") or "").strip()
-            in available_names
-        )
     ]
 
 
@@ -89,6 +77,10 @@ def build_catalog(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], 
             entry = {
                 "schema_version": 1,
                 "program_id": stable_id(identifier + "\n" + filename),
+                "source_id": stable_id(identifier + "\n" + filename),
+                "matched_title_id": None,
+                "edition_id": None,
+                "alternate_source_group_id": None,
                 "title": title if len(files) == 1 else Path(filename).stem.replace("_", " ").strip() or title,
                 "display_title": title,
                 "entry_type": "standalone",
@@ -183,12 +175,13 @@ def main() -> None:
         "standalone_entries": standalone_count,
         "assembled_suggestions": sum(x["entry_type"] == "assembled_candidate" for x in catalog),
         "review_queue_entries": len(review),
-        "redundant_derivative_files_suppressed": redundant_derivative_count,
-        "all_unique_video_sources_preserved_as_standalone_entries": True,
+        "redundant_derivative_files_suppressed": 0,
+        "alternate_derivative_sources_preserved": sum(1 for item in records for file in ((item.get("vhs_fever_file_inventory") or {}).get("video_files") or []) if file.get("origin_hint") == "derivative"),
+        "all_video_sources_preserved_as_entries": True,
         "source_records_modified": False,
         "media_payloads_downloaded": False,
         "rights_determined": False,
-        "note": "Standalone entries represent unique source files; known derivatives are suppressed only when their referenced original is present. Assemblies remain review-only suggestions. Playback access and rights must be evaluated separately.",
+        "note": "Every video file is retained as a selectable source, including derivatives and alternate encodes. Title and edition grouping is a separate matching stage; assemblies remain review-only suggestions. Playback access and rights must be evaluated separately.",
     }
     args.output.with_suffix(".summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
