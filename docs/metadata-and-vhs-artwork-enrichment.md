@@ -199,3 +199,14 @@ print(match)
 ```
 
 TMDB v3 accepts the API Read Access Token as an `Authorization: Bearer` header. The token must be stored as a secret, not in source control. See the [official TMDB authentication documentation](https://developer.themoviedb.org/docs/authentication-application).
+
+
+### TMDB metadata and fallback artwork preparation
+
+The details stage uses the selected TMDB media type and ID to request title details with `append_to_response=external_ids,images`. Image language selection defaults to `en,null` so English-tagged and language-neutral artwork can both be considered. The image configuration endpoint is fetched once per client and supplies the secure base URL and supported image sizes; image URLs are assembled from that configuration rather than hard-coded CDN paths.
+
+The normalized metadata sidecar keeps the TMDB ID, media type, title/original title, year, release or first-air date, runtime, overview, original language, genres, and permitted external IDs separate from the original Internet Archive record.
+
+Poster, backdrop, and logo paths become individual artwork assets. The primary poster/backdrop paths are ordered first while matching image-list metadata is retained; duplicate paths are removed. The current builder selects `w500` posters, `w1280` backdrops, and original-size logos when those sizes are available, falling back to `original` where supported. It does not download images.
+
+TMDB artwork assets are created with `reuse_policy: provider_terms`, attribution `TMDB`, and `display_status: pending_review`. They are not selected as signature artwork automatically. A separate release-readiness review must confirm attribution placement and applicable TMDB terms before changing their display status to approved.
