@@ -103,6 +103,23 @@ class TMDBTitleMatchingTests(unittest.TestCase):
         by_id = {item["id"]: item["media_type"] for item in results}
         self.assertEqual(by_id, {1: "movie", 2: "tv"})
 
+    def test_media_type_conflict_is_low_confidence(self):
+        result = score_tmdb_candidate(
+            {"title": "Example", "year": 1980, "media_type": "movie"},
+            {"id": 9, "name": "Example", "first_air_date": "1980-01-01", "media_type": "tv"},
+        )
+        self.assertEqual(result["confidence"], "low")
+        self.assertIn("media_type_conflict", result["evidence"])
+
+    def test_known_media_type_searches_only_that_endpoint(self):
+        requests = []
+        def fake_get(url, headers, timeout):
+            requests.append(url)
+            return {"results": []}
+        TMDBClient("token", http_get=fake_get).search_candidates("Example", media_type="movie")
+        self.assertEqual(len(requests), 1)
+        self.assertIn("/search/movie", requests[0])
+
     def test_candidate_output_is_sorted_by_score(self):
         candidates = [
             {"id": 2, "title": "The Thing", "release_date": "2011-01-01", "media_type": "movie"},
