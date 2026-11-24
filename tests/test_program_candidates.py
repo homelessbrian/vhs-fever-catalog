@@ -54,6 +54,13 @@ class ProgramCandidateTests(unittest.TestCase):
         ]
         self.assertEqual(build_candidates(records), [])
 
+    def test_rejects_mismatched_named_opening_and_closing(self):
+        item = self.record("wrong-tape", "A Cartoon's Life (2000 VHS)", [
+            {"name": "1. Opening to A Bug's Life 2000 VHS.mp4", "duration_seconds": 434, "format": "MPEG4"},
+            {"name": "Closing to A Bug's Life 2000 VHS.mp4", "duration_seconds": 297, "format": "MPEG4"},
+        ])
+        self.assertEqual(build_candidates([item]), [])
+
     def test_unknown_duration_makes_total_incomplete(self):
         records = [
             self.record("a", "Opening to Test Program", [{"name": "open.mp4", "duration_seconds": 45, "format": "MPEG4"}]),
