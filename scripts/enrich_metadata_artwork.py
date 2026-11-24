@@ -161,6 +161,9 @@ def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
                 "original_title": str(item.get("title") or "")}
     year = item.get("year")
     if not year:
+        prefix_year = re.match(r"^\\s*\\(((?:18|19|20)\\d{2})\\)", str(item.get("title") or ""))
+        year = prefix_year.group(1) if prefix_year else None
+    if not year:
         date = str(item.get("date") or "")
         match = re.search(r"\\b(18|19|20)\\d{2}\\b", date)
         year = match.group(0) if match else None
@@ -197,7 +200,14 @@ def enrich_record(item: dict[str, Any], token: str | None = None, do_tmdb: bool 
         "tmdb": {"status": "skipped_no_api_token", "review_status": "needs_review"},
     }
     label = (item.get("vhs_fever_classification") or {}).get("label")
-    eligible = label in {"movie_or_film", "cartoon_or_animation", "holiday_special"}
+    # Classification is intentionally conservative. For Archive movie records that
+    # land in other_or_review, allow title-based TMDB lookup unless the title itself
+    # signals a promo, trailer, TV recording, extra, or personal/compilation archive.
+    excluded_labels = {"promo_or_commercial", "trailer_or_clip", "tv_episode_or_recording",
+                       "artwork_or_packaging", "vhs_or_dvd_extra", "fan_made_vhs_compilation"}
+    plausible_archive_movie = (item.get("mediatype") == "movies" and label not in excluded_labels
+                               and tmdb_search_title(item)[0] is not None)
+    eligible = label in {"movie_or_film", "cartoon_or_animation", "holiday_special"} or plausible_archive_movie
     if do_tmdb and token and eligible:
         try:
             enrichment["tmdb"] = find_tmdb_match(item, token)
