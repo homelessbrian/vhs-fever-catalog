@@ -38,6 +38,11 @@ def frame_filter_decision(item: dict[str, Any], candidates: list[dict[str, Any]]
     description = str(item.get("description") or "")
     explicit_frames = bool(FRAME_TITLE_RE.search(title) or FRAME_TITLE_RE.search(description[:1200]))
     packaging_context = bool(PACKAGING_TITLE_RE.search(title))
+    numbered_indices = []
+    for candidate in candidates:
+        match = SEQUENTIAL_INDEX_RE.search(Path(str(candidate.get("file_name") or candidate.get("name") or "")).stem)
+        if match: numbered_indices.append(match.group(1) or match.group(2))
+    has_numbered_sequence = has_video and not packaging_context and len(set(numbered_indices)) >= 3
     safe, filtered = [], []
     for candidate in candidates:
         name = str(candidate.get("file_name") or candidate.get("name") or "")
@@ -46,7 +51,7 @@ def frame_filter_decision(item: dict[str, Any], candidates: list[dict[str, Any]]
             reason = "archive_thumbnail_derivative"
         elif has_video and explicit_frames:
             reason = "item_metadata_identifies_video_frames"
-        elif has_video and not packaging_context and FRAME_FILE_RE.search(Path(name).stem):
+        elif has_video and not packaging_context and (FRAME_NAME_RE.search(Path(name).stem) or (has_numbered_sequence and SEQUENTIAL_INDEX_RE.search(Path(name).stem))):
             reason = "numbered_video_frame_pattern"
         if reason:
             filtered.append({"file_name": name, "reason": reason})
