@@ -108,7 +108,7 @@ jobs:
               "classified_records": sum(1 for x in Path("data/vhsvault-scrape-poc-classified.jsonl").open() if x.strip()),
               "enriched_records": sum(1 for x in Path("data/vhsvault-scrape-poc-enriched.jsonl").open() if x.strip())
           }
-          Path("data/published/latest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
+          Path("data/published/latest.json").write_text(json.dumps(manifest, indent=2) + "\n")
           print(json.dumps(manifest, indent=2))
           PY
 
