@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/scrape-poc.yml'
       - 'scripts/discover_vhsvault.py'
+      - 'scripts/discover_vhsvault_candidates.py'
       - 'scripts/inspect_file_inventory.py'
   workflow_dispatch:
     inputs:
@@ -30,7 +31,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Discover a real VHS Vault metadata sample
+      - name: Discover popular VHS Vault movie candidates
         run: |
           mkdir -p data
           python scripts/discover_vhsvault.py \
@@ -94,6 +95,7 @@ jobs:
           name: vhs-fever-scrape-poc
           path: |
             data/vhsvault-scrape-poc.jsonl
+            data/vhsvault-scrape-poc.summary.json
             data/vhsvault-scrape-poc.summary.json
             data/vhsvault-scrape-poc-classified.jsonl
             data/vhsvault-scrape-poc-classified.summary.json
