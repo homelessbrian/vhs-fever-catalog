@@ -254,5 +254,24 @@ class RealArchiveItem(unittest.TestCase):
         self.assertEqual(sum(r["source_count"] for r in disney), 36)
 
 
+class ReviewerFeed(unittest.TestCase):
+    def test_feed_nests_movie_release_recording_file(self):
+        import tempfile
+        from catalog_model import build_reviewer_feed, summarize
+        m = model()
+        with tempfile.TemporaryDirectory() as d:
+            for name, rows in m.items():
+                Path(d, name.replace("_", "-") + ".jsonl").write_text(
+                    "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+            Path(d, "catalog-model.summary.json").write_text(json.dumps(summarize(m)))
+            feed = build_reviewer_feed(d)
+        bug = next(t for t in feed["titles"] if t["t"] == "A Bug's Life")
+        self.assertEqual([(e["media"], e["year"]) for e in bug["eds"]], [("VHS", "1999"), ("VHS", "2000")])
+        self.assertEqual(len(bug["eds"][0]["recs"]), 4)
+        files = sum(len(s["src"]) for t in feed["titles"] for e in t["eds"] for r in e["recs"] for s in r["segs"])
+        files += sum(len(s["src"]) for t in feed["titles"] for r in t["un"] for s in r["segs"])
+        self.assertEqual(files, sum(f["kind"] == "video" for f in m["archive_files"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,84 @@
+name: Build catalog model and review page
+
+# Builds the Movie -> Release -> Recording -> File catalog from the Archive
+# items already inventoried on catalog-data, adds TMDB suggestions, publishes
+# the result to the catalog-model-data branch, and adds catalog.html to the
+# Pages site. Existing feeds and pages are not changed.
+
+on:
+  push:
+    branches: [main, rebuild/data-model]
+    paths:
+      - 'scripts/catalog_model.py'
+      - 'scripts/match_titles_tmdb.py'
+      - 'reviewer/catalog.html'
+      - 'tests/test_catalog_model.py'
+      - 'tests/test_match_titles_tmdb.py'
+      - '.github/workflows/catalog-model.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vhs-fever-catalog-model
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Get the current Archive inventory list
+        run: |
+          mkdir -p work
+          curl -fsSL "https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/latest.jsonl" -o work/latest.jsonl
+
+      - name: Build catalog model (reads Archive metadata, keeps checksums)
+        run: |
+          python scripts/catalog_model.py \
+            --fetch-from-inventory work/latest.jsonl \
+            --cache-dir work/archive-cache \
+            --output-dir out
+
+      - name: Add TMDB suggestions (never confirmed automatically)
+        env:
+          TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+        run: python scripts/match_titles_tmdb.py --model-dir out
+
+      - name: Build reviewer feed
+        run: |
+          python scripts/catalog_model.py --feed-from out
+          { echo '## Catalog model'; echo '```'; cat out/catalog-model.summary.json out/tmdb.summary.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          touch out/.nojekyll
+
+      - name: Publish data to catalog-model-data
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: catalog-model-data
+          publish_dir: ./out
+          force_orphan: true
+          enable_jekyll: false
+          commit_message: "Catalog model from ${{ github.sha }}"
+
+      - name: Stage review page
+        run: mkdir -p site && cp reviewer/catalog.html site/catalog.html
+
+      - name: Add catalog.html to Pages (keeps existing pages)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./site
+          keep_files: true
+          enable_jekyll: false
+          commit_message: "Add catalog review page from ${{ github.sha }}"

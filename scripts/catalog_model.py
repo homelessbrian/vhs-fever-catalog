@@ -746,6 +746,65 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
     return items
 
 
+def build_reviewer_feed(model_dir: str) -> dict[str, Any]:
+    """Nested, compact Title -> Edition -> Recording -> Source feed for the reviewer."""
+    from datetime import datetime, timezone
+    from pathlib import Path
+    d = Path(model_dir)
+    read = lambda n: [json.loads(x) for x in (d / f"{n}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    titles, editions, recs, art = read("titles"), read("editions"), read("recordings"), read("artwork")
+    rec_by = {r["recording_id"]: r for r in recs}
+    art_by = {a["artwork_id"]: a for a in art}
+
+    def rec_out(r: dict[str, Any]) -> dict[str, Any]:
+        it = r["interpretation"]
+        return {
+            "id": r["recording_id"], "name": r["display_name"], "cat": r["catalog_category"],
+            "why": r["category_reasons"], "flags": r["flags"], "dur": r["duration_seconds"],
+            "parts": r["part_count"], "items": r["archive_identifiers"], "also": r["also_named"],
+            "ver": it.get("version_label"), "notes": it.get("edition_notes"),
+            "ident": r["identity_basis"],
+            "art": [{"url": art_by[a]["image_url"], "role": art_by[a]["role_guess"],
+                     "name": art_by[a]["original_name"]} for a in r["artwork_ids"] if a in art_by],
+            "segs": [{"o": s["order"], "dur": s["duration_seconds"], "src": [
+                {"n": x["original_name"], "item": x["archive_identifier"], "role": x["role"],
+                 "fmt": x["format"], "url": x["playback_url"], "play": x["browser_playable"],
+                 "dur": x["duration_seconds"]} for x in s["sources"]]} for s in r["segments"]],
+        }
+
+    ed_by = {e["edition_suggestion_id"]: e for e in editions}
+    out = []
+    for t in titles:
+        eds = []
+        for eid in t["edition_suggestion_ids"]:
+            e = ed_by[eid]
+            eds.append({"id": eid, "media": e["media_format"], "year": e["release_year"],
+                        "notes": e["edition_notes_seen"], "flags": e.get("flags", []),
+                        "recs": [rec_out(rec_by[x]) for x in e["recording_ids"]]})
+        eds.sort(key=lambda e: (e["media"] != "VHS", e["year"]))
+        un = [rec_out(rec_by[x]) for x in t["unassigned_recording_ids"]]
+        allrecs = [r for e in eds for r in e["recs"]] + un
+        tm = t.get("tmdb") or {}
+        out.append({
+            "id": t["title_suggestion_id"], "t": t["display_title"], "series": t.get("series"),
+            "hint": t.get("content_hint"), "similar": t.get("possibly_same_as", []),
+            "years": t.get("work_years_seen", []),
+            "cats": sorted({r["cat"] for r in allrecs}),
+            "nrec": len(allrecs), "nsrc": sum(len(s["src"]) for r in allrecs for s in r["segs"]),
+            "tmdb": {"status": tm.get("status"), "q": tm.get("search_title"),
+                     "ceiling": tm.get("latest_allowed_year"),
+                     "c": [{k: c.get(k) for k in ("tmdb_id", "media_type", "title", "release_date",
+                                                  "similarity", "year_consistent", "poster",
+                                                  "overview", "tmdb_url")}
+                           for c in tm.get("candidates") or []]},
+            "eds": eds, "un": un,
+        })
+    out.sort(key=lambda t: t["t"].casefold())
+    summary = json.loads((d / "catalog-model.summary.json").read_text())
+    return {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "summary": summary, "titles": out}
+
+
 def _read_jsonl(path: str) -> list[dict[str, Any]]:
     with open(path, encoding="utf-8") as fh:
         return [json.loads(line) for line in fh if line.strip()]
@@ -756,10 +815,20 @@ def main() -> None:
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--inventory", help="legacy latest.jsonl with file inventories")
     src.add_argument("--archive-json", help="JSON file: {items:[{identifier,title,files:[...]}]}")
+    src.add_argument("--feed-from", help="existing model dir: write reviewer-feed.json there")
     src.add_argument("--fetch-from-inventory", help="latest.jsonl; re-read those items live from the Archive (with checksums)")
     ap.add_argument("--cache-dir", help="where to cache Archive metadata responses")
-    ap.add_argument("--output-dir", required=True)
+    ap.add_argument("--output-dir")
     args = ap.parse_args()
+    if args.feed_from:
+        from pathlib import Path
+        feed = build_reviewer_feed(args.feed_from)
+        (Path(args.feed_from) / "reviewer-feed.json").write_text(
+            json.dumps(feed, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        print(f"reviewer feed: {len(feed['titles'])} titles")
+        return
+    if not args.output_dir:
+        ap.error("--output-dir is required")
     if args.inventory:
         items = items_from_inventory(_read_jsonl(args.inventory))
     elif args.fetch_from_inventory:
