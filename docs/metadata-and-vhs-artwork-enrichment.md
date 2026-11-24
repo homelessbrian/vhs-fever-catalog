@@ -106,6 +106,18 @@ The example URLs and IDs are placeholders, not real assets.
 
 Each asset should preserve its provider ID, original URL, dimensions, language, region/country, edition/release identity, attribution, retrieval time, and reuse policy where known. Keep the original spread as well as panel URLs when the source provides both. Do not fabricate a back or spine by stretching/cropping a front cover and label it as a genuine scan.
 
+### Edition provenance fields
+
+Each VHS edition may retain these source-provenance fields in addition to its edition details:
+
+- `source_id` — stable edition/record identifier assigned by the provider; keep it distinct from VHS FEVER's own `edition_id`.
+- `source_url` — canonical provider record/page URL (not an image URL).
+- `retrieved_at` — ISO 8601 timestamp for when the source record was retrieved.
+- `attribution` — provider or rights-holder credit supplied with the record.
+- `evidence` — concise, factual observations from the source supporting fields such as release year, distributor, region, or authenticity.
+
+These fields are optional when a provider does not supply the information. Preserve unknowns as unknown; do not invent a release year, distributor, region, or official status. The artwork asset's own `source_id`, `source_url`, and `retrieved_at` describe that specific image reference and should not be substituted for edition-level provenance.
+
 ## Artwork hosting decision
 
 VHS FEVER will not build or maintain its own artwork file store. For third-party sleeve scans, store only the provider's public image URL (or documented image endpoint reference), provider and sleeve identifiers, panel type, edition association, dimensions and attribution/provenance metadata when available. The app should load the image directly from the source URL at display time.
