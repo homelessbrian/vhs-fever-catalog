@@ -18,8 +18,8 @@ import re
 
 def normalize_title(value: Any) -> str:
     text = str(value or "").casefold()
-    text = re.sub(r"\\([^)]*\\)|\\[[^]]*\\]", " ", text)
-    text = re.sub(r"\\b(19|20)\\d{2}\\b", " ", text)
+    text = re.sub(r"\([^)]*\)|\[[^]]*\]", " ", text)
+    text = re.sub(r"\b(19|20)\d{2}\b", " ", text)
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return " ".join(text.split())
 
