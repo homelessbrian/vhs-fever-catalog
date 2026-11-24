@@ -109,6 +109,50 @@ class ProgramCatalogTests(unittest.TestCase):
         self.assertIsNone(entry["total_known_duration_seconds"])
         self.assertTrue(entry["review_required"])
 
+    def test_tmdb_match_is_attached_as_unconfirmed_candidate(self):
+        item = self.item("movie", "Movie", [{"name": "movie.mp4", "duration_seconds": 1200}])
+        item["vhs_fever_metadata_artwork"] = {
+            "tmdb": {
+                "tmdb_id": 123,
+                "title": "The Movie",
+                "release_date": "1995-01-01",
+                "match_method": "high_similarity_title_search",
+                "tmdb_poster": "https://image.tmdb.org/t/p/w500/poster.jpg",
+                "tmdb_backdrop": "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
+                "review_status": "needs_review",
+            }
+        }
+        catalog, _ = build_catalog([item])
+        entry = next(x for x in catalog if x["entry_type"] == "standalone")
+        self.assertIsNone(entry["matched_title_id"])
+        self.assertEqual(entry["title_match_suggestion"]["status"], "candidate")
+        self.assertEqual(entry["title_match_suggestion"]["provider_id"], "123")
+        self.assertEqual(entry["title_match_suggestion"]["review_status"], "needs_review")
+
+    def test_ambiguous_tmdb_results_are_carried_without_selecting_one(self):
+        item = self.item("movie", "Movie", [{"name": "movie.mp4", "duration_seconds": 1200}])
+        item["vhs_fever_metadata_artwork"] = {
+            "tmdb": {
+                "status": "ambiguous_title_match",
+                "candidate_results": [
+                    {"tmdb_id": 1, "title": "Movie One", "similarity": 0.91},
+                    {"tmdb_id": 2, "title": "Movie Two", "similarity": 0.89},
+                ],
+            }
+        }
+        catalog, _ = build_catalog([item])
+        entry = next(x for x in catalog if x["entry_type"] == "standalone")
+        self.assertIsNone(entry["matched_title_id"])
+        self.assertEqual(entry["title_match_suggestion"]["status"], "candidate")
+        self.assertEqual(len(entry["title_match_suggestion"]["candidates"]), 2)
+
+    def test_missing_tmdb_enrichment_is_explicitly_unmatched(self):
+        item = self.item("movie", "Movie", [{"name": "movie.mp4", "duration_seconds": 1200}])
+        catalog, _ = build_catalog([item])
+        entry = next(x for x in catalog if x["entry_type"] == "standalone")
+        self.assertEqual(entry["title_match_suggestion"]["status"], "unmatched")
+        self.assertEqual(entry["title_match_suggestion"]["reason"], "not_enriched")
+
 
 if __name__ == "__main__":
     unittest.main()
