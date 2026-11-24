@@ -237,6 +237,40 @@ class EnrichmentValidationTests(unittest.TestCase):
         self.assertTrue(any(".kind" in error for error in errors))
         self.assertTrue(any("display_status" in error for error in errors))
 
+    def test_accepts_a_reviewable_tmdb_candidate(self):
+        record = valid_record()
+        record["identity_match"]["status"] = "candidate"
+        record["identity_match"]["confidence"] = "medium"
+        record["identity_match"]["candidates"] = [{
+            "provider": "tmdb",
+            "provider_id": "67890",
+            "media_type": "movie",
+            "title": "Possible Film",
+            "year": 1992,
+            "confidence": "medium",
+            "evidence": ["title_similarity"],
+        }]
+        self.assertEqual(validate_enrichment_record(record), [])
+
+    def test_unmatched_identity_cannot_store_a_selected_provider_id(self):
+        record = valid_record()
+        record["identity_match"]["provider"] = "tmdb"
+        record["identity_match"]["provider_id"] = "12345"
+        self.assertTrue(any("unmatched" in error for error in validate_enrichment_record(record)))
+
+    def test_tmdb_artwork_requires_attribution(self):
+        record = confirmed_record_with_regional_editions()
+        record["artwork"]["assets"][2].pop("attribution")
+        self.assertTrue(any("attribution" in error for error in validate_enrichment_record(record)))
+
+    def test_versioned_schema_file_is_valid_json(self):
+        import json
+        from pathlib import Path
+        schema_path = Path(__file__).resolve().parents[1] / "schemas" / "enrichment-record.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        self.assertEqual(schema["properties"]["schema_version"]["const"], 1)
+        self.assertIn("identity_match", schema["properties"])
+
 
 if __name__ == "__main__":
     unittest.main()
