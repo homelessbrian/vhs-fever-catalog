@@ -44,24 +44,30 @@ vhs_fever_file_inventory:row.vhs_fever_file_inventory||old.vhs_fever_file_invent
 vhs_fever_analysis:row.vhs_fever_analysis||old.vhs_fever_analysis,
 vhs_fever_metadata_artwork:row.vhs_fever_metadata_artwork||old.vhs_fever_metadata_artwork})}return [...map.values()]}
 function parseJSONL(raw){return raw.split(/\r?\n/).filter(x=>x.trim()).map((line,i)=>{try{return JSON.parse(line)}catch(e){throw Error("Published data line "+(i+1)+": "+e.message)}})}
-async function loadPublishedData(){const base="https://cdn.jsdelivr.net/gh/homelessbrian/vhs-fever-catalog@catalog-data/";try{
- $("loadnote").textContent="Checking the latest catalog version…";
- const manifestResponse=await fetch(base+"latest.json?"+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(20000)});
- if(!manifestResponse.ok)throw Error("Catalog manifest request failed (HTTP "+manifestResponse.status+").");
- const manifest=await manifestResponse.json();
- $("loadnote").textContent="Downloading catalog records…";
- const [cr,er]=await Promise.all([
-  fetch(base+"latest-classified.jsonl?"+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(60000)}),
-  fetch(base+"latest-enriched.jsonl?"+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(60000)})
- ]);
- if(!cr.ok||!er.ok)throw Error("Catalog data request failed (HTTP "+[cr.status,er.status].join("/")+").");
- $("loadnote").textContent="Reading catalog records…";
- const [classified,enriched]=await Promise.all([cr.text(),er.text()]);
- records=mergeRows([...parseJSONL(classified),...parseJSONL(enriched)]);
- selected=null;populateFilters();render();
- const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"unknown time";
- $("loadnote").textContent="✓ Automatically loaded latest catalog · "+records.length+" unique records ("+manifest.classified_records+" classified, "+manifest.enriched_records+" enriched) · Updated "+date+".";
- }catch(e){console.error("VHS FEVER catalog load failed",e);$("loadnote").textContent="Could not load catalog data: "+(e.name==="TimeoutError"?"request timed out":e.message)+". Refresh to retry.";$("list").innerHTML='<div class="empty">Catalog data could not be loaded. Check your connection and refresh.</div>';}}
+async function loadPublishedData(){
+ const note=$("loadnote");
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),60000);
+ try{
+  note.textContent="Connecting to the catalog data feed…";
+  const base="https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/";
+  note.textContent="Downloading the latest catalog records (this may take a moment on mobile)…";
+  const response=await fetch(base+"latest.jsonl?"+Date.now(),{cache:"no-store",signal:controller.signal});
+  if(!response.ok)throw Error("Catalog feed returned HTTP "+response.status+".");
+  const raw=await response.text();
+  if(!raw.trim())throw Error("Catalog feed was empty.");
+  note.textContent="Parsing catalog records…";
+  records=mergeRows(parseJSONL(raw));
+  const mr=await fetch(base+"latest.json?"+Date.now(),{cache:"no-store",signal:controller.signal});
+  if(!mr.ok)throw Error("Catalog manifest returned HTTP "+mr.status+".");
+  const manifest=await mr.json();
+  selected=null;populateFilters();render();
+  const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"unknown time";
+  note.textContent="✓ Automatically loaded latest scrape · "+records.length+" unique records · Updated "+date+".";
+ }catch(e){
+  note.textContent=(e.name==="AbortError"?"Catalog download timed out after 60 seconds. ":"Could not load catalog data. ")+e.message+" Check your connection and reload; no file upload is required.";
+ }finally{clearTimeout(timeout)}
+}
 async function loadFiles(fileList){let rows=[],names=[];for(const file of fileList){const raw=await file.text();let count=0;for(const [i,line] of raw.split(/\r?\n/).entries()){if(!line.trim())continue;try{rows.push(JSON.parse(line));count++}catch(e){throw Error(file.name+" line "+(i+1)+": "+e.message)}}names.push(file.name+" ("+count+")")}records=mergeRows(rows);$("loadnote").textContent="Loaded "+names.join(" · ")+" — "+records.length+" unique Archive records. Load order is merged automatically; enriched records take precedence.";selected=null;populateFilters();render()}
 function tmdb(r){return r.vhs_fever_metadata_artwork?.tmdb||{}}
 function status(r){const t=tmdb(r);return t.tmdb_id?"matched":t.status||"unknown"}
