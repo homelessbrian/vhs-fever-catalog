@@ -110,7 +110,7 @@ jobs:
               "classified_records": sum(1 for x in Path("reviewer/data/latest-classified.jsonl").open() if x.strip()),
               "enriched_records": sum(1 for x in Path("reviewer/data/latest-enriched.jsonl").open() if x.strip())
           }
-          Path("reviewer/data/latest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
+          Path("reviewer/data/latest.json").write_text(json.dumps(manifest, indent=2) + "\n")
           print(json.dumps(manifest, indent=2))
           PY
 
