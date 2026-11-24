@@ -52,15 +52,15 @@ def filename_role(filename: str) -> str | None:
     # Only leading role labels count; "Opening Credits" inside an episode title
     # is not sufficient evidence that the file is a separate opening segment.
     stem = Path(filename).stem.replace("_", " ").replace("-", " ").strip()
-    stem = re.sub(r"^\\d+[ ._-]*", "", stem)
+    stem = re.sub(r"^\d+[ ._-]*", "", stem)
     anchored = [
-        ("opening", r"^(?:opening|intro(?:duction)?)(?:\\b|\\s)"),
-        ("closing", r"^(?:closing|outro|end credits)(?:\\b|\\s)"),
-        ("bonus_cartoon", r"^(?:bonus cartoon|cartoon bonus)(?:\\b|\\s)"),
-        ("bonus", r"^(?:bonus|extra|special feature)(?:\\b|\\s)"),
-        ("trailer", r"^(?:trailer|teaser|preview)(?:\\b|\\s)"),
-        ("intermission", r"^intermission(?:\\b|\\s)"),
-        ("credits", r"^credits(?:\\b|\\s)"),
+        ("opening", r"^(?:opening|intro(?:duction)?)(?:\b|\s)"),
+        ("closing", r"^(?:closing|outro|end credits)(?:\b|\s)"),
+        ("bonus_cartoon", r"^(?:bonus cartoon|cartoon bonus)(?:\b|\s)"),
+        ("bonus", r"^(?:bonus|extra|special feature)(?:\b|\s)"),
+        ("trailer", r"^(?:trailer|teaser|preview)(?:\b|\s)"),
+        ("intermission", r"^intermission(?:\b|\s)"),
+        ("credits", r"^credits(?:\b|\s)"),
     ]
     for role, pattern in anchored:
         if re.search(pattern, stem, re.I):
