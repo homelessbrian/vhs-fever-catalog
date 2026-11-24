@@ -464,7 +464,8 @@
         },
         "source_url": {
           "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "description": "Public source image URL or documented provider image endpoint reference. The image itself is never stored by VHS FEVER."
         },
         "region": {
           "type": [
@@ -534,6 +535,14 @@
             "pending_review",
             "blocked"
           ]
+        },
+        "source_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "Stable identifier assigned by the source provider, when available."
         }
       },
       "allOf": [
@@ -557,7 +566,9 @@
             }
           }
         }
-      ]
+      ],
+      "description": "URL/reference-only artwork metadata. VHS FEVER must not store image bytes, local file paths, mirrors, proxies, or generated thumbnails.",
+      "additionalProperties": false
     },
     "folds": {
       "type": "object",
