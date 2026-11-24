@@ -98,6 +98,7 @@ class TMDBMetadataArtworkTests(unittest.TestCase):
         self.assertEqual({a["kind"] for a in assets}, {"tmdb_poster", "tmdb_backdrop", "tmdb_logo"})
         by_kind = {a["kind"]: a for a in assets}
         self.assertEqual(by_kind["tmdb_poster"]["source_url"], "https://image.tmdb.org/t/p/w500/poster.jpg")
+        self.assertEqual(by_kind["tmdb_poster"]["width"], 1000)
         self.assertEqual(by_kind["tmdb_backdrop"]["source_url"], "https://image.tmdb.org/t/p/w1280/backdrop.jpg")
         self.assertEqual(by_kind["tmdb_logo"]["source_url"], "https://image.tmdb.org/t/p/original/logo.svg")
 
@@ -117,11 +118,28 @@ class TMDBMetadataArtworkTests(unittest.TestCase):
     def test_missing_image_configuration_returns_no_artwork(self):
         self.assertEqual(build_tmdb_artwork_assets(movie_details(), {}), [])
 
+    def test_configuration_is_cached_per_client(self):
+        calls = []
+        def fake_get(url, headers, timeout):
+            calls.append(url)
+            return image_configuration()
+        client = TMDBClient("token", http_get=fake_get)
+        self.assertEqual(client.get_configuration(), image_configuration())
+        self.assertEqual(client.get_configuration(), image_configuration())
+        self.assertEqual(len(calls), 1)
+
+    def test_rejects_unsupported_display_status(self):
+        with self.assertRaises(ValueError):
+            build_tmdb_artwork_assets(movie_details(), image_configuration(), display_status="approved_by_default")
+
     def test_image_urls_reject_untrusted_or_invalid_paths(self):
         details = movie_details()
         details["poster_path"] = "https://evil.example/poster.jpg"
         assets = build_tmdb_artwork_assets(details, image_configuration())
         self.assertFalse(any(a["source_url"].startswith("https://evil.example") for a in assets))
+        details["poster_path"] = "/../evil.jpg"
+        assets = build_tmdb_artwork_assets(details, image_configuration())
+        self.assertFalse(any("/../" in a["source_url"] for a in assets))
 
 
 if __name__ == "__main__":
