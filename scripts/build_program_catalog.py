@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build a complete reviewable program catalog from enriched inventory JSONL.
 
-Every discovered video file becomes an independently playable one-segment entry.
+Every unique source video becomes an independently playable one-segment entry.
+Known Archive derivatives are omitted when their referenced original is present.
 Conservative sequential assemblies are added as additional suggested entries.
 No source records are changed and no media payloads are downloaded.
 """
@@ -25,10 +26,23 @@ def stable_id(value: str) -> str:
 
 def video_files(item: dict[str, Any]) -> list[dict[str, Any]]:
     inventory = item.get("vhs_fever_file_inventory") or {}
-    files = inventory.get("video_files") or []
-    # The inventory scanner has already filtered to video candidates. Keep every
-    # listed file here; the catalog builder must not silently discard uncertain formats.
-    return [f for f in files if str(f.get("name") or "").strip()]
+    files = [
+        f for f in (inventory.get("video_files") or [])
+        if str(f.get("name") or "").strip()
+    ]
+    # Internet Archive often lists both an uploaded original and an .ia.mp4
+    # streaming derivative. Keep the original as the canonical standalone
+    # source when the derivative explicitly references that original.
+    # If the original is absent, retain the derivative as a usable fallback.
+    available_names = {str(f.get("name") or "").strip() for f in files}
+    return [
+        file for file in files
+        if not (
+            file.get("origin_hint") == "derivative"
+            and str(file.get("original_file_reference") or "").strip()
+            in available_names
+        )
+    ]
 
 
 def build_catalog(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -150,17 +164,24 @@ def main() -> None:
     catalog, review = build_catalog(records)
     write_jsonl(args.output, catalog)
     write_jsonl(args.review_output, review)
+    raw_video_file_count = sum(
+        len((item.get("vhs_fever_file_inventory") or {}).get("video_files") or [])
+        for item in records
+        if (item.get("vhs_fever_file_inventory") or {}).get("inventory_status") == "ok"
+    )
+    standalone_count = sum(x["entry_type"] == "standalone" for x in catalog)
     summary = {
         "source_records": len(records),
         "catalog_entries": len(catalog),
-        "standalone_entries": sum(x["entry_type"] == "standalone" for x in catalog),
+        "standalone_entries": standalone_count,
         "assembled_suggestions": sum(x["entry_type"] == "assembled_candidate" for x in catalog),
         "review_queue_entries": len(review),
-        "all_video_files_preserved_as_standalone_entries": True,
+        "redundant_derivative_files_suppressed": raw_video_file_count - standalone_count,
+        "all_unique_video_sources_preserved_as_standalone_entries": True,
         "source_records_modified": False,
         "media_payloads_downloaded": False,
         "rights_determined": False,
-        "note": "Standalone entries represent exact inventoried files; assemblies remain review-only suggestions. Playback access and rights must be evaluated separately.",
+        "note": "Standalone entries represent unique source files; known derivatives are suppressed only when their referenced original is present. Assemblies remain review-only suggestions. Playback access and rights must be evaluated separately.",
     }
     args.output.with_suffix(".summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
