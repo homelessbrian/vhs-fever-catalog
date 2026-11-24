@@ -61,6 +61,14 @@ class ProgramCandidateTests(unittest.TestCase):
         ])
         self.assertEqual(build_candidates([item]), [])
 
+    def test_rejects_unrelated_feature_inside_opening_archive(self):
+        item = self.record("mixed-tape", "Opening to An Extremely Goofy Movie 2000 VHS", [
+            {"name": "1. Opening to An Extremely Goofy Movie 2000 VHS.mp4", "duration_seconds": 334, "format": "MPEG4"},
+            {"name": "An Extremely Scrooge Mcduck Movie part 01 - Opening_The BBQ Party.mp4", "duration_seconds": 334, "format": "MPEG4"},
+            {"name": "Closing to An Extremely Goofy Movie 2000 VHS.mp4", "duration_seconds": 248, "format": "MPEG4"},
+        ])
+        self.assertEqual(build_candidates([item]), [])
+
     def test_unknown_duration_makes_total_incomplete(self):
         records = [
             self.record("a", "Opening to Test Program", [{"name": "open.mp4", "duration_seconds": 45, "format": "MPEG4"}]),
