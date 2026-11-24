@@ -110,6 +110,26 @@ class FilenameInterpretation(unittest.TestCase):
         self.assertEqual(i["media_format"], "TAPE_UNSPECIFIED")
 
 
+class Categories(unittest.TestCase):
+    def rec(self, name):
+        return build([{"identifier": "x", "title": "x", "files": [
+            {"name": name, "source": "original", "format": "MPEG4", "md5": "m" + name}]}])["recordings"][0]
+
+    def test_categories(self):
+        self.assertEqual(self.rec("Peter Pan (1998 VHS).mp4")["catalog_category"], "vhs_release")
+        self.assertEqual(self.rec("Opening to Toy Story 1996 VHS.mp4")["catalog_category"], "vhs_opening_or_previews")
+        r = self.rec("Blue's Spooky Adventures (Fanmade VHS)_2.mp4")
+        self.assertEqual(r["catalog_category"], "manual_review")
+        self.assertIn("fan-made, not an official release", r["category_reasons"])
+        r = self.rec("Gullah.Gullah.Island.S01E15.The.School.Show.CBS.WEB-DL.AAC2.0.x264.mp4")
+        self.assertEqual(r["catalog_category"], "manual_review")
+        self.assertIn("web download, not a tape", r["category_reasons"])
+        self.assertEqual(self.rec("Toy Story (1995).mp4")["catalog_category"], "manual_review")
+        r = self.rec("A Bug's Life (199 VHS) (Version 2).mp4")
+        self.assertEqual(r["catalog_category"], "manual_review")
+        self.assertIn("release year in filename is malformed", r["category_reasons"])
+
+
 class RealArchiveItem(unittest.TestCase):
     def setUp(self):
         self.m = model()
@@ -214,6 +234,17 @@ class RealArchiveItem(unittest.TestCase):
         self.assertEqual(f["file_id"], archive_file_id(f["archive_identifier"], f["original_name"]))
         self.assertEqual(len(self.m["legacy_program_map"]),
                          sum(x["kind"] == "video" for x in self.m["archive_files"]))
+
+    def test_non_vhs_items_go_to_manual_review_not_removed(self):
+        cat = {r["display_name"]: r["catalog_category"] for r in self.m["recordings"]}
+        self.assertEqual(cat["A Bug's Life (2000 VHS).mp4"], "vhs_release")
+        self.assertEqual(cat["101 Dalmatians (2015 DVD).mp4"], "other_media_release")
+        self.assertEqual(cat["(1954) Godzilla.mp4"], "manual_review")
+        mickey = [r for r in self.m["recordings"] if r["display_name"].startswith("Mickeys")][0]
+        self.assertEqual(mickey["catalog_category"], "manual_review")
+        self.assertIn("tape format not stated in filename", mickey["category_reasons"])
+        # every recording has a category; none are dropped
+        self.assertTrue(all(r["catalog_category"] for r in self.m["recordings"]))
 
     def test_proof_case_counts(self):
         disney = [r for r in self.m["recordings"] if DISNEY in r["archive_identifiers"]]

@@ -29,7 +29,7 @@ import json
 import re
 import unicodedata
 import urllib.parse
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import PurePosixPath
 from typing import Any, Iterable
 
@@ -598,6 +598,9 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 titles[a].setdefault("possibly_same_as", []).append(titles[b]["title_suggestion_id"])
                 titles[b].setdefault("possibly_same_as", []).append(titles[a]["title_suggestion_id"])
 
+    for rec in recordings:
+        rec["catalog_category"], rec["category_reasons"] = categorize(rec)
+
     # Artwork -> edition via recording.
     piece_to_rec = {pk: r for r in recordings for pk in r["piece_keys"]}
     ed_by_id = {e["edition_suggestion_id"]: e for e in editions.values()}
@@ -623,6 +626,36 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         "artwork": artwork,
         "legacy_program_map": legacy_map,
     }
+
+
+NOT_A_RELEASE_FLAGS = {
+    "fan_made_not_official_release": "fan-made, not an official release",
+    "web_download_not_tape": "web download, not a tape",
+    "dvd_video_ts_file": "raw DVD folder file",
+    "tape_format_not_stated": "tape format not stated in filename",
+    "release_year_malformed": "release year in filename is malformed",
+    "no_usable_title": "filename has no usable title",
+}
+
+
+def categorize(rec: dict[str, Any]) -> tuple[str, list[str]]:
+    """Which shelf a recording belongs on. Nothing is removed; anything that is
+    not clearly a VHS (or other physical-media) release goes to manual review."""
+    it = rec["interpretation"]
+    reasons = [label for flag, label in NOT_A_RELEASE_FLAGS.items() if flag in rec["flags"]]
+    if it.get("content_hint") == "tv_episode":
+        reasons.append("TV episode, not a home-video release")
+    if it.get("content_hint") == "tape_opening_or_previews" and not reasons and it["media_format"] == "VHS":
+        return "vhs_opening_or_previews", []
+    if not it["media_format"]:
+        reasons.append("no VHS/DVD format in filename")
+    elif not it["release_year"]:
+        reasons.append("no release year in filename")
+    if reasons:
+        return "manual_review", sorted(set(reasons))
+    if it["media_format"] == "VHS":
+        return "vhs_release", []
+    return "other_media_release", [f"{it['media_format']} release, not VHS"]
 
 
 def _recording(pieces: list[dict[str, Any]], it: dict[str, Any]) -> dict[str, Any]:
@@ -663,6 +696,7 @@ def summarize(model: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
         "video_files": sum(f["kind"] == "video" for f in model["archive_files"]),
         "recordings": len(recs),
         "recordings_without_edition": sum(r.get("edition_suggestion_id") is None for r in recs),
+        "recordings_by_category": dict(sorted(Counter(r["catalog_category"] for r in recs).items())),
         "multipart_recordings": sum(r["part_count"] > 1 for r in recs),
         "edition_suggestions": len(model["editions"]),
         "vhs_edition_suggestions": sum(e["is_vhs"] for e in model["editions"]),
