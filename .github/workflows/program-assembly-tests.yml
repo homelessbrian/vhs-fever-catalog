@@ -20,6 +20,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile catalog scripts
-        run: python -m py_compile scripts/build_program_candidates.py scripts/build_program_catalog.py scripts/inspect_file_inventory.py scripts/validate_program_manifests.py scripts/tmdb_enrichment.py
+        run: python -m py_compile scripts/build_program_candidates.py scripts/build_program_catalog.py scripts/inspect_file_inventory.py scripts/validate_program_manifests.py scripts/tmdb_enrichment.py scripts/enrich_program_catalog.py
       - name: Run unit tests
         run: python -m unittest discover -s tests -p 'test_*.py' -v
