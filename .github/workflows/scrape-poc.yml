@@ -96,8 +96,7 @@ jobs:
       - name: Prepare latest external catalog data
         run: |
           mkdir -p data/published
-          cp data/vhsvault-scrape-poc-classified.jsonl data/published/latest-classified.jsonl
-          cp data/vhsvault-scrape-poc-enriched.jsonl data/published/latest-enriched.jsonl
+          cat data/vhsvault-scrape-poc-classified.jsonl data/vhsvault-scrape-poc-enriched.jsonl > data/published/latest.jsonl
           python - <<'PY'
           import json, os
           from datetime import datetime, timezone
