@@ -17,9 +17,14 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   scrape-poc:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -87,6 +92,39 @@ jobs:
               if count == 0:
                   raise SystemExit(f"{name}: no records were produced")
           PY
+
+
+      - name: Prepare latest data for the reviewer
+        run: |
+          mkdir -p reviewer/data
+          cp data/vhsvault-scrape-poc-classified.jsonl reviewer/data/latest-classified.jsonl
+          cp data/vhsvault-scrape-poc-enriched.jsonl reviewer/data/latest-enriched.jsonl
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          manifest = {
+              "updated_at": datetime.now(timezone.utc).isoformat(),
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "commit": os.environ["GITHUB_SHA"],
+              "classified_records": sum(1 for x in Path("reviewer/data/latest-classified.jsonl").open() if x.strip()),
+              "enriched_records": sum(1 for x in Path("reviewer/data/latest-enriched.jsonl").open() if x.strip())
+          }
+          Path("reviewer/data/latest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload reviewer site with latest data
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: reviewer
+
+      - name: Deploy reviewer site and latest data
+        id: deployment
+        uses: actions/deploy-pages@v4
 
       - name: Upload scrape proof-of-concept results
         uses: actions/upload-artifact@v4
