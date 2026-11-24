@@ -10,6 +10,7 @@ on:
       - 'scripts/inspect_file_inventory.py'
       - 'scripts/build_program_catalog.py'
       - 'scripts/enrich_program_tmdb.py'
+      - 'scripts/build_tmdb_audit.py'
       - 'scripts/build_program_candidates.py'
       - 'scripts/build_title_groups.py'
       - 'scripts/build_final_catalog.py'
@@ -85,6 +86,12 @@ jobs:
           python scripts/enrich_program_tmdb.py \
             --input data/vhsvault-program-catalog.jsonl \
             --output data/vhsvault-program-catalog-matched.jsonl
+
+      - name: Build compact TMDB match audit
+        run: |
+          python scripts/build_tmdb_audit.py \\
+            --input data/vhsvault-program-catalog-matched.jsonl \\
+            --output data/vhsvault-tmdb-match-audit.json
 
       - name: Suggest alternate-source title groups (review only)
         run: |
@@ -180,6 +187,8 @@ jobs:
             data/vhsvault-scrape-poc-enriched.summary.json
             data/vhsvault-program-catalog.jsonl
             data/vhsvault-program-catalog.summary.json
+            data/vhsvault-program-catalog-matched.jsonl
+            data/vhsvault-tmdb-match-audit.json
             data/vhsvault-program-review-queue.jsonl
             data/vhsvault-title-groups.jsonl
           if-no-files-found: error
