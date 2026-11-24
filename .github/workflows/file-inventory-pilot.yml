@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       sample_size:
-        description: "Number of items to inspect (pilot limit 250)"
+        description: "Number of items to inspect (pilot limit 500)"
         required: true
         default: "120"
 
