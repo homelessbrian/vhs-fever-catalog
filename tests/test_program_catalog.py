@@ -53,6 +53,40 @@ class ProgramCatalogTests(unittest.TestCase):
         catalog, _ = build_catalog([item])
         self.assertEqual(sum(x["entry_type"] == "standalone" for x in catalog), 1)
 
+    def test_derivative_is_not_listed_when_its_original_is_present(self):
+        item = self.item("movie", "Movie", [
+            {
+                "name": "Movie.ia.mp4",
+                "duration_seconds": 1200,
+                "origin_hint": "derivative",
+                "original_file_reference": "Movie.mp4",
+            },
+            {
+                "name": "Movie.mp4",
+                "duration_seconds": 1200,
+                "origin_hint": "original",
+                "original_file_reference": None,
+            },
+        ])
+        catalog, _ = build_catalog([item])
+        standalone = [x for x in catalog if x["entry_type"] == "standalone"]
+        self.assertEqual(len(standalone), 1)
+        self.assertEqual(standalone[0]["segments"][0]["file_name"], "Movie.mp4")
+
+    def test_derivative_is_retained_when_original_is_missing(self):
+        item = self.item("movie", "Movie", [
+            {
+                "name": "Movie.ia.mp4",
+                "duration_seconds": 1200,
+                "origin_hint": "derivative",
+                "original_file_reference": "Movie.mp4",
+            },
+        ])
+        catalog, _ = build_catalog([item])
+        standalone = [x for x in catalog if x["entry_type"] == "standalone"]
+        self.assertEqual(len(standalone), 1)
+        self.assertEqual(standalone[0]["segments"][0]["file_name"], "Movie.ia.mp4")
+
     def test_missing_video_and_restricted_items_enter_review_queue(self):
         records = [
             self.item("none", "No Video", []),
