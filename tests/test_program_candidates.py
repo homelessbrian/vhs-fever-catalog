@@ -72,6 +72,7 @@ class ProgramCandidateTests(unittest.TestCase):
     def test_unknown_duration_makes_total_incomplete(self):
         records = [
             self.record("a", "Opening to Test Program", [{"name": "open.mp4", "duration_seconds": 45, "format": "MPEG4"}]),
+            self.record("feature", "Test Program", [{"name": "feature.mp4", "duration_seconds": 500, "format": "MPEG4"}]),
             self.record("b", "Closing to Test Program", [{"name": "end.mp4", "duration_seconds": None, "format": "MPEG4"}]),
         ]
         candidate = build_candidates(records)[0]
