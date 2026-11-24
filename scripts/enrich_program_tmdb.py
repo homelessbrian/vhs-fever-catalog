@@ -4,7 +4,10 @@ from __future__ import annotations
 import argparse, json, os, re, time
 from pathlib import Path
 from typing import Any
-try:\n    from .enrich_metadata_artwork import find_tmdb_match\nexcept ImportError:\n    from enrich_metadata_artwork import find_tmdb_match
+try:
+    from .enrich_metadata_artwork import find_tmdb_match
+except ImportError:
+    from enrich_metadata_artwork import find_tmdb_match
 
 YEAR_PREFIX = re.compile(r"^\s*[([]?((?:18|19|20)\d{2})[)\]. _-]+")
 SUFFIX = re.compile(r"\s*(?:\[[^]]*(?:vhs|dvd|variant|capture|part\s*\d+)[^]]*\]|\([^()]*(?:vhs|dvd|variant|capture|part\s*\d+)[^()]*\))\s*$", re.I)
