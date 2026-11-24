@@ -44,19 +44,24 @@ vhs_fever_file_inventory:row.vhs_fever_file_inventory||old.vhs_fever_file_invent
 vhs_fever_analysis:row.vhs_fever_analysis||old.vhs_fever_analysis,
 vhs_fever_metadata_artwork:row.vhs_fever_metadata_artwork||old.vhs_fever_metadata_artwork})}return [...map.values()]}
 function parseJSONL(raw){return raw.split(/\r?\n/).filter(x=>x.trim()).map((line,i)=>{try{return JSON.parse(line)}catch(e){throw Error("Published data line "+(i+1)+": "+e.message)}})}
-async function loadPublishedData(){try{
- const [cr,er,mr]=await Promise.all([
-  fetch("https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/latest-classified.jsonl?"+Date.now(),{cache:"no-store"}),
-  fetch("https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/latest-enriched.jsonl?"+Date.now(),{cache:"no-store"}),
-  fetch("https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/latest.json?"+Date.now(),{cache:"no-store"})
+async function loadPublishedData(){const base="https://cdn.jsdelivr.net/gh/homelessbrian/vhs-fever-catalog@catalog-data/";try{
+ $("loadnote").textContent="Checking the latest catalog version…";
+ const manifestResponse=await fetch(base+"latest.json?"+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(20000)});
+ if(!manifestResponse.ok)throw Error("Catalog manifest request failed (HTTP "+manifestResponse.status+").");
+ const manifest=await manifestResponse.json();
+ $("loadnote").textContent="Downloading catalog records…";
+ const [cr,er]=await Promise.all([
+  fetch(base+"latest-classified.jsonl?"+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(60000)}),
+  fetch(base+"latest-enriched.jsonl?"+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(60000)})
  ]);
- if(!cr.ok||!er.ok||!mr.ok)throw Error("External catalog data is unavailable (HTTP "+[cr.status,er.status,mr.status].join("/")+").");
- const [classified,enriched,manifest]=await Promise.all([cr.text(),er.text(),mr.json()]);
+ if(!cr.ok||!er.ok)throw Error("Catalog data request failed (HTTP "+[cr.status,er.status].join("/")+").");
+ $("loadnote").textContent="Reading catalog records…";
+ const [classified,enriched]=await Promise.all([cr.text(),er.text()]);
  records=mergeRows([...parseJSONL(classified),...parseJSONL(enriched)]);
  selected=null;populateFilters();render();
  const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"unknown time";
- $("loadnote").textContent="✓ Automatically loaded latest scrape · "+records.length+" unique records ("+manifest.classified_records+" classified, "+manifest.enriched_records+" enriched) · Updated "+date+". Manual file loading is still available.";
- }catch(e){$("loadnote").textContent="Latest scrape data is not available yet. "+e.message+" Please try again after the next successful catalog publish."}}
+ $("loadnote").textContent="✓ Automatically loaded latest catalog · "+records.length+" unique records ("+manifest.classified_records+" classified, "+manifest.enriched_records+" enriched) · Updated "+date+".";
+ }catch(e){console.error("VHS FEVER catalog load failed",e);$("loadnote").textContent="Could not load catalog data: "+(e.name==="TimeoutError"?"request timed out":e.message)+". Refresh to retry.";$("list").innerHTML='<div class="empty">Catalog data could not be loaded. Check your connection and refresh.</div>';}}
 async function loadFiles(fileList){let rows=[],names=[];for(const file of fileList){const raw=await file.text();let count=0;for(const [i,line] of raw.split(/\r?\n/).entries()){if(!line.trim())continue;try{rows.push(JSON.parse(line));count++}catch(e){throw Error(file.name+" line "+(i+1)+": "+e.message)}}names.push(file.name+" ("+count+")")}records=mergeRows(rows);$("loadnote").textContent="Loaded "+names.join(" · ")+" — "+records.length+" unique Archive records. Load order is merged automatically; enriched records take precedence.";selected=null;populateFilters();render()}
 function tmdb(r){return r.vhs_fever_metadata_artwork?.tmdb||{}}
 function status(r){const t=tmdb(r);return t.tmdb_id?"matched":t.status||"unknown"}
