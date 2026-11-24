@@ -67,6 +67,18 @@ def filename_role(filename: str) -> str | None:
             return role
     return None
 
+def role_target_title(filename: str) -> str | None:
+    stem = Path(filename).stem.strip()
+    stem = re.sub(r"^\\d+[ ._-]*", "", stem)
+    match = re.match(r"^(?:opening|intro(?:duction)?|closing|outro)\\s+(?:to\\s+)?(.+)$", stem, re.I)
+    return norm(match.group(1)) if match else None
+
+def title_similarity(left: str, right: str) -> float:
+    a, b = set(left.split()), set(right.split())
+    if not a or not b:
+        return 0.0
+    return len(a & b) / max(len(a), len(b))
+
 def stable_id(key: str) -> str:
     return "vhsf-program-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
@@ -161,6 +173,11 @@ def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for file in item_videos:
             filename = str(file.get("name") or "")
             f_role = filename_role(filename)
+            # Reject explicitly title-bearing opening/closing files when their
+            # named target conflicts with the archive item's title.
+            named_target = role_target_title(filename) if f_role in {"opening", "closing"} else None
+            if named_target and title_similarity(named_target, norm(title)) < 0.6:
+                continue
             role = f_role or (t_role[1] if t_role else None)
             evidence = []
             if f_role:
