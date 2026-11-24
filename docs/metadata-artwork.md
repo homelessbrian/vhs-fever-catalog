@@ -21,10 +21,10 @@ Candidate URLs point to the exact Archive item and filename. Private files are e
 Set the repository Actions secret TMDB_API_READ_ACCESS_TOKEN to enable TMDB lookups. Without it, the workflow still inventories packaging candidates and marks TMDB as skipped; no API key is embedded in source code.
 
 Matching order:
-1. Use a valid Internet Archive IMDb external ID with TMDB's find-by-external-ID endpoint.
-2. If no IMDb ID is present, search by title and optional year.
-3. Title cleanup removes common VHS/variant/year suffixes. Search results are ranked with a conservative title-similarity score; a uniquely strong result (at least 0.88 similarity and a 0.04 lead over the next result) is emitted as a medium-confidence suggestion. Other results retain ranked candidates and similarity scores for review.
-4. Every match has review_status: needs_review; no TMDB match silently merges source items or confirms a program identity.
+1. Search TMDB by the cleaned source title and optional year.
+2. Rank results using normalized title similarity. A uniquely strong result (at least 0.88 similarity and a 0.04 lead over the next result) is emitted as a medium-confidence suggestion. Other results retain ranked candidates and similarity scores for review.
+3. Preserve IMDb IDs only as passive cross-references when supplied by an authorized source; do not query TMDB using an Archive IMDb ID as the primary match path, scrape IMDb, or ingest IMDb datasets.
+4. Every match remains reviewable; no TMDB match silently merges source items or confirms a program identity.
 
 TMDB image references are kept as movie-level poster, backdrop, and images endpoint fields. Logo candidates are available through the TMDB movie images endpoint and can be added after the match is reviewed.
 
