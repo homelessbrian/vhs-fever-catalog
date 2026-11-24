@@ -211,6 +211,7 @@ def main() -> None:
             inventory["classification_label"] = label
             result = dict(item)
             result["vhs_fever_file_inventory"] = inventory
+            result["vhs_fever_analysis"] = analyze_item(item, inventory)
             status_counts[inventory["inventory_status"]] += 1
             stats = label_stats.setdefault(label, {"sampled": 0, "with_video_candidate": 0})
             stats["sampled"] += 1
