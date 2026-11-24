@@ -155,7 +155,7 @@ Every automatic decision should be reversible. Preserve original Archive metadat
 ## Implementation sequence
 
 1. Merge and retain the existing program-manifest validation gate before enriching the full catalogue.
-2. Add a versioned enrichment schema and validation tests.
+2. **Implemented:** add a versioned enrichment schema and validation tests.
 3. Implement TMDB primary matching and metadata/artwork retrieval with rate-limit handling and cached lookup results.
 4. Add the optional Video Tapes dot io adapter, token-based authentication, batch lookup, regional editions, panel/spread URLs, and withdrawn-artwork handling.
 5. Add an IMDb fallback adapter only after the project's intended use and permitted access method are confirmed.
@@ -170,3 +170,22 @@ Every automatic decision should be reversible. Preserve original Archive metadat
 - [Video Tapes dot io data and artwork reuse guidance](https://videotapes.io/data)
 - [Video Tapes dot io legal terms](https://videotapes.io/legal)
 - [IMDb non-commercial dataset terms](https://developer.imdb.com/non-commercial-datasets/)
+
+
+## Versioned enrichment sidecar (implemented)
+
+Enrichment is stored separately from the program manifest so identity decisions and artwork can be refreshed without rewriting source inventory or playback structure. The version 1 contract is defined in `schemas/enrichment-record.schema.json`; `scripts/validate_enrichment.py` validates JSONL sidecars and can emit a machine-readable report:
+
+```bash
+python scripts/validate_enrichment.py --input data/vhsvault-enrichment.jsonl --report data/vhsvault-enrichment.validation.json
+```
+
+Each record is keyed by the existing `program_id` and contains:
+
+- `identity_match`: TMDB identity status, selected TMDB ID, media type, confidence, evidence, candidate matches, and permitted external-ID cross-references. IMDb is not accepted as a primary provider.
+- `vhs_sleeve_lookup`: lookup status and a list of distinct physical editions, retaining region, country, language, release year, source, and authenticity classification.
+- `artwork`: typed assets for full-wrap scans, front/spine/back/label panels, TMDB poster/backdrop/logo, and Archive covers. Each asset retains its source URL, dimensions, edition association, attribution, reuse policy, and display status.
+
+The validator enforces unique program, edition, and asset identifiers; valid provider/type/status values; TMDB-backed confirmed identities; edition-to-artwork references; HTTP(S) source URLs; and safe signature-art selection. A link-only, blocked, or pending-review asset cannot be selected as signature artwork. Multiple regional VHS editions remain separate records even when they map to the same TMDB title.
+
+This stage defines and validates data only. It does not call provider APIs, download artwork, establish reuse rights, or modify the program catalog.
