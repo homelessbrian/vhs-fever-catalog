@@ -96,6 +96,19 @@ def candidate_from_group(key: str, members: list[dict[str, Any]]) -> dict[str, A
         return None
     if not ({"opening", "closing", "bonus", "bonus_cartoon", "trailer", "intermission", "credits"} & roles):
         return None
+    # If a feature file is promoted to main_program, require its filename
+    # to agree with the normalized program title. This prevents an archive
+    # record containing unrelated opening/closing files from joining a different feature.
+    expected_title = norm(next((m.get("program_title") for m in members if m.get("program_title")), key))
+    feature_files = [m for m in members if m["role"] == "unknown" and (m.get("duration_seconds") or 0) >= 300]
+    for feature in feature_files:
+        filename_title = norm(Path(feature["file_name"]).stem)
+        if title_similarity(expected_title, filename_title) < 0.6:
+            feature["role"] = "rejected_mismatch"
+    members = [m for m in members if m["role"] != "rejected_mismatch"]
+    roles = {m["role"] for m in members if m["role"] != "unknown"}
+    if len(members) < 2 or len(roles) < 2:
+        return None
     # Promote the longest unlabelled feature-length file to main_program only as a
     # suggested role, never as proof that the files belong together.
     unlabelled = [m for m in members if m["role"] == "unknown" and (m.get("duration_seconds") or 0) >= 300]
