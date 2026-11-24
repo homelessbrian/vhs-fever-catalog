@@ -23,7 +23,7 @@ def classify(item):
     if mt!="movies": return "other_or_review","high",f"mediatype_{mt or 'missing'}","unknown","unknown"
     title=txt(item.get("title")); lowtitle=title.lower(); desc=txt(item.get("description"))
     # Personal/home-movie archive records are not commercial film releases.
-    if re.search(r"\\b(home movies?|personal footage|donated by|filmed by|wedding video|home movie archives?)\\b", lowtitle):
+    if re.search(r"\b(home movies?|personal footage|donated by|filmed by|wedding video|home movie archives?)\b", lowtitle):
         return "other_or_review","high","title_personal_archive_recording","personal_archive_recording","standalone_or_compilation"
     # Strong title-level VHS/compilation signals outrank incidental description keywords.
     fanmade=bool(re.search(r"\b(fan[ -]?made|custom)\b",lowtitle) and re.search(r"\b(vhs|tape|special|compilation)\b",lowtitle))
