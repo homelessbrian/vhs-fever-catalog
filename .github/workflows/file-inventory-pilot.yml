@@ -52,10 +52,7 @@ jobs:
 
       - name: Build standalone and assembled program catalog
         run: |
-          python scripts/build_program_catalog.py \\
-            --input data/vhsvault-file-inventory-pilot.jsonl \\
-            --output data/vhsvault-program-catalog.jsonl \\
-            --review-output data/vhsvault-program-review-queue.jsonl
+          python scripts/build_program_catalog.py --input data/vhsvault-file-inventory-pilot.jsonl --output data/vhsvault-program-catalog.jsonl --review-output data/vhsvault-program-review-queue.jsonl
 
       - name: Run program assembly and catalog tests
         run: |
