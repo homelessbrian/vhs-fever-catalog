@@ -15,7 +15,9 @@ from pathlib import Path
 VIDEO_EXTS = {".mp4", ".m4v", ".mpeg", ".mpg", ".mkv", ".avi", ".mov", ".ogv", ".webm", ".wmv", ".flv"}
 VIDEO_FORMATS = {"mpeg4", "h.264", "h.264 ia", "mpeg2", "mpeg2 iplayer", "matroska", "quicktime", "webm", "ogg video", "windows media"}
 AUDIO_EXTS = {".mp3", ".flac", ".ogg", ".wav", ".m4a", ".aac"}
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".webp"}
+ARTWORK_DOC_EXTS = {".pdf"}
+IMDB_KEYS = ("imdb", "imdb_id", "imdbid")
 LABELS = [
     "movie_or_film", "tv_episode_or_recording", "cartoon_or_animation", "fan_made_vhs_compilation", "holiday_special",
     "trailer_or_clip", "vhs_or_dvd_extra", "promo_or_commercial",
@@ -63,7 +65,7 @@ def inspect(identifier: str, retries: int = 3) -> dict:
             with urllib.request.urlopen(request, timeout=30) as response:
                 data = json.load(response)
             files = data.get("files", [])
-            video, audio, image = [], [], []
+            video, audio, image, artwork_documents = [], [], [], []
             total_bytes = 0
             for entry in files:
                 name = str(entry.get("name", ""))
@@ -93,7 +95,21 @@ def inspect(identifier: str, retries: int = 3) -> dict:
                 elif ext in AUDIO_EXTS:
                     audio.append(name)
                 elif ext in IMAGE_EXTS:
-                    image.append(name)
+                    image.append({
+                        "name": name,
+                        "size_bytes": int(size),
+                        "format": entry.get("format"),
+                        "source_hint": str(entry.get("source", "")).lower() or None,
+                        "private": str(entry.get("private", "")).lower() in {"true", "1"},
+                    })
+                elif ext in ARTWORK_DOC_EXTS:
+                    artwork_documents.append({
+                        "name": name,
+                        "size_bytes": int(size),
+                        "format": entry.get("format"),
+                        "source_hint": str(entry.get("source", "")).lower() or None,
+                        "private": str(entry.get("private", "")).lower() in {"true", "1"},
+                    })
 
             durations = [f["duration_seconds"] for f in video if f["duration_seconds"] is not None]
             sizes = [f["size_bytes"] for f in video if f["size_bytes"] > 0]
@@ -104,6 +120,15 @@ def inspect(identifier: str, retries: int = 3) -> dict:
                 "video_file_count": len(video),
                 "audio_file_count": len(audio),
                 "image_file_count": len(image),
+                "image_files": image,
+                "artwork_document_files": artwork_documents,
+                "artwork_file_count": len(image) + len(artwork_documents),
+                "external_ids": {
+                    "imdb_id": next((str(data.get("metadata", {}).get(k)).strip()
+                                     for k in IMDB_KEYS
+                                     if data.get("metadata", {}).get(k)
+                                     and re.fullmatch(r"tt\\d{5,12}", str(data.get("metadata", {}).get(k)).strip())), None)
+                },
                 "total_listed_bytes": total_bytes,
                 "video_total_bytes": sum(sizes),
                 "video_duration_min_seconds": min(durations) if durations else None,
