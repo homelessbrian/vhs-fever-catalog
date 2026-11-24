@@ -164,11 +164,18 @@ def main() -> None:
     catalog, review = build_catalog(records)
     write_jsonl(args.output, catalog)
     write_jsonl(args.review_output, review)
-    raw_video_file_count = sum(
-        len((item.get("vhs_fever_file_inventory") or {}).get("video_files") or [])
-        for item in records
-        if (item.get("vhs_fever_file_inventory") or {}).get("inventory_status") == "ok"
-    )
+    redundant_derivative_count = 0
+    for item in records:
+        inventory = item.get("vhs_fever_file_inventory") or {}
+        if inventory.get("inventory_status") != "ok":
+            continue
+        source_files = inventory.get("video_files") or []
+        available_names = {str(f.get("name") or "").strip() for f in source_files}
+        redundant_derivative_count += sum(
+            1 for file in source_files
+            if file.get("origin_hint") == "derivative"
+            and str(file.get("original_file_reference") or "").strip() in available_names
+        )
     standalone_count = sum(x["entry_type"] == "standalone" for x in catalog)
     summary = {
         "source_records": len(records),
@@ -176,7 +183,7 @@ def main() -> None:
         "standalone_entries": standalone_count,
         "assembled_suggestions": sum(x["entry_type"] == "assembled_candidate" for x in catalog),
         "review_queue_entries": len(review),
-        "redundant_derivative_files_suppressed": raw_video_file_count - standalone_count,
+        "redundant_derivative_files_suppressed": redundant_derivative_count,
         "all_unique_video_sources_preserved_as_standalone_entries": True,
         "source_records_modified": False,
         "media_payloads_downloaded": False,
