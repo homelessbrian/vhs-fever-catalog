@@ -27,7 +27,6 @@ ROLE_PATTERNS = [
     ("vhs_full_wrap", re.compile(r"\b(wrap|full.?cover|full.?scan|case.?scan|box.?scan|insert)\b", re.I), 75),
     ("generic_packaging_art", re.compile(r"\b(vhs|video|tape|box|case|sleeve|jacket|label|artwork|cover|packaging)\b", re.I), 45),
 ]
-IMDB_RE = re.compile(r"^tt\d{5,12}$")
 
 
 def normalize_title(value: str) -> str:
