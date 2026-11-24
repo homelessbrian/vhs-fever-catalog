@@ -44,6 +44,15 @@ jobs:
             --limit "${{ inputs.sample_size }}" \
             --delay 0.5
 
+      - name: Build sequential program candidates
+        run: |
+          python scripts/build_program_candidates.py \
+            --input data/vhsvault-file-inventory-pilot.jsonl \
+            --output data/vhsvault-program-candidates.jsonl
+
+      - name: Run program assembly tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
       - name: Upload pilot results
         uses: actions/upload-artifact@v4
         with:
@@ -51,5 +60,7 @@ jobs:
           path: |
             data/vhsvault-file-inventory-pilot.jsonl
             data/vhsvault-file-inventory-pilot.summary.json
+            data/vhsvault-program-candidates.jsonl
+            data/vhsvault-program-candidates.summary.json
           if-no-files-found: error
           retention-days: 30
