@@ -61,3 +61,14 @@ The inventory workflow now creates a contact sheet from Archive thumbnail previe
 - Preview downloads are capped at 2 MB per image and use the `archive.org` host only.
 
 The contact sheet is a human-review aid, not an automated visual classification. A filename suggestion such as front/back/spine remains unverified until the image is inspected. The workflow does not download full-resolution artwork or any video payloads.
+
+
+## Geometry-assisted packaging role suggestions
+
+The contact-sheet builder now records the original preview dimensions and aspect ratio. Explicit filename roles remain highest priority. When filenames are generic, scan geometry adds a conservative candidate:
+- Very narrow portrait scans suggest a spine candidate.
+- Portrait cover-like scans suggest a cover-panel candidate; geometry cannot tell front from back.
+- Wide landscape scans suggest a full-wrap candidate.
+- Other shapes remain generic packaging art.
+
+The manifest records the filename role, suggested role, basis, and confidence separately. Geometry-based suggestions are medium confidence and still require a person to inspect the image. This step does not alter source Archive metadata or automatically approve an asset for app display.
