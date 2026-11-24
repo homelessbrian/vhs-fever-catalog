@@ -145,7 +145,7 @@ def validate_enrichment_record(record: Any) -> list[str]:
             errors.extend(_validate_candidate(candidate, f"identity_match.candidates[{index}]"))
     if identity_status == "candidate" and not candidates:
         errors.append("candidate identity_match requires at least one candidate")
-    if identity_status in {"unmatched", "candidate", "rejected"} and (provider is not None or provider_id is not None):
+    if _is_member(identity_status, {"unmatched", "candidate", "rejected"}) and (provider is not None or provider_id is not None):
         errors.append(f"{identity_status} identity_match cannot contain a selected provider or provider_id")
     if identity_status == "confirmed":
         if provider != "tmdb":
