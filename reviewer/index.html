@@ -58,11 +58,13 @@ async function loadPublishedData(){
   if(!raw.trim())throw Error("Catalog feed was empty.");
   note.textContent="Parsing catalog records…";
   records=mergeRows(parseJSONL(raw));
-  const mr=await fetch(base+"latest.json?"+Date.now(),{cache:"no-store",signal:controller.signal});
-  if(!mr.ok)throw Error("Catalog manifest returned HTTP "+mr.status+".");
-  const manifest=await mr.json();
+  let manifest={};
+  try{
+   const mr=await fetch(base+"latest.json?"+Date.now(),{cache:"no-store",signal:controller.signal});
+   if(mr.ok)manifest=await mr.json();
+  }catch(manifestError){console.warn("Catalog manifest unavailable; displaying loaded records.",manifestError)}
   selected=null;populateFilters();render();
-  const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"unknown time";
+  const date=manifest.updated_at?new Date(manifest.updated_at).toLocaleString():"manifest unavailable";
   note.textContent="✓ Automatically loaded latest scrape · "+records.length+" unique records · Updated "+date+".";
  }catch(e){
   note.textContent=(e.name==="AbortError"?"Catalog download timed out after 60 seconds. ":"Could not load catalog data. ")+e.message+" Check your connection and reload; no file upload is required.";
