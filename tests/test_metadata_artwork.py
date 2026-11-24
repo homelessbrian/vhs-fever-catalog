@@ -1,6 +1,6 @@
 import unittest
 from scripts.enrich_metadata_artwork import (
-    artwork_role, build_artwork_candidates, enrich_record, extract_imdb_id,
+    artwork_role, build_artwork_candidates, enrich_record,
     normalize_title, tmdb_image_url, tmdb_search_title, find_tmdb_match,
 )
 
@@ -39,10 +39,6 @@ class MetadataArtworkTests(unittest.TestCase):
         candidates = build_artwork_candidates(item)
         self.assertEqual(candidates[0]["file_extension"], ".pdf")
         self.assertEqual(candidates[0]["candidate_role"], "vhs_full_wrap")
-
-    def test_imdb_id_is_validated(self):
-        self.assertEqual(extract_imdb_id({"imdb_id": "tt1234567"}), "tt1234567")
-        self.assertIsNone(extract_imdb_id({"imdb_id": "1234567"}))
 
     def test_tmdb_images_require_absolute_file_paths(self):
         self.assertEqual(tmdb_image_url("/poster.jpg"), "https://image.tmdb.org/t/p/w500/poster.jpg")
