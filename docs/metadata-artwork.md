@@ -49,3 +49,15 @@ References:
 - TMDB artwork and Archive edition packaging remain separate.
 - All inferred matches and packaging roles remain reviewable suggestions.
 - Commercial deployment requires review of TMDB licensing and the rights for each Archive asset.
+
+## Visual packaging review pilot
+
+The inventory workflow now creates a contact sheet from Archive thumbnail previews:
+
+- It selects up to 40 unique image assets, preferring the Archive `_thumb` preview rather than downloading the full-resolution original.
+- It excludes private files, PDFs, video files, and thumbnail-directory/frame clutter.
+- Each contact-sheet tile is labeled with the item title, filename, candidate role, and Archive identifier.
+- The accompanying `vhs-artwork-review-manifest.json` preserves exact preview URLs, source filenames, license metadata, and preview fetch status.
+- Preview downloads are capped at 2 MB per image and use the `archive.org` host only.
+
+The contact sheet is a human-review aid, not an automated visual classification. A filename suggestion such as front/back/spine remains unverified until the image is inspected. The workflow does not download full-resolution artwork or any video payloads.
