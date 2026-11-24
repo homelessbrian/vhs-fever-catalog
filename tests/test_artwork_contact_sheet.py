@@ -3,13 +3,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_artwork_contact_sheet import collect_previews, preview_name
+from scripts.build_artwork_contact_sheet import collect_previews, infer_geometry_role, preview_name
 
 
 class ArtworkContactSheetTests(unittest.TestCase):
     def test_preview_name_uses_archive_thumbnail(self):
         self.assertEqual(preview_name("cover.jpg"), "cover_thumb.jpg")
         self.assertEqual(preview_name("cover_thumb.jpg"), "cover_thumb.jpg")
+
+    def test_infers_packaging_candidates_from_scan_geometry(self):
+        self.assertEqual(infer_geometry_role(180, 900), ("vhs_spine_candidate", "very_narrow_portrait_scan", "medium"))
+        self.assertEqual(infer_geometry_role(600, 900), ("vhs_cover_panel_candidate", "portrait_cover_scan", "medium"))
+        self.assertEqual(infer_geometry_role(1600, 900), ("vhs_full_wrap_candidate", "wide_landscape_scan", "medium"))
+        self.assertEqual(infer_geometry_role(900, 900), ("generic_packaging_art", "unclassified_geometry", "low"))
+
+    def test_explicit_filename_role_overrides_geometry(self):
+        self.assertEqual(infer_geometry_role(1600, 900, "vhs_back_cover"), ("vhs_back_cover", "filename", "high"))
 
     def test_collects_one_preview_per_archive_image(self):
         item = {
