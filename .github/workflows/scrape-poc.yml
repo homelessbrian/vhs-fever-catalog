@@ -8,7 +8,6 @@ on:
       - 'scripts/discover_vhsvault.py'
       - 'scripts/discover_vhsvault_candidates.py'
       - 'scripts/inspect_file_inventory.py'
-      - 'reviewer/**'
   workflow_dispatch:
     inputs:
       sample_size:
@@ -94,11 +93,11 @@ jobs:
           PY
 
 
-      - name: Prepare latest data for the reviewer
+      - name: Prepare latest external catalog data
         run: |
-          mkdir -p reviewer/data
-          cp data/vhsvault-scrape-poc-classified.jsonl reviewer/data/latest-classified.jsonl
-          cp data/vhsvault-scrape-poc-enriched.jsonl reviewer/data/latest-enriched.jsonl
+          mkdir -p data/published
+          cp data/vhsvault-scrape-poc-classified.jsonl data/published/latest-classified.jsonl
+          cp data/vhsvault-scrape-poc-enriched.jsonl data/published/latest-enriched.jsonl
           python - <<'PY'
           import json, os
           from datetime import datetime, timezone
@@ -107,19 +106,19 @@ jobs:
               "updated_at": datetime.now(timezone.utc).isoformat(),
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "commit": os.environ["GITHUB_SHA"],
-              "classified_records": sum(1 for x in Path("reviewer/data/latest-classified.jsonl").open() if x.strip()),
-              "enriched_records": sum(1 for x in Path("reviewer/data/latest-enriched.jsonl").open() if x.strip())
+              "classified_records": sum(1 for x in Path("data/published/latest-classified.jsonl").open() if x.strip()),
+              "enriched_records": sum(1 for x in Path("data/published/latest-enriched.jsonl").open() if x.strip())
           }
-          Path("reviewer/data/latest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          Path("data/published/latest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
           print(json.dumps(manifest, indent=2))
           PY
 
-      - name: Publish reviewer site and latest data to gh-pages branch
+      - name: Publish catalog data independently
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./reviewer
+          publish_branch: catalog-data
+          publish_dir: ./data/published
           force_orphan: true
           enable_jekyll: false
 
