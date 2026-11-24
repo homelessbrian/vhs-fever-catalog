@@ -27,13 +27,13 @@ jobs:
 
       - name: Download latest classified catalog artifact
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p data
-          CLASSIFY_RUN_ID="$(gh run list --repo "\${{ github.repository }}" --workflow classify-catalog.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          CLASSIFY_RUN_ID="$(gh run list --repo "${{ github.repository }}" --workflow classify-catalog.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           test -n "$CLASSIFY_RUN_ID"
           echo "Using latest successful classification run: $CLASSIFY_RUN_ID"
-          gh run download "$CLASSIFY_RUN_ID" --repo "\${{ github.repository }}" \
+          gh run download "$CLASSIFY_RUN_ID" --repo "${{ github.repository }}" \
             --name vhs-fever-classified-catalog --dir data
 
       - name: Inspect a balanced sample of Archive file inventories
@@ -41,7 +41,7 @@ jobs:
           python scripts/inspect_file_inventory.py \
             --input data/vhsvault-classified.jsonl \
             --output data/vhsvault-file-inventory-pilot.jsonl \
-            --limit "\${{ inputs.sample_size }}" \
+            --limit "${{ inputs.sample_size }}" \
             --delay 0.5
 
       - name: Upload pilot results
