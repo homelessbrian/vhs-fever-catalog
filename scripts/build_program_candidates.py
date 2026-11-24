@@ -114,6 +114,11 @@ def candidate_from_group(key: str, members: list[dict[str, Any]]) -> dict[str, A
     }
 
 def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    known_title_keys = set()
+    for item in records:
+        parsed = title_role(str(item.get("title") or ""))
+        if parsed:
+            known_title_keys.add(parsed[0])
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in records:
         identifier = str(item.get("identifier") or "").strip()
@@ -125,30 +130,27 @@ def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         item_videos = [f for f in inv.get("video_files", []) if Path(str(f.get("name", ""))).suffix.lower() in VIDEO_EXTS or f.get("format")]
         t_role = title_role(title)
+        title_key = t_role[0] if t_role else norm(title)
         for file in item_videos:
             filename = str(file.get("name") or "")
-            role = filename_role(filename)
-            base_key = None
+            f_role = filename_role(filename)
+            role = f_role or (t_role[1] if t_role else None)
             evidence = []
-            if role:
-                base_key = norm(title)
-                evidence.append("segment_role_in_filename:" + role)
-            elif t_role:
-                base_key, role = t_role
-                evidence.append("segment_role_in_item_title:" + role)
-            if not base_key or len(base_key) < 4:
+            if f_role:
+                evidence.append("segment_role_in_filename:" + f_role)
+            if t_role and not f_role:
+                evidence.append("segment_role_in_item_title:" + t_role[1])
+            if role is None and title_key in known_title_keys and (file.get("duration_seconds") or 0) >= 300:
+                role = "main_program"
+                evidence.append("exact_normalized_title_match_to_labeled_segments")
+            if not role or len(title_key) < 4:
                 continue
-            # Include an item discriminator in same-item multi-file groups; title-derived
-            # cross-item groups share the normalized base title by design.
-            key = "title:" + base_key
-            if role is None:
-                role = "unknown"
-            groups[key].append({
+            groups["title:" + title_key].append({
                 "archive_identifier": identifier,
                 "file_name": filename,
                 "duration_seconds": file.get("duration_seconds"),
                 "role": role,
-                "program_title": base_key.title(),
+                "program_title": title_key.title(),
                 "evidence": evidence,
             })
     candidates = []
