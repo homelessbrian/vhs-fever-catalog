@@ -33,6 +33,36 @@ def video_files(item: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def title_match_suggestion(item: dict[str, Any]) -> dict[str, Any]:
+    """Translate record-level TMDB enrichment into an unconfirmed source suggestion."""
+    enrichment = item.get("vhs_fever_metadata_artwork") or {}
+    tmdb = enrichment.get("tmdb") or {}
+    tmdb_id = tmdb.get("tmdb_id")
+    if tmdb_id is not None:
+        return {
+            "status": "candidate",
+            "provider": "tmdb",
+            "provider_id": str(tmdb_id),
+            "title": tmdb.get("title"),
+            "release_date": tmdb.get("release_date"),
+            "confidence": "medium",
+            "method": tmdb.get("match_method"),
+            "review_status": "needs_review",
+            "poster": tmdb.get("tmdb_poster"),
+            "backdrop": tmdb.get("tmdb_backdrop"),
+        }
+    candidates = tmdb.get("candidate_results") or []
+    if candidates:
+        return {
+            "status": "candidate",
+            "provider": "tmdb",
+            "candidates": candidates,
+            "review_status": "needs_review",
+        }
+    status = tmdb.get("status") or "not_enriched"
+    return {"status": "unmatched", "reason": status, "review_status": "needs_review"}
+
+
 def build_catalog(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     catalog: list[dict[str, Any]] = []
     review: list[dict[str, Any]] = []
@@ -47,6 +77,7 @@ def build_catalog(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], 
         classification = item.get("vhs_fever_classification") or {}
         analysis = item.get("vhs_fever_analysis") or {}
         restricted = bool(inventory.get("access_restricted"))
+        title_suggestion = title_match_suggestion(item)
         if status != "ok" or not files or restricted or any(f.get("private") for f in files):
             reasons = []
             if status != "ok":
@@ -79,6 +110,7 @@ def build_catalog(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], 
                 "program_id": stable_id(identifier + "\n" + filename),
                 "source_id": stable_id(identifier + "\n" + filename),
                 "matched_title_id": None,
+                "title_match_suggestion": title_suggestion,
                 "edition_id": None,
                 "alternate_source_group_id": None,
                 "title": title if len(files) == 1 else Path(filename).stem.replace("_", " ").strip() or title,
