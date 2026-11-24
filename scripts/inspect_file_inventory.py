@@ -195,8 +195,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=120)
     parser.add_argument("--delay", type=float, default=0.5)
     args = parser.parse_args()
-    if not 1 <= args.limit <= 250:
-        parser.error("--limit must be between 1 and 250 for this pilot")
+    if not 1 <= args.limit <= 500:
+        parser.error("--limit must be between 1 and 500 for this pilot")
 
     sample = choose_sample(args.input, args.limit)
     status_counts = Counter()
