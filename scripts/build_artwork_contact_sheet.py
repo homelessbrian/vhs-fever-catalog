@@ -27,6 +27,22 @@ def preview_name(filename: str) -> str:
     return str(path.with_name(path.stem + "_thumb" + path.suffix))
 
 
+def infer_geometry_role(width: int, height: int, filename_role: str | None = None) -> tuple[str, str, str]:
+    """Suggest a packaging role from scan geometry; never claim visual verification."""
+    if filename_role and filename_role != "generic_packaging_art":
+        return filename_role, "filename", "high"
+    if width <= 0 or height <= 0:
+        return "generic_packaging_art", "unknown_geometry", "low"
+    ratio = width / height
+    if ratio <= 0.28:
+        return "vhs_spine_candidate", "very_narrow_portrait_scan", "medium"
+    if ratio >= 1.45:
+        return "vhs_full_wrap_candidate", "wide_landscape_scan", "medium"
+    if 0.52 <= ratio <= 0.86:
+        return "vhs_cover_panel_candidate", "portrait_cover_scan", "medium"
+    return "generic_packaging_art", "unclassified_geometry", "low"
+
+
 def collect_previews(input_path: Path, limit: int) -> list[dict[str, Any]]:
     selected: dict[tuple[str, str], dict[str, Any]] = {}
     with input_path.open(encoding="utf-8") as stream:
@@ -106,6 +122,16 @@ def main() -> None:
                 raise ValueError("preview exceeds 2 MB limit")
             from io import BytesIO
             image = Image.open(BytesIO(payload)).convert("RGB")
+            source_width, source_height = image.size
+            suggested_role, role_basis, role_confidence = infer_geometry_role(
+                source_width, source_height, entry.get("candidate_role")
+            )
+            entry["source_dimensions"] = [source_width, source_height]
+            entry["source_aspect_ratio"] = round(source_width / source_height, 3) if source_height else None
+            entry["filename_role"] = entry.get("candidate_role")
+            entry["suggested_role"] = suggested_role
+            entry["role_basis"] = role_basis
+            entry["role_confidence"] = role_confidence
             image.thumbnail((tile_w - 20, image_h - 12))
             px = x + (tile_w - image.width) // 2
             py = y + 8 + (image_h - image.height) // 2
@@ -119,14 +145,16 @@ def main() -> None:
             draw.text((x + 22, y + 80), "Preview unavailable", fill="white", font=font)
         label = f'{index + 1}. {str(entry.get("item_title") or "")[:42]}'
         draw.text((x + 10, y + image_h + 8), label, fill="white", font=font)
-        draw.text((x + 10, y + image_h + 25), f'{entry["candidate_role"]} | {entry["file_name"][:43]}', fill="#f5d76e", font=font)
+        role_label = entry.get("suggested_role", entry.get("candidate_role", "generic_packaging_art"))
+        draw.text((x + 10, y + image_h + 25), f'{role_label} | {entry["file_name"][:43]}', fill="#f5d76e", font=font)
         draw.text((x + 10, y + image_h + 42), f'IA: {entry["archive_identifier"][:48]}', fill="#b9c0d4", font=font)
         downloaded.append(entry)
         time.sleep(max(0, args.delay))
 
     sheet.save(args.output_dir / "vhs-artwork-contact-sheet.jpg", quality=88, optimize=True)
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "role_inference": "Filename labels take precedence; otherwise scan aspect ratio suggests spine, cover-panel, or full-wrap candidates. Geometry is a review hint, not visual confirmation.",
         "preview_count": len(entries),
         "downloaded_preview_count": sum(e.get("preview_status") == "downloaded" for e in entries),
         "full_resolution_images_downloaded": False,
