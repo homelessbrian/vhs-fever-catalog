@@ -20,7 +20,7 @@ from typing import Any
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".webp"}
 ROLE_PATTERNS = [
-    ("vhs_front_cover", re.compile(r"\b(front|cover|frontcover|case front|box front|sleeve front|jacket front)\b", re.I), 90),
+    ("vhs_front_cover", re.compile(r"\b(front|frontcover|case front|box front|sleeve front|jacket front)\b", re.I), 90),
     ("vhs_back_cover", re.compile(r"\b(back|rear|backcover|case back|box back|sleeve back|jacket back)\b", re.I), 90),
     ("vhs_spine", re.compile(r"\b(spine|side panel|sidepanel)\b", re.I), 95),
     ("vhs_full_wrap", re.compile(r"\b(wrap|full.?cover|full.?scan|case.?scan|box.?scan|insert)\b", re.I), 75),
