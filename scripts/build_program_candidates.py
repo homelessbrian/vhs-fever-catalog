@@ -91,6 +91,18 @@ def candidate_from_group(key: str, members: list[dict[str, Any]]) -> dict[str, A
     for member in members:
         unique[(member["archive_identifier"], member["file_name"])] = member
     members = list(unique.values())
+    # Cross-archive assembly is prone to false matches: different uploads may
+    # contain competing openings/closings or unrelated clips with generic names.
+    # Reject ambiguous duplicate roles across archive items; same-archive
+    # numbered tape sequences remain unaffected.
+    archive_ids = {m["archive_identifier"] for m in members}
+    if len(archive_ids) > 1:
+        role_counts: dict[str, int] = defaultdict(int)
+        for member in members:
+            if member["role"] != "unknown":
+                role_counts[member["role"]] += 1
+        if any(count > 1 for count in role_counts.values()):
+            return None
     roles = {m["role"] for m in members if m["role"] != "unknown"}
     if len(members) < 2 or len(roles) < 2:
         return None
