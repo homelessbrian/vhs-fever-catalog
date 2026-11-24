@@ -61,9 +61,17 @@ jobs:
         run: |
           python scripts/build_program_catalog.py --input data/vhsvault-file-inventory-pilot.jsonl --output data/vhsvault-program-catalog.jsonl --review-output data/vhsvault-program-review-queue.jsonl
 
+      - name: Enrich catalog with artwork candidates and optional TMDB metadata
+        env:
+          TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+        run: |
+          python scripts/enrich_metadata_artwork.py \
+            --input data/vhsvault-file-inventory-pilot.jsonl \
+            --output data/vhsvault-metadata-artwork.jsonl
+
       - name: Run program assembly and catalog tests
         run: |
-          python -m py_compile scripts/build_program_catalog.py
+          python -m py_compile scripts/build_program_catalog.py scripts/enrich_metadata_artwork.py
           python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Upload pilot results
@@ -78,5 +86,7 @@ jobs:
             data/vhsvault-program-catalog.jsonl
             data/vhsvault-program-catalog.summary.json
             data/vhsvault-program-review-queue.jsonl
+            data/vhsvault-metadata-artwork.jsonl
+            data/vhsvault-metadata-artwork.summary.json
           if-no-files-found: error
           retention-days: 30
