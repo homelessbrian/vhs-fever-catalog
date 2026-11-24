@@ -18,6 +18,15 @@ def _valid_text(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _finite_number(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        return False
+
+
 def validate_program(program: Any) -> list[str]:
     """Return actionable validation errors for one program manifest."""
     errors: list[str] = []
@@ -32,14 +41,14 @@ def validate_program(program: Any) -> list[str]:
         errors.append("title must be a non-empty string")
 
     status = program.get("assembly_status")
-    if status not in ALLOWED_ASSEMBLY_STATUSES:
+    if not isinstance(status, str) or status not in ALLOWED_ASSEMBLY_STATUSES:
         errors.append(f"assembly_status must be one of {sorted(ALLOWED_ASSEMBLY_STATUSES)}")
     playback_mode = program.get("playback_mode")
-    if playback_mode not in ALLOWED_PLAYBACK_MODES:
+    if not isinstance(playback_mode, str) or playback_mode not in ALLOWED_PLAYBACK_MODES:
         errors.append(f"playback_mode must be one of {sorted(ALLOWED_PLAYBACK_MODES)}")
 
     entry_type = program.get("entry_type")
-    if entry_type is not None and entry_type not in ALLOWED_ENTRY_TYPES:
+    if entry_type is not None and (not isinstance(entry_type, str) or entry_type not in ALLOWED_ENTRY_TYPES):
         errors.append(f"entry_type must be one of {sorted(ALLOWED_ENTRY_TYPES)}")
     if entry_type == "assembled_candidate":
         if status != "suggested":
@@ -101,8 +110,7 @@ def validate_program(program: Any) -> list[str]:
         duration = segment.get("duration_seconds")
         if duration is None:
             all_durations_known = False
-        elif (isinstance(duration, bool) or not isinstance(duration, (int, float))
-              or not math.isfinite(duration) or duration < 0):
+        elif not _finite_number(duration) or duration < 0:
             errors.append(f"{prefix}.duration_seconds must be null or a finite non-negative number")
             all_durations_known = False
         else:
@@ -119,7 +127,7 @@ def validate_program(program: Any) -> list[str]:
 
     total = program.get("total_known_duration_seconds")
     if all_durations_known:
-        if isinstance(total, bool) or not isinstance(total, (int, float)) or not math.isfinite(total):
+        if not _finite_number(total):
             errors.append("duration total must be a finite number when all segment durations are known")
         elif not math.isclose(float(total), known_duration_total, rel_tol=1e-9, abs_tol=0.01):
             errors.append(f"duration total {total} does not equal segment duration sum {known_duration_total:g}")
