@@ -193,7 +193,10 @@ def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             named_target = role_target_title(filename) if f_role in {"opening", "closing"} else None
             if named_target and title_similarity(named_target, norm(title)) < 0.6:
                 continue
-            role = f_role or (t_role[1] if t_role else None)
+            # An item-level title such as "Opening to X" can label its
+            # sole video, but must not label every file in a multi-video
+            # archive. In multi-file archives, require each segment's own clue.
+            role = f_role or (t_role[1] if t_role and len(item_videos) == 1 else None)
             evidence = []
             if f_role:
                 evidence.append("segment_role_in_filename:" + f_role)
