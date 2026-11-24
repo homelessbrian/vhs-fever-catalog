@@ -1,0 +1,85 @@
+name: VHS FEVER scrape proof of concept
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/scrape-poc.yml'
+      - 'scripts/discover_vhsvault.py'
+      - 'scripts/inspect_file_inventory.py'
+  workflow_dispatch:
+    inputs:
+      sample_size:
+        description: "Number of Archive items whose file inventories to inspect"
+        required: true
+        default: "20"
+
+permissions:
+  contents: read
+
+jobs:
+  scrape-poc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Discover a real VHS Vault metadata sample
+        run: |
+          mkdir -p data
+          python scripts/discover_vhsvault.py \
+            --count 100 \
+            --max-pages 1 \
+            --output data/vhsvault-scrape-poc.jsonl \
+            --delay 1
+
+      - name: Inspect item file inventories without downloading media
+        run: |
+          python scripts/inspect_file_inventory.py \
+            --input data/vhsvault-scrape-poc.jsonl \
+            --output data/vhsvault-scrape-poc-inventory.jsonl \
+            --limit "${{ inputs.sample_size || '20' }}" \
+            --delay 0.5
+
+      - name: Validate scraped JSONL output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for name in (
+              "data/vhsvault-scrape-poc.jsonl",
+              "data/vhsvault-scrape-poc-inventory.jsonl",
+          ):
+              path = Path(name)
+              count = 0
+              with path.open(encoding="utf-8") as stream:
+                  for line_number, line in enumerate(stream, 1):
+                      if not line.strip():
+                          continue
+                      value = json.loads(line)
+                      if not isinstance(value, dict):
+                          raise SystemExit(f"{name}:{line_number}: expected JSON object")
+                      count += 1
+              print(f"{name}: {count} valid records")
+              if count == 0:
+                  raise SystemExit(f"{name}: no records were produced")
+          PY
+
+      - name: Upload scrape proof-of-concept results
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhs-fever-scrape-poc
+          path: |
+            data/vhsvault-scrape-poc.jsonl
+            data/vhsvault-scrape-poc.summary.json
+            data/vhsvault-scrape-poc-inventory.jsonl
+            data/vhsvault-scrape-poc-inventory.summary.json
+          if-no-files-found: error
+          retention-days: 14
