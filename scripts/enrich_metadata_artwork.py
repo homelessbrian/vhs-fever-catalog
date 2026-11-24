@@ -8,6 +8,7 @@ remain reviewable. Set TMDB_API_READ_ACCESS_TOKEN to enable TMDB lookups.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import re
@@ -31,6 +32,7 @@ IMDB_RE = re.compile(r"^tt\d{5,12}$")
 
 def normalize_title(value: str) -> str:
     value = value.casefold()
+    value = re.sub(r"['’]s\b", "", value)
     value = re.sub(r"\b(the|a|an)\b", " ", value)
     value = re.sub(r"[^a-z0-9]+", " ", value)
     return " ".join(value.split())
@@ -54,11 +56,13 @@ def tmdb_search_title(item: dict[str, Any]) -> tuple[str | None, str]:
     if NON_FILM_TITLE.search(raw):
         return None, "likely_archive_recording_or_compilation"
     title = raw
-    title = re.sub(r"\s+(?:us|uk)\s+vhs\s+variants?\s*$", "", title, flags=re.I)
+    title = re.sub(r"\s+(?:(?:us|uk)\s+)?vhs\s+variants?\s*$", "", title, flags=re.I)
     title = re.sub(r"\s*\([^()]*\b(?:vhs|dvd|animated|variant|variants|capture|part \d+)[^()]*\)\s*$", "", title, flags=re.I)
     title = re.sub(r"\s*\[[^\]]*(?:vhs|dvd|variant|capture|part \d+)[^\]]*\]\s*$", "", title, flags=re.I)
     title = re.sub(r"\s*\((?:19|20)\d{2}\)\s*$", "", title)
     title = re.sub(r"\s*\[(?:19|20)\d{2}\]\s*$", "", title)
+    title = re.sub(r"\s+(?:19|20)\d{2}\s*$", "", title)
+    title = re.sub(r"\s+(?:us|uk)\s+vhs\s*$", "", title, flags=re.I)
     title = re.sub(r"^\s*\d+[a-z]?\.?\s*", "", title, flags=re.I)
     title = re.sub(r"\s+", " ", title).strip(" -–—[]()")
     if len(normalize_title(title)) < 3:
@@ -84,6 +88,12 @@ def build_artwork_candidates(item: dict[str, Any]) -> list[dict[str, Any]]:
     for file in files:
         name = str(file.get("name") or "").strip()
         if not name or name in seen or file.get("private"):
+            continue
+        path_parts = [part.casefold() for part in name.replace("\\", "/").split("/")]
+        stem = Path(name).stem
+        if any(part.endswith(".thumbs") or part in {"__thumbs__", "thumbs"} for part in path_parts):
+            continue
+        if re.search(r"_\d{5,}$", stem):
             continue
         seen.add(name)
         ext = Path(name).suffix.lower()
@@ -176,18 +186,22 @@ def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
     query = urllib.parse.urlencode({"query": title, **({"year": str(year)[:4]} if year else {})})
     results = request_json("https://api.themoviedb.org/3/search/movie?" + query, token).get("results") or []
     normalized = normalize_title(title)
-    exact = [m for m in results if normalize_title(str(m.get("title") or m.get("original_title") or "")) == normalized]
-    if len(exact) == 1:
-        movie = exact[0]
-        return tmdb_payload(movie, "exact_title_search", "medium")
+    scored = []
+    for movie in results:
+        candidate_title = normalize_title(str(movie.get("title") or movie.get("original_title") or ""))
+        score = difflib.SequenceMatcher(None, normalized, candidate_title).ratio()
+        scored.append((score, movie))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    if scored and scored[0][0] >= 0.88 and (len(scored) == 1 or scored[0][0] - scored[1][0] >= 0.04):
+        return tmdb_payload(scored[0][1], "high_similarity_title_search", "medium")
     return {
         "status": "ambiguous_title_match" if results else "not_found_by_title",
         "search_title": title,
         "search_year": year,
         "candidate_results": [
             {"tmdb_id": m.get("id"), "title": m.get("title"), "release_date": m.get("release_date"),
-             "poster": tmdb_image_url(m.get("poster_path"))}
-            for m in results[:5]
+             "similarity": round(score, 3), "poster": tmdb_image_url(m.get("poster_path"))}
+            for score, m in scored[:5]
         ],
         "review_status": "needs_review",
     }
@@ -196,7 +210,7 @@ def find_tmdb_match(item: dict[str, Any], token: str) -> dict[str, Any]:
 def enrich_record(item: dict[str, Any], token: str | None = None, do_tmdb: bool = True) -> dict[str, Any]:
     result = dict(item)
     enrichment = {
-        "schema_version": 2,
+        "schema_version": 3,
         "archive_identifier": item.get("identifier"),
         "artwork_candidates": build_artwork_candidates(item),
         "tmdb": {"status": "skipped_no_api_token", "review_status": "needs_review"},
