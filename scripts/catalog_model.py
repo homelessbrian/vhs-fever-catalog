@@ -767,7 +767,7 @@ def build_reviewer_feed(model_dir: str) -> dict[str, Any]:
             "art": [{"url": art_by[a]["image_url"], "role": art_by[a]["role_guess"],
                      "name": art_by[a]["original_name"]} for a in r["artwork_ids"] if a in art_by],
             "segs": [{"o": s["order"], "dur": s["duration_seconds"], "src": [
-                {"n": x["original_name"], "item": x["archive_identifier"], "role": x["role"],
+                {"id": x["source_id"], "n": x["original_name"], "item": x["archive_identifier"], "role": x["role"],
                  "fmt": x["format"], "url": x["playback_url"], "play": x["browser_playable"],
                  "dur": x["duration_seconds"]} for x in s["sources"]]} for s in r["segments"]],
         }

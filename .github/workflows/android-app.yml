@@ -1,0 +1,39 @@
+name: Build review app (Android)
+
+on:
+  push:
+    branches: [main, rebuild/data-model]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - name: Test and build
+        working-directory: android
+        env:
+          TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+          BUILD_BRANCH: ${{ github.ref_name }}
+        run: gradle --no-daemon testDebugUnitTest assembleRelease
+      - name: Name the app file
+        run: cp android/app/build/outputs/apk/release/app-release.apk "vhs-fever-review-${{ github.run_number }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vhs-fever-review-${{ github.run_number }}
+          path: vhs-fever-review-${{ github.run_number }}.apk
+          retention-days: 30
