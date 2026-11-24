@@ -11,6 +11,8 @@ on:
     paths:
       - 'scripts/catalog_model.py'
       - 'scripts/match_titles_tmdb.py'
+      - 'scripts/tv_episodes.py'
+      - 'tests/test_tv_episodes.py'
       - 'reviewer/catalog.html'
       - 'tests/test_catalog_model.py'
       - 'tests/test_match_titles_tmdb.py'
@@ -49,9 +51,11 @@ jobs:
             --cache-dir work/archive-cache \
             --output-dir out
 
-      - name: Add TMDB suggestions (never confirmed automatically)
+      - name: Add TMDB suggestions, TV episodes too, TVDB as backup (never confirmed automatically)
         env:
           TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
+          TVDB_PIN: ${{ secrets.TVDB_PIN }}
         run: python scripts/match_titles_tmdb.py --model-dir out
 
       - name: Build reviewer feed

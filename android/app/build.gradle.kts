@@ -16,6 +16,8 @@ android {
         versionCode = envOr("GITHUB_RUN_NUMBER", "1").toInt()
         versionName = "0.1." + envOr("GITHUB_RUN_NUMBER", "1")
         buildConfigField("String", "TMDB_TOKEN", "\"" + envOr("TMDB_API_READ_ACCESS_TOKEN", "") + "\"")
+        buildConfigField("String", "TVDB_KEY", "\"" + envOr("TVDB_API_KEY", "") + "\"")
+        buildConfigField("String", "TVDB_PIN", "\"" + envOr("TVDB_PIN", "") + "\"")
         buildConfigField("String", "BUILD_BRANCH", "\"" + envOr("BUILD_BRANCH", "main") + "\"")
         buildConfigField("String", "REPO", "\"homelessbrian/vhs-fever-catalog\"")
     }

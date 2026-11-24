@@ -73,6 +73,71 @@ TRAILING_YEAR_MEDIA = re.compile(rf"\s+(?P<year>(?:18|19|20)\d{{2}})\s+(?P<media
 
 
 EPISODE = re.compile(r"\b[Ss](?P<s>\d{1,2})\s*[Ee](?P<e>\d{1,3})\b")
+# Every way an episode number shows up in this collection's filenames, most
+# specific first: "S03E69", "S1-08", "1x09", "Season 2 Episode 9", "Episode 4".
+EPISODE_MARKERS = [
+    EPISODE,
+    re.compile(r"\b[Ss](?P<s>\d{1,2})-(?P<e>\d{1,3})\b"),
+    re.compile(r"(?<![\dx])(?P<s>\d{1,2})x(?P<e>\d{2,3})\b", re.I),
+    re.compile(r"\bSeason\s*(?P<s>\d{1,2})[\s,._-]*(?:Episode|Ep\.?)\s*#?(?P<e>\d{1,3})\b", re.I),
+    re.compile(r"\b(?:Episode|Ep\.?)\s*#?(?P<e>\d{1,3})\b", re.I),
+]
+# "Supaidaman/03 - Title": a numbered file inside a folder named for the show.
+FOLDER_NUMBER = re.compile(r"^\s*(?P<e>\d{1,3})\s*[-.]\s+(?P<rest>\S.*)$")
+AIR_DATES = [
+    re.compile(r"\b(?P<y>(?:19|20)\d\d)[-.](?P<m>0?[1-9]|1[0-2])[-.](?P<d>0?[1-9]|[12]\d|3[01])\b"),
+    re.compile(r"\b(?P<m>0?[1-9]|1[0-2])[-.](?P<d>0?[1-9]|[12]\d|3[01])[-.](?P<y>(?:19|20)?\d\d)\b"),
+]
+FOLDER_NOT_SHOW = re.compile(r"^(?:season|series|disc|disk|dvd|volume|vol\.?|tape|part|video_ts|s)\s*\d*$", re.I)
+SPACED_DASH = re.compile(r"\s+[-\u2013\u2014]\s+")
+
+
+def find_episode_marker(text: str) -> tuple[re.Match[str] | None, int | None, int | None]:
+    """First episode marker in ``text``: (match, season, episode)."""
+    for rx in EPISODE_MARKERS:
+        m = rx.search(text)
+        if m:
+            s = m.groupdict().get("s")
+            return m, (int(s) if s else None), int(m["e"])
+    return None, None, None
+
+
+def find_air_date(text: str) -> tuple[re.Match[str] | None, str | None]:
+    for rx in AIR_DATES:
+        m = rx.search(text)
+        if m:
+            y = m["y"]
+            if len(y) == 2:
+                y = ("19" if int(y) > 30 else "20") + y
+            return m, f"{y}-{int(m['m']):02d}-{int(m['d']):02d}"
+    return None, None
+
+
+def show_from_folder(folder: str | None) -> str | None:
+    """Innermost folder name that names a show ("The Maxx/Season 1" -> "The Maxx")."""
+    if not folder:
+        return None
+    for part in reversed(folder.split("/")):
+        clean = re.sub(r"\s+", " ", part.replace("_", " ")).strip(" -.")
+        if clean and not FOLDER_NOT_SHOW.match(clean) and len(re.sub(r"[^a-z0-9]", "", clean.casefold())) >= 2:
+            return clean
+    return None
+
+
+def episode_title_pieces(text: str | None) -> list[str]:
+    """Ways an episode title may be written: whole, and each story of a
+    two-story episode ("The Snack Helper   Buds", "Racing Time / All Tied Up")."""
+    if not text:
+        return []
+    out = [text.strip()]
+    no_tag = re.sub(r"\s+[A-Z]{2,5}$", "", out[0]).strip()
+    if no_tag and no_tag != out[0]:
+        out.append(no_tag)   # "Binyah Goes to School CBS"
+    for piece in re.split(r"\s{2,}|\s*/\s*|\s+[-\u2013]\s+|\s*;\s*", text):
+        piece = piece.strip(" -.,!")
+        if piece and piece not in out and len(piece) >= 3 and not re.match(r"^(?:volume|vol\.?|part)\s*\d+$", piece, re.I):
+            out.append(piece)
+    return out
 SCENE_TAGS = re.compile(r"\b(?:WEB[-. ]?DL|WEBRip|HDTV|DVDRip|BDRip|BluRay|AAC\d?(?:\.\d)?|AC3|DD\d\.\d|"
                         r"[xh]\.?26[45]|HEVC|XviD|DivX|480p|576p|720p|1080p|2160p)\b.*$", re.I)
 TRAILING_PART = re.compile(r"^\s*(?:part|pt\.?)\s*(?P<i>\d{1,3})\s*$", re.I)
@@ -188,10 +253,16 @@ def interpret_filename(name: str) -> dict[str, Any]:
         flags.append("scene_style_encoding_tags_removed")
         if media_raw_hint:
             flags.append("web_download_not_tape")
-    em = EPISODE.search(text)
-    if em:
-        season, episode = int(em["s"]), int(em["e"])
+    em, season, episode = find_episode_marker(text)
+    numbered_in_show_folder = False
+    if em is None and folder:
+        fm = FOLDER_NUMBER.match(text)
+        if fm and show_from_folder(folder) and not PART_SUFFIX.search(text):
+            episode = int(fm["e"])
+            numbered_in_show_folder = True
+    if episode is not None:
         content_hint = "tv_episode"
+    _dm, air_date = find_air_date(text)
     if OPENING.match(text):
         content_hint = "tape_opening_or_previews"
     if re.search(r"\bfan[\s-]?made\b", text, re.I):
@@ -277,13 +348,48 @@ def interpret_filename(name: str) -> dict[str, Any]:
             flags.append("tape_format_not_stated")
 
     title = re.sub(r"[_]+", " ", base)
+    if episode is not None:
+        # Two-story episodes are often written "Story One   Story Two".
+        title = re.sub(r"(?<=\S)\s{2,}(?=\S)", " / ", title)
     title = re.sub(r"\s+", " ", title).strip(" -_.,")
     episode_title = None
-    if season is not None:
-        em = EPISODE.search(title)
-        if em:
+    series_title = None
+    show_hint = None
+    if episode is not None:
+        em, _s, _e = find_episode_marker(title)
+        if numbered_in_show_folder:
+            fm = FOLDER_NUMBER.match(title)
+            episode_title = fm["rest"].strip(" -_.,") if fm else None
+            title = ""
+        elif em:
             episode_title = title[em.end():].strip(" -_.,") or None
             title = title[: em.start()].strip(" -_.,")
+        if episode_title:
+            dm, _d = find_air_date(episode_title)
+            if dm and dm.start() <= 1:
+                episode_title = episode_title[dm.end():].strip(" -_.,") or None
+        dm, _d = find_air_date(title)
+        if dm:
+            title = (title[: dm.start()] + " " + title[dm.end():]).strip(" -_.,")
+            title = re.sub(r"\s+", " ", title)
+        if not title:
+            folder_show = show_from_folder(folder)
+            if folder_show:
+                title = folder_show
+                flags.append("show_name_from_folder")
+        if not title and episode_title and SPACED_DASH.search(episode_title):
+            # "S1-08 - 05-23-01 - That's My Bush! - Fare Thee Welfare"
+            left, right = SPACED_DASH.split(episode_title, maxsplit=1)
+            title, episode_title = left.strip(" -_.,"), right.strip(" -_.,") or None
+        series_title = title or None
+    elif content_hint is None and SPACED_DASH.search(title):
+        # "Show Name - Episode Name". Only a hint: TMDB decides whether the
+        # left side really is a TV show. The title itself is left as is.
+        left, right = SPACED_DASH.split(title, maxsplit=1)
+        left, right = left.strip(" -_.,"), right.strip(" -_.,")
+        if len(re.sub(r"[^a-z0-9]", "", left.casefold())) >= 2 and len(re.sub(r"[^a-z0-9]", "", right.casefold())) >= 2:
+            if not re.fullmatch(r"[\d\s.#]+", left):
+                show_hint = {"show": left, "episode_title": right}
     if len(re.sub(r"[^a-z0-9]", "", title.casefold())) < 2:
         flags.append("no_usable_title")
         title = None
@@ -316,6 +422,9 @@ def interpret_filename(name: str) -> dict[str, Any]:
         "season": season,
         "episode": episode,
         "episode_title": episode_title,
+        "series_title": series_title,
+        "air_date": air_date,
+        "show_dash_hint": show_hint,
         "flags": sorted(set(flags)),
     }
 
@@ -533,27 +642,35 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     titles: dict[str, dict[str, Any]] = {}
     for rec in recordings:
         it = rec["interpretation"]
-        if not it["title"]:
+        is_episode = it.get("episode") is not None
+        if not it["title"] and not (is_episode and it.get("episode_title")):
             rec["edition_suggestion_id"] = None
             rec["unassigned_reason"] = "no_usable_title"
             continue
-        tkey = title_key(" ".join([it["title"], *it["title_qualifiers"]]))
-        display = " ".join([it["title"], *(f"({q})" for q in it["title_qualifiers"])])
         series = None
-        if it.get("season") is not None:
+        if is_episode:
             # Each episode is its own program; the series is shared context.
-            series = {"series_title": it["title"], "season": it["season"], "episode": it["episode"]}
-            code = f"S{it['season']:02d}E{it['episode']:02d}"
-            tkey = f"{tkey}|{code}"
-            display = f"{it['title']} {code}" + (f" {it['episode_title']}" if it.get("episode_title") else "")
+            # The show name may be missing ("Season 2 Episode 15 - Strange Vet
+            # Fellows"): the episode title is then all there is to search by.
+            series = {"series_title": it["title"], "season": it["season"], "episode": it["episode"],
+                      "episode_title": it.get("episode_title"), "air_date": it.get("air_date")}
+            code = (f"S{it['season']:02d}" if it["season"] is not None else "") + f"E{it['episode']:02d}"
+            show = it["title"] or ""
+            tkey = (title_key(" ".join([show, *it["title_qualifiers"]])) if show else "no show "
+                    + title_key(it.get("episode_title") or "")) + f"|{code}"
+            display = " ".join(x for x in [show, code, it.get("episode_title") or ""] if x)
+        else:
+            tkey = title_key(" ".join([it["title"], *it["title_qualifiers"]]))
+            display = " ".join([it["title"], *(f"({q})" for q in it["title_qualifiers"])])
         title = titles.setdefault(tkey, {
             "title_suggestion_id": _hash("vhsf-title-sugg-", tkey),
             "display_title": display,
             "content_hint": it.get("content_hint"),
             "series": series,
+            "show_dash_hint": it.get("show_dash_hint"),
             "match_key": tkey, "work_years_seen": [], "edition_suggestion_ids": [],
             "unassigned_recording_ids": [], "tmdb": {"status": "not_searched",
-                                                    "search_title": it["title"]},
+                                                    "search_title": it["title"] or it.get("episode_title")},
             "review_status": "suggested",
         })
         if it["work_year"] and it["work_year"] not in title["work_years_seen"]:
@@ -787,15 +904,18 @@ def build_reviewer_feed(model_dir: str) -> dict[str, Any]:
         tm = t.get("tmdb") or {}
         out.append({
             "id": t["title_suggestion_id"], "t": t["display_title"], "series": t.get("series"),
+            "dash": t.get("show_dash_hint"),
             "hint": t.get("content_hint"), "similar": t.get("possibly_same_as", []),
             "years": t.get("work_years_seen", []),
             "cats": sorted({r["cat"] for r in allrecs}),
             "nrec": len(allrecs), "nsrc": sum(len(s["src"]) for r in allrecs for s in r["segs"]),
             "tmdb": {"status": tm.get("status"), "q": tm.get("search_title"),
+                     "kind": tm.get("search_kind"), "src": tm.get("source"),
                      "ceiling": tm.get("latest_allowed_year"),
-                     "c": [{k: c.get(k) for k in ("tmdb_id", "media_type", "title", "release_date",
-                                                  "similarity", "year_consistent", "poster",
-                                                  "overview", "tmdb_url")}
+                     "c": [{k: c.get(k) for k in ("tmdb_id", "tvdb_id", "source", "media_type", "title",
+                                                  "release_date", "similarity", "year_consistent", "poster",
+                                                  "overview", "tmdb_url", "episode")
+                            if c.get(k) is not None or k in ("tmdb_id", "title")}
                            for c in tm.get("candidates") or []]},
             "eds": eds, "un": un,
         })

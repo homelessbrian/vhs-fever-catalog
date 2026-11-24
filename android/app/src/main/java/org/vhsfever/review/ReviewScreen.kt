@@ -177,11 +177,18 @@ fun MovieCard(m: AppModel, f: FileItem, onFix: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.panel).border(1.dp, C.line, RoundedCornerShape(14.dp))
         .clickable(onClick = onFix).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(46.dp, 69.dp).clip(RoundedCornerShape(5.dp)).background(C.panel2)) {
-            movie?.poster?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
+            (movie?.poster ?: movie?.episode?.still)?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            SectionLabel(if (confirmed) "Movie · confirmed" else if (movie != null) "Movie · suggested" else "Movie · not matched", if (confirmed) C.good else C.gold)
-            Text(movie?.let { it.title + (it.year?.let { y -> " ($y)" } ?: "") } ?: f.titleName, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            val kind = when {
+                movie?.isEpisode == true -> "Episode"
+                movie?.type == "tv" || (movie == null && f.tv != null) -> "Show"
+                else -> "Movie"
+            }
+            SectionLabel(if (confirmed) "$kind · confirmed" else if (movie != null) "$kind · suggested" else "$kind · not matched", if (confirmed) C.good else C.gold)
+            Text(movie?.heading ?: f.titleName, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            movie?.episode?.let { e -> Text(e.label + (e.airDate?.let { " · aired $it" } ?: ""), color = C.gold, fontSize = 13.sp) }
+            if (movie?.type == "tv" && movie.episode == null) Text("Episode not picked yet", color = C.muted, fontSize = 12.sp)
             Text("Release: " + listOfNotNull(rel.media, rel.year, rel.region, rel.distributor, rel.notes).joinToString(" · ").ifEmpty { "unknown" },
                 color = C.muted, fontSize = 12.sp)
         }
