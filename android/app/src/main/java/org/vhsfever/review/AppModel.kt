@@ -55,6 +55,12 @@ class AppModel(private val ctx: Context) {
     var tagFilter by mutableStateOf<String?>(null)
     var soundOnly by mutableStateOf(false)
     var search by mutableStateOf("")
+    /** Hide files that look non-English (on by default). */
+    var englishOnly by mutableStateOf(prefs.getBoolean("english_only", true)); private set
+    /** Archive item -> its language tags, read from archive.org. */
+    var itemLanguages by mutableStateOf<Map<String, List<String>>>(emptyMap()); private set
+    /** File id -> why it looks non-English. Files missing here look English. */
+    var foreign by mutableStateOf<Map<String, String>>(emptyMap()); private set
     private val undo = ArrayDeque<Pair<String, FileDecision?>>()
     var lastUndoLabel by mutableStateOf<String?>(null)
 
@@ -101,11 +107,69 @@ class AppModel(private val ctx: Context) {
                 withContext(Dispatchers.Main) { audio = a }
             } catch (_: Exception) { /* audio check may not have run yet */ }
         }
+        if (files.isNotEmpty()) loadItemLanguages()
     }
 
-    private suspend fun publish(list: List<FileItem>) = withContext(Dispatchers.Main) {
-        files = list
-        byId = list.associateBy { it.id }
+    private suspend fun publish(list: List<FileItem>) {
+        withContext(Dispatchers.Main) {
+            files = list
+            byId = list.associateBy { it.id }
+        }
+        recomputeLanguage()
+    }
+
+    // ------------------------------------------------------------------ language
+    private val langCache get() = File(ctx.filesDir, "item-languages.json")
+
+    fun setEnglishOnly(on: Boolean) { englishOnly = on; prefs.edit().putBoolean("english_only", on).apply() }
+
+    fun foreignReason(f: FileItem): String? = foreign[f.id]
+
+    private suspend fun recomputeLanguage() {
+        val list = files
+        val langs = itemLanguages
+        val out = withContext(Dispatchers.Default) {
+            val m = HashMap<String, String>()
+            for (f in list) Language.foreignReason(f.name, langs[f.archiveItem] ?: emptyList())?.let { m[f.id] = it }
+            m
+        }
+        withContext(Dispatchers.Main) { foreign = out }
+    }
+
+    /** Reads each Archive item's language tag (cached on the phone, refreshed in the background). */
+    private suspend fun loadItemLanguages() {
+        withContext(Dispatchers.IO) {
+            if (itemLanguages.isEmpty() && langCache.exists()) runCatching {
+                val o = JSONObject(langCache.readText())
+                val m = o.keys().asSequence().associateWith { k -> o.optJSONArray(k).strings() }
+                withContext(Dispatchers.Main) { itemLanguages = m }
+                recomputeLanguage()
+            }
+            val ids = files.map { it.archiveItem }.distinct()
+            val fetched = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(6)
+            try {
+                ids.map { id ->
+                    pool.submit {
+                        runCatching {
+                            val text = Http.request("https://archive.org/metadata/${java.net.URLEncoder.encode(id, "UTF-8")}/metadata/language", timeoutMs = 20000)
+                            val r = JSONObject(text).opt("result")
+                            fetched[id] = when (r) {
+                                is JSONArray -> r.strings()
+                                is String -> r.split(';', ',').map { it.trim() }.filter { it.isNotEmpty() }
+                                else -> emptyList()
+                            }
+                        }
+                    }
+                }.forEach { runCatching { it.get() } }
+            } finally { pool.shutdown() }
+            if (fetched.isEmpty()) return@withContext
+            val merged = itemLanguages + fetched
+            val j = JSONObject(); merged.forEach { (k, v) -> j.put(k, JSONArray(v)) }
+            runCatching { langCache.writeText(j.toString()) }
+            withContext(Dispatchers.Main) { itemLanguages = merged }
+            recomputeLanguage()
+        }
     }
 
     fun reloadCatalog() { scope.launch { loadCatalog() } }
@@ -136,6 +200,7 @@ class AppModel(private val ctx: Context) {
 
     /** Copies are hidden unless their sound/picture check differs from the original's. */
     private fun visibleInQueue(f: FileItem): Boolean {
+        if (englishOnly && f.id in foreign) return false
         if (!f.isCopy) return true
         val orig = f.originalId?.let { byId[it] } ?: return true
         val a = audio[f.id]?.verdict

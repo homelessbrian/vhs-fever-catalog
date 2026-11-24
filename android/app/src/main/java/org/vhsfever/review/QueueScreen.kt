@@ -73,8 +73,8 @@ fun fieldColors() = OutlinedTextFieldDefaults.colors(
 
 @Composable
 fun QueueScreen(m: AppModel) {
-    val list = remember(m.files, m.decisions, m.audio, m.mode, m.shelfFilter, m.tagFilter, m.soundOnly, m.search) { m.queue() }
-    val (good, bad, total) = remember(m.files, m.decisions, m.audio) { m.progress() }
+    val list = remember(m.files, m.decisions, m.audio, m.mode, m.shelfFilter, m.tagFilter, m.soundOnly, m.search, m.englishOnly, m.foreign) { m.queue() }
+    val (good, bad, total) = remember(m.files, m.decisions, m.audio, m.englishOnly, m.foreign) { m.progress() }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -107,8 +107,11 @@ fun QueueScreen(m: AppModel) {
                 colors = fieldColors(), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QueueMode.entries.forEach { q -> Chip(q.label, m.mode == q, { m.mode = q }) }
+                Chip("English only", m.englishOnly, { m.setEnglishOnly(!m.englishOnly) }, C.good)
                 Chip("Sound problems", m.soundOnly, { m.soundOnly = !m.soundOnly }, C.warn)
             }
+            if (m.englishOnly && m.foreign.isNotEmpty()) Text("${m.foreign.size} files that look non-English are hidden. Tap “English only” to show them.",
+                color = C.muted, fontSize = 12.sp)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("Any shelf", m.shelfFilter == null, { m.shelfFilter = null }, C.blue, Color(0xFF0E2238))
                 m.shelves.forEach { s -> Chip(s.name, m.shelfFilter == s.id, { m.shelfFilter = if (m.shelfFilter == s.id) null else s.id }, C.blue, Color(0xFF0E2238)) }
