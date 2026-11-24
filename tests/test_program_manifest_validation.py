@@ -71,6 +71,19 @@ class ProgramManifestValidationTests(unittest.TestCase):
     def test_detects_duplicate_program_ids_in_catalog(self):
         self.assertTrue(any("duplicate program_id" in error for error in validate_programs([valid_program(), valid_program()])))
 
+    def test_rejects_unexpected_object_types_without_crashing(self):
+        program = valid_program()
+        program["assembly_status"] = {"unexpected": "object"}
+        program["playback_mode"] = []
+        errors = validate_program(program)
+        self.assertTrue(any("assembly_status" in error for error in errors))
+        self.assertTrue(any("playback_mode" in error for error in errors))
+
+    def test_rejects_non_finite_duration(self):
+        program = valid_program()
+        program["segments"][0]["duration_seconds"] = float("inf")
+        self.assertTrue(any("duration_seconds" in error for error in validate_program(program)))
+
 
 if __name__ == "__main__":
     unittest.main()
