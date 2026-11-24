@@ -13,7 +13,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from build_program_candidates import build_candidates
+try:
+    from .build_program_candidates import build_candidates
+except ImportError:  # Script execution from the repository root
+    from build_program_candidates import build_candidates
 
 
 def stable_id(value: str) -> str:
