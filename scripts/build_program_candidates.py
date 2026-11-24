@@ -202,9 +202,11 @@ def build_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 evidence.append("segment_role_in_filename:" + f_role)
             if t_role and not f_role:
                 evidence.append("segment_role_in_item_title:" + t_role[1])
-            if role is None and title_key in known_title_keys and (file.get("duration_seconds") or 0) >= 300:
+            if (role is None and title_key in known_title_keys
+                    and (file.get("duration_seconds") or 0) >= 300
+                    and title_similarity(title_key, norm(Path(filename).stem)) >= 0.6):
                 role = "main_program"
-                evidence.append("exact_normalized_title_match_to_labeled_segments")
+                evidence.append("filename_title_match_to_labeled_segments")
             if not role or len(title_key) < 4:
                 continue
             groups["title:" + title_key].append({
