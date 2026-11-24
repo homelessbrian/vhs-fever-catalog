@@ -210,3 +210,23 @@ The normalized metadata sidecar keeps the TMDB ID, media type, title/original ti
 Poster, backdrop, and logo paths become individual artwork assets. The primary poster/backdrop paths are ordered first while matching image-list metadata is retained; duplicate paths are removed. The current builder selects `w500` posters, `w1280` backdrops, and original-size logos when those sizes are available, falling back to `original` where supported. It does not download images.
 
 TMDB artwork assets are created with `reuse_policy: provider_terms`, attribution `TMDB`, and `display_status: pending_review`. They are not selected as signature artwork automatically. A separate release-readiness review must confirm attribution placement and applicable TMDB terms before changing their display status to approved.
+
+
+## Pilot catalog enrichment runner
+
+`scripts/enrich_program_catalog.py` joins the program catalog JSONL to the Archive inventory JSONL using each standalone program's exact segment `archive_identifier`. It uses the original Archive title and year for matching rather than a filename-derived display title.
+
+The first pilot deliberately includes only standalone entries classified `movie_or_film`. It excludes assembled suggestions, multi-segment programs, TV episode/recording classifications, and other categories until their matching rules are designed separately. When source media type is unknown, the TMDB client searches both movie and TV endpoints. Repeated programs from the same Archive title/year reuse the same in-memory search results.
+
+Example (requires `TMDB_BEARER_TOKEN` in the environment):
+
+```bash
+python scripts/enrich_program_catalog.py \
+  --catalog data/vhsvault-program-catalog.jsonl \
+  --inventory data/vhsvault-file-inventory.jsonl \
+  --output data/vhsvault-enrichment-pilot.jsonl \
+  --summary data/vhsvault-enrichment-pilot.summary.json \
+  --limit 25
+```
+
+The runner writes a version 1 enrichment sidecar per eligible program and a summary of processed, skipped, and unique-search counts. It does not rewrite the program catalog or inventory, fetch VHS sleeves, or automatically confirm identity matches. Run a small pilot first, validate the resulting sidecar with `scripts/validate_enrichment.py`, and review every candidate before scaling.
