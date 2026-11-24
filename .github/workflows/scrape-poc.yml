@@ -121,10 +121,13 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: reviewer
+          name: github-pages-${{ github.run_attempt }}
 
       - name: Deploy reviewer site and latest data
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
 
       - name: Upload scrape proof-of-concept results
         uses: actions/upload-artifact@v4
