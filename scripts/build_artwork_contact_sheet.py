@@ -20,7 +20,8 @@ from typing import Any
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 FRAME_TITLE_RE = re.compile(r"\b(?:frames?|screenshots?|stills?|fotogramas?|fotograma|imagen\s+fija)\b", re.I)
 PACKAGING_TITLE_RE = re.compile(r"\b(?:vhs|videocassette|video\s*tape|sleeve|cover|box|cassette|packaging)\b", re.I)
-FRAME_FILE_RE = re.compile(r"(?:^|[_ .-])(?:frame|still|screenshot)[_ .-]*\d+|[_ .-]\d{4,}$", re.I)
+FRAME_NAME_RE = re.compile(r"(?:^|[_ .-])(?:frame|still|screenshot)[_ .-]*\d+", re.I)
+SEQUENTIAL_INDEX_RE = re.compile(r"(?:\s*\((\d{1,5})\)|[_ .-](\d{4,}))$", re.I)
 
 def is_thumbnail_derivative(filename: str, candidate: dict[str, Any]) -> bool:
     path = Path(filename)
@@ -51,7 +52,7 @@ def frame_filter_decision(item: dict[str, Any], candidates: list[dict[str, Any]]
             filtered.append({"file_name": name, "reason": reason})
         else:
             kept = dict(candidate)
-            if has_video and FRAME_FILE_RE.search(Path(name).stem) and packaging_context:
+            if has_video and SEQUENTIAL_INDEX_RE.search(Path(name).stem) and packaging_context:
                 kept["frame_filter_status"] = "ambiguous_numbered_image_kept_for_review"
             safe.append(kept)
     return safe, filtered
