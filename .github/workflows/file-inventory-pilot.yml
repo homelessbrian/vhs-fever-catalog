@@ -22,7 +22,7 @@ permissions:
 jobs:
   inventory:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -61,8 +61,10 @@ jobs:
         run: |
           python scripts/build_program_catalog.py --input data/vhsvault-file-inventory-pilot.jsonl --output data/vhsvault-program-catalog.jsonl --review-output data/vhsvault-program-review-queue.jsonl
 
-      - name: Install image preview dependency
-        run: python -m pip install Pillow
+      - name: Install image preview and local AI dependencies
+        run: |
+          python -m pip install Pillow transformers safetensors
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Enrich catalog with artwork candidates and optional TMDB metadata
         env:
@@ -77,6 +79,13 @@ jobs:
           python scripts/build_artwork_contact_sheet.py \
             --input data/vhsvault-metadata-artwork.jsonl \
             --output-dir data/artwork-review \
+            --limit 40
+
+      - name: Classify artwork previews with local AI (review-only)
+        run: |
+          python scripts/classify_artwork_ai.py \
+            --manifest data/artwork-review/vhs-artwork-review-manifest.json \
+            --output data/artwork-review/vhs-artwork-ai-review-manifest.json \
             --limit 40
 
       - name: Run program assembly and catalog tests
@@ -100,5 +109,6 @@ jobs:
             data/vhsvault-metadata-artwork.summary.json
             data/artwork-review/vhs-artwork-contact-sheet.jpg
             data/artwork-review/vhs-artwork-review-manifest.json
+            data/artwork-review/vhs-artwork-ai-review-manifest.json
           if-no-files-found: error
           retention-days: 30
