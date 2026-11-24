@@ -61,7 +61,8 @@ async function loadPublishedData(){
   note.textContent="Downloading catalog records…";
   const reader=response.body.getReader(),decoder=new TextDecoder();
   while(true){
-   const {done,value}=await reader.read();if(done)break;
+   const {done,value}=await reader.read();
+   if(done)break;
    received+=value.length;parts.push(decoder.decode(value,{stream:true}));
    if(total){bar.classList.remove("indeterminate");fill.style.width=Math.min(100,received/total*100)+"%";note.textContent="Downloading catalog records… "+(received/1048576).toFixed(1)+" MB"+(total?" of "+(total/1048576).toFixed(1)+" MB":"");}
   }
