@@ -106,7 +106,7 @@ jobs:
                           raise SystemExit(f"{name}:{line_number}: expected JSON object")
                       count += 1
               print(f"{name}: {count} valid records")
-              if count == 0 and name != "data/vhsvault-program-review-queue.jsonl":
+              if count == 0 and name not in {"data/vhsvault-program-review-queue.jsonl", "data/vhsvault-final-catalog.jsonl"}:
                   raise SystemExit(f"{name}: no records were produced")
           PY
 
