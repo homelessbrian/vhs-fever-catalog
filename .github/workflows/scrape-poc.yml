@@ -8,6 +8,7 @@ on:
       - 'scripts/discover_vhsvault.py'
       - 'scripts/discover_vhsvault_candidates.py'
       - 'scripts/inspect_file_inventory.py'
+      - 'reviewer/**'
   workflow_dispatch:
     inputs:
       sample_size:
@@ -16,10 +17,7 @@ on:
         default: "20"
 
 permissions:
-  contents: read
-  actions: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: vhs-fever-pages
@@ -27,9 +25,6 @@ concurrency:
 
 jobs:
   scrape-poc:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -119,33 +114,14 @@ jobs:
           print(json.dumps(manifest, indent=2))
           PY
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload reviewer site with latest data
-        uses: actions/upload-pages-artifact@v3
+      - name: Publish reviewer site and latest data to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: reviewer
-
-      - name: Wait for Pages artifact to become visible to the Actions API
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for attempt in $(seq 1 18); do
-            artifact_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --jq '.artifacts[] | select(.name == "github-pages") | .id' | head -n 1)
-            if [ -n "$artifact_id" ]; then
-              echo "Pages artifact is visible to the API (ID: $artifact_id)."
-              exit 0
-            fi
-            echo "Pages artifact is not visible yet (attempt $attempt/18); waiting 5 seconds."
-            sleep 5
-          done
-          echo "::error::Pages artifact did not become visible to the Actions API within 90 seconds."
-          exit 1
-
-      - name: Deploy reviewer site and latest data
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./reviewer
+          force_orphan: true
+          enable_jekyll: false
 
       - name: Upload scrape proof-of-concept results
         uses: actions/upload-artifact@v4
