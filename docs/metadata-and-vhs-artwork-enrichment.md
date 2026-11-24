@@ -127,9 +127,13 @@ The sleeve archive's metadata is CC0-1.0, but the underlying artwork remains the
 
 ## TMDB and IMDb constraints
 
-TMDB's developer API is free for non-commercial use subject to its attribution requirements. The app must include the required TMDB credit notice and approved logo placement. Commercial use requires a commercial license; determine the product's intended distribution before shipping.
+VHS FEVER is intended to become publicly available. Public availability alone does not necessarily make a project commercial; TMDB defines commercial use by whether the primary purpose is generating revenue for the owner. Until the project's business model is settled, implement against TMDB's developer API only for development and non-commercial use, include the required attribution and approved logo placement, and keep a provider adapter boundary so a commercial license can be substituted before any revenue-generating launch. Do not assume that a free developer API key grants commercial rights.
 
-IMDb's public datasets are described as for personal, non-commercial use and are not a general-purpose license to republish an IMDb-derived catalogue. Do not build scraping or dataset ingestion as the fallback. Keep the fallback interface provider-neutral so a permitted IMDb access method can be added once use rights are confirmed.
+IMDb's public datasets are explicitly limited to personal, non-commercial use and cannot be repurposed to create a public movie-information database. IMDb also prohibits scraping absent express written consent. Therefore, the public-release architecture must not depend on IMDb data or scraping as its fallback. Keep an IMDb adapter interface dormant until written commercial/public-use permission or another clearly authorized access arrangement is obtained. In the meantime, use TMDB external IDs, Internet Archive source metadata, and manual review to resolve unmatched records without copying IMDb content.
+
+Video Tapes dot io's catalogue metadata is CC0, but its underlying cover artwork remains owned by rights holders. Its published legal description characterizes the archive's artwork display as non-commercial preservation/research/public-interest use, and its data guidance asks other services to link to the images rather than bulk-copy them. For a public VHS FEVER release, treat the sleeve API as a discovery and provenance source only until the provider confirms that embedding/linking its hosted images in this specific public application is permitted. Do not download, proxy, mirror, cache, or rehost those scans without explicit permission. If permission is not available, show edition metadata and a link to the source page, and use artwork with a separately cleared license for the actual app display.
+
+Internet Archive media and artwork also need item-level rights review. A public item, a Creative Commons label, and permission to redistribute are not interchangeable; preserve the supplied license and rights evidence and keep unknown/restricted items out of any public playback or artwork distribution path until reviewed.
 
 ## Data separation and review
 
