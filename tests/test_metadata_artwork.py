@@ -22,6 +22,16 @@ class MetadataArtworkTests(unittest.TestCase):
         ]}}
         self.assertEqual(build_artwork_candidates(item), [])
 
+    def test_ignores_video_thumbnail_frames_even_when_filename_says_back(self):
+        item = {"identifier": "x", "vhs_fever_file_inventory": {"image_files": [
+            {"name": "movie.thumbs/scene_is_back_000001.jpg"},
+            {"name": "movie.thumbs/scene_is_back_000057.jpg"},
+            {"name": "actual_back_cover.jpg"},
+        ]}}
+        candidates = build_artwork_candidates(item)
+        self.assertEqual([x["file_name"] for x in candidates], ["actual_back_cover.jpg"])
+        self.assertEqual(candidates[0]["candidate_role"], "vhs_back_cover")
+
     def test_detects_pdf_packaging_scans(self):
         item = {"identifier": "x", "vhs_fever_file_inventory": {"artwork_document_files": [
             {"name": "full_wrap_insert.pdf"}
@@ -63,6 +73,23 @@ class MetadataArtworkTests(unittest.TestCase):
         title, status = tmdb_search_title(item)
         self.assertIsNone(title)
         self.assertEqual(status, "likely_archive_recording_or_compilation")
+
+    def test_strips_year_before_vhs_variant_suffix(self):
+        title, status = tmdb_search_title({"title": "Disney Sing-Along Songs: The Twelve Days of Christmas (1993) VHS Variants"})
+        self.assertEqual(title, "Disney Sing-Along Songs: The Twelve Days of Christmas")
+        self.assertEqual(status, "cleaned_title")
+
+    def test_tmdb_high_similarity_title_is_reviewable_match(self):
+        import unittest.mock as mock
+        item = {"title": "The Care Bears: The Land Without Feelings",
+                "vhs_fever_classification": {"label": "movie_or_film"}}
+        payload = {"results": [{"id": 123, "title": "The Care Bears in the Land Without Feelings",
+                                "release_date": "1983-01-01"}]}
+        with mock.patch("scripts.enrich_metadata_artwork.request_json", return_value=payload):
+            result = find_tmdb_match(item, "token")
+        self.assertEqual(result["tmdb_id"], 123)
+        self.assertEqual(result["match_method"], "high_similarity_title_search")
+        self.assertEqual(result["review_status"], "needs_review")
 
     def test_skips_capture_and_tv_spot_titles(self):
         for title in ("All Animated VHS and DVD Capture (Hauppauge Capture)",
