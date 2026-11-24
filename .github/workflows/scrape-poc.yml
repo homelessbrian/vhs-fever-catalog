@@ -96,7 +96,6 @@ jobs:
           path: |
             data/vhsvault-scrape-poc.jsonl
             data/vhsvault-scrape-poc.summary.json
-            data/vhsvault-scrape-poc.summary.json
             data/vhsvault-scrape-poc-classified.jsonl
             data/vhsvault-scrape-poc-classified.summary.json
             data/vhsvault-scrape-poc-inventory.jsonl
