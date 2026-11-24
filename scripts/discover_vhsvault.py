@@ -25,9 +25,14 @@ USER_AGENT = "VHSFeverCatalogResearch/0.1 (metadata discovery; contact: reposito
 
 
 def request_page(cursor: str | None, count: int) -> dict:
-    params = {"q": f"collection:{COLLECTION}", "fields": FIELDS, "count": count}
+    # The Scraping API can restart from the beginning when "count" is
+    # sent together with a cursor. Set the page size on the first request
+    # only; continuation requests must carry the cursor without "count".
+    params = {"q": f"collection:{COLLECTION}", "fields": FIELDS}
     if cursor:
         params["cursor"] = cursor
+    else:
+        params["count"] = count
     url = f"{ENDPOINT}?{urlencode(params)}"
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     for attempt in range(4):
