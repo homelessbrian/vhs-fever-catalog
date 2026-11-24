@@ -136,10 +136,11 @@ def main() -> int:
         seen = set()
         output_mode = "w"
 
-    max_pages = sys.maxsize if args.all else args.max_pages
+    pages_this_run = 0
+    max_pages_this_run = sys.maxsize if args.all else args.max_pages
     finished = False
     with args.output.open(output_mode, encoding="utf-8") as output:
-        while page_count < max_pages:
+        while pages_this_run < max_pages_this_run:
             payload = request_page(cursor, args.count)
             items = payload["items"]
             if not items:
@@ -162,6 +163,7 @@ def main() -> int:
             output.flush()
             os.fsync(output.fileno())
             page_count += 1
+            pages_this_run += 1
             reported_total = payload.get("total", reported_total)
             cursor = payload.get("cursor")
             finished = not bool(cursor)
@@ -180,7 +182,7 @@ def main() -> int:
                 f"unique total {len(seen)}",
                 flush=True,
             )
-            if finished or page_count >= max_pages:
+            if finished or pages_this_run >= max_pages_this_run:
                 break
             time.sleep(args.delay)
 
