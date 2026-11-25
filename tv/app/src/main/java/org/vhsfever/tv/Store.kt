@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -301,6 +302,9 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
         if (restoreKey == null) repeat(10) { if (runCatching { first.requestFocus() }.isSuccess) return@LaunchedEffect; delay(100) }
     }
     val collapsed = focusRow > 0
+    // keep the shelf you're on lined up at the top, instead of a half-cut shelf above it
+    val listState = rememberLazyListState()
+    LaunchedEffect(focusRow) { if (focusRow >= 0) runCatching { listState.animateScrollToItem(focusRow) } }
     val rowsTop by animateDpAsState(if (collapsed) 352.px else 452.px, label = "rowsTop")
     val genres = catalog.genreShelves.map { it.first }.take(8)
 
@@ -319,7 +323,8 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
         }
         AnimatedVisibility(!collapsed && genres.isNotEmpty(), enter = fadeIn(), exit = fadeOut(),
             modifier = Modifier.offset(0.px, 352.px)) {
-            LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = PaddingValues(start = 252.px, end = 40.px, top = 4.px, bottom = 8.px),
+            LazyRow(Modifier.fillMaxWidth().padding(start = 232.px).clipToBounds().focusRestorer(),
+                contentPadding = PaddingValues(start = 20.px, end = 40.px, top = 8.px, bottom = 10.px),
                 horizontalArrangement = Arrangement.spacedBy(12.px)) {
                 items(genres) { g ->
                     Box(Modifier.onFocusChanged { if (it.hasFocus) focusRow = -1 }) {
@@ -328,13 +333,14 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
                 }
             }
         }
-        LazyColumn(Modifier.fillMaxSize().padding(top = rowsTop), contentPadding = PaddingValues(top = 4.px, bottom = 80.px)) {
+        LazyColumn(Modifier.fillMaxSize().padding(top = rowsTop), state = listState, contentPadding = PaddingValues(top = 4.px, bottom = 400.px)) {
             rows.forEachIndexed { ri, (name, list) ->
                 item(key = "row-$name") {
                     Column(Modifier.padding(bottom = 8.px)) {
                         Box(Modifier.padding(start = 252.px)) { RowHeader(name) }
-                        LazyRow(Modifier.focusRestorer(),
-                            contentPadding = PaddingValues(start = 252.px, end = 60.px, top = 16.px, bottom = 16.px),
+                        // shelves stop at the menu's edge instead of sliding under it
+                        LazyRow(Modifier.padding(start = 232.px).clipToBounds().focusRestorer(),
+                            contentPadding = PaddingValues(start = 20.px, end = 60.px, top = 16.px, bottom = 16.px),
                             horizontalArrangement = Arrangement.spacedBy(14.px), verticalAlignment = Alignment.Bottom) {
                             items(list, key = { it.key }) { t ->
                                 Box(if (ri == 0 && t == list.first()) Modifier.focusRequester(first) else Modifier) {

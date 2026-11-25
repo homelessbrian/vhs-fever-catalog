@@ -89,11 +89,12 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier, dvd: Boolean
             Text(yearText(t), style = st)
         }
         if (t.poster == null) {
-            Text(coverText(t).uppercase(), modifier = Modifier.align(Alignment.BottomStart)
+            // no art: the title printed on the box, shrunk to fit rather than broken mid-word
+            FitText(coverText(t).uppercase(), modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().fillMaxHeight(0.6f)
                 .padding(start = (7 * scale).px, end = (7 * scale).px, bottom = (10 * scale).px),
                 style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = (15 * scale).fs,
                     lineHeight = (15 * scale).fs, color = Ink.CoverCream, shadow = coverShadow),
-                maxLines = 5, overflow = TextOverflow.Ellipsis)
+                maxLines = 5, minScale = 0.55f, wordsWhole = true, align = Alignment.BottomStart)
         }
         if (dvd) {
             // the plastic keep-case: dark rim and the hinge down the left side

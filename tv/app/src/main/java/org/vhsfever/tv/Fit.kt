@@ -3,6 +3,7 @@ package org.vhsfever.tv
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -26,17 +27,22 @@ fun FitText(
     maxLines: Int = 1,
     minScale: Float = 0.5f,
     textAlign: TextAlign? = null,
+    wordsWhole: Boolean = false,   // also shrink until no single word is too wide for a line
+    align: Alignment = Alignment.TopStart,
 ) {
-    BoxWithConstraints(modifier) {
+    BoxWithConstraints(modifier, contentAlignment = align) {
         val measurer = rememberTextMeasurer()
         val maxW = constraints.maxWidth
         val maxH = if (constraints.hasBoundedHeight) constraints.maxHeight else Constraints.Infinity
-        val scale = remember(text, style, maxW, maxH, maxLines) {
+        val scale = remember(text, style, maxW, maxH, maxLines, wordsWhole) {
             var s = 1f
             while (s > minScale) {
                 val r = measurer.measure(text, scaled(style, s), overflow = TextOverflow.Clip, softWrap = maxLines > 1,
                     maxLines = maxLines, constraints = Constraints(maxWidth = maxW, maxHeight = maxH))
-                if (!r.hasVisualOverflow) break
+                val wordTooWide = wordsWhole && text.split(' ').any { w ->
+                    measurer.measure(w, scaled(style, s), softWrap = false, maxLines = 1).size.width > maxW
+                }
+                if (!r.hasVisualOverflow && !wordTooWide) break
                 s -= 0.04f
             }
             s.coerceAtLeast(minScale)

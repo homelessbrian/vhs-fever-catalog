@@ -88,7 +88,8 @@ abstract class ScreensBase(private val tag: String) {
         // put the highlight on the first box of the first shelf (the top-left box-shaped button)
         val clickable = rule.onAllNodes(hasClickAction())
         val nodes = clickable.fetchSemanticsNodes()
-        val box = nodes.withIndex().filter { (_, n) -> n.boundsInRoot.height > n.boundsInRoot.width * 1.3f }
+        val tall = nodes.maxOf { it.boundsInRoot.height } * 0.8f     // shelf boxes are the tallest buttons on Home
+        val box = nodes.withIndex().filter { (_, n) -> n.boundsInRoot.height >= tall && n.boundsInRoot.width > 10f }
             .minWith(compareBy({ it.value.boundsInRoot.top }, { it.value.boundsInRoot.left })).index
         clickable[box].performSemanticsAction(SemanticsActions.RequestFocus)
         rule.mainClock.advanceTimeBy(1000)
