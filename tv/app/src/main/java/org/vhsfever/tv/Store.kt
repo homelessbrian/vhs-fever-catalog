@@ -296,7 +296,10 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
         delay(900)            // wait for the remote to settle before loading a video
         playing = highlighted
     }
-    LaunchedEffect(Unit) { if (restoreKey == null) runCatching { first.requestFocus() } }
+    // start on the first box (try for a moment, since the shelf may still be laying out)
+    LaunchedEffect(Unit) {
+        if (restoreKey == null) repeat(10) { if (runCatching { first.requestFocus() }.isSuccess) return@LaunchedEffect; delay(100) }
+    }
     val collapsed = focusRow > 0
     val rowsTop by animateDpAsState(if (collapsed) 352.px else 452.px, label = "rowsTop")
     val genres = catalog.genreShelves.map { it.first }.take(8)
