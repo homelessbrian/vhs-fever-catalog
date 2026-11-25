@@ -99,13 +99,15 @@ abstract class ScreensBase(private val tag: String) {
         rule.mainClock.advanceTimeBy(1000)
         shot("1-home-down")
         val after = focusedBounds()
-        // a straight move down: the new box starts below the old one, not beside it
-        assertTrue("Down moved focus from $before to $after", after.top >= before.bottom - 2)
+        // a straight move down: a different box in the same column (the shelf scrolls up, so screen height can match)
+        assertTrue("Down moved focus sideways, from $before to $after",
+            kotlin.math.abs(after.left - before.left) < before.width / 2 && after != before)
         rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         rule.mainClock.advanceTimeBy(1000)
         shot("1-home-down2")
         val third = focusedBounds()
-        assertTrue("second Down moved focus from $after to $third", third.top >= after.top + 10 || third.left != after.left || third.top != after.top)
+        assertTrue("second Down moved focus sideways, from $after to $third",
+            kotlin.math.abs(third.left - after.left) < after.width / 2 && third != after)
     }
 
     @Test fun genres() {
