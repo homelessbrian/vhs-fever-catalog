@@ -137,18 +137,51 @@ data class FileDecision(
     val updatedAt: String = "",
     /** "agreed": tapped Agree on this file; "agreed_all": part of "agree with all shown". */
     val robot: String? = null,
+    /** What sort of video it is (one of [BUCKETS]), picked or confirmed by the reviewer. */
+    val kind: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().put("status", status).put("reasons", JSONArray(reasons))
         .put("other_reason", otherReason).put("shelf", shelf).put("tags", JSONArray(tags)).put("notes", notes)
         .put("movie", movie?.toJson()).put("release", release?.toJson()).put("updated_at", updatedAt)
-        .put("robot", robot)
+        .put("robot", robot).put("kind", kind)
 
     companion object {
         fun fromJson(o: JSONObject) = FileDecision(
             o.optStringOrNull("status"), o.optJSONArray("reasons").strings(), o.optString("other_reason", ""),
             o.optStringOrNull("shelf"), o.optJSONArray("tags").strings(), o.optString("notes", ""),
             Movie.fromJson(o.optJSONObject("movie")), ReleaseInfo.fromJson(o.optJSONObject("release")),
-            o.optString("updated_at", ""), o.optStringOrNull("robot"))
+            o.optString("updated_at", ""), o.optStringOrNull("robot"), o.optStringOrNull("kind"))
+    }
+}
+
+/** The kinds of video found so far. Same ids the auto-sort uses. */
+data class Bucket(val id: String, val label: String)
+
+val BUCKETS = listOf(
+    Bucket("movie", "Movie"), Bucket("tv_episode", "TV episode"), Bucket("tv_recording", "Off-air TV"),
+    Bucket("short", "Short / cartoon"), Bucket("music", "Music"), Bucket("instructional", "How-to"),
+    Bucket("sports", "Sports"), Bucket("news", "News"), Bucket("home_video", "Home video"),
+    Bucket("extra", "Bonus / extra"), Bucket("tape_opening", "Tape opening"), Bucket("trailer", "Trailer"),
+    Bucket("commercial", "Commercial"), Bucket("commercial_compilation", "Ad reel"), Bucket("promo_or_bump", "Promo / bump"),
+    Bucket("clip", "Clip / piece"),
+)
+
+fun bucketLabel(id: String?) = BUCKETS.firstOrNull { it.id == id }?.label ?: id?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "?"
+
+/** Release formats, in the same words as the catalog (VHS, DVD, BLU-RAY, ...). */
+val FORMATS = listOf("VHS" to "VHS", "DVD" to "DVD", "BLU-RAY" to "Blu-ray", "TV" to "TV", "WEB" to "Web", "LASERDISC" to "LaserDisc")
+
+/** Which shelf a kind of video goes on, given its format. */
+fun shelfForBucket(kind: String?, format: String?): String = when (kind) {
+    "tape_opening" -> "vhs_opening_or_previews"
+    "home_video" -> "home_video"
+    "commercial", "commercial_compilation", "promo_or_bump", "trailer", "clip", "extra" -> "not_catalog"
+    "tv_recording" -> "tv_recording"
+    else -> when (format?.uppercase()) {
+        "VHS", "BETAMAX", "TAPE_UNSPECIFIED" -> "vhs_release"
+        "TV", "BROADCAST" -> "tv_recording"
+        "DVD", "BLU-RAY", "WEB", "LASERDISC", "VCD" -> "other_media_release"
+        else -> "manual_review"
     }
 }
 
@@ -167,7 +200,7 @@ data class RobotGuess(
     val commercialsInside: String?,
 ) {
     val label get() = when (verdict) { "good" -> "Good"; "bad" -> "Bad" + (reason?.let { ": $it" } ?: ""); else -> "Unsure" }
-    val kindLabel get() = kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    val kindLabel get() = bucketLabel(kind)
 }
 
 fun parseRobot(text: String): Map<String, RobotGuess> {

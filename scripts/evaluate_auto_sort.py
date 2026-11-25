@@ -19,14 +19,14 @@ from typing import Any
 GOOD_PILE_TARGET = 0.98
 # The rules were written while looking at reviews made up to this moment, so
 # only reviews made after it are a fair, unseen test.
-RULES_WRITTEN_AT = "2026-11-25T18:00:00Z"
+RULES_WRITTEN_AT = "2026-11-26T00:00:00Z"
 
 
 def evaluate(rows: list[dict[str, Any]], decisions: dict[str, Any], *, since: str | None = None) -> dict[str, Any]:
     if since is None:
         full = evaluate(rows, decisions, since="")
         full["unseen_reviews"] = evaluate(rows, decisions, since=RULES_WRITTEN_AT)
-        for k in ("robot_good_person_bad", "robot_bad_person_good", "shelf_disagreements"):
+        for k in ("robot_good_person_bad", "robot_bad_person_good", "shelf_disagreements", "kind_disagreements"):
             full["unseen_reviews"].pop(k, None)
         # Only the fair test can say the good pile is ready.
         full["good_pile"]["ready_to_switch_on"] = full["unseen_reviews"]["good_pile"]["ready_to_switch_on"]
@@ -76,6 +76,11 @@ def evaluate(rows: list[dict[str, Any]], decisions: dict[str, Any], *, since: st
                     "robot_format": r["format"], "clues": r["format_clues"]}
                    for f, d, r in shelf_pairs if d["shelf"] != r["shelf"]]
 
+    # "What is it?" picks. Taps on Agree copy the robot's kind, so they don't count.
+    kind_pairs = [(f, d, r) for f, d, r in pairs if d.get("kind") and not d.get("robot") and r.get("kind")]
+    kind_right = sum(1 for _f, d, r in kind_pairs if d["kind"] == r["kind"])
+    kind_wrong = Counter((r["kind"], d["kind"]) for _f, d, r in kind_pairs if d["kind"] != r["kind"])
+
     def pct(a: int, b: int) -> float | None:
         return round(a / b, 3) if b else None
 
@@ -97,6 +102,8 @@ def evaluate(rows: list[dict[str, Any]], decisions: dict[str, Any], *, since: st
         "robot_good_person_bad": wrong_good,
         "robot_bad_person_good": wrong_bad,
         "shelf_disagreements": shelf_wrong,
+        "kind": {"compared": len(kind_pairs), "agreed": kind_right, "agreement": pct(kind_right, len(kind_pairs))},
+        "kind_disagreements": [{"robot": a, "person": b, "files": n} for (a, b), n in kind_wrong.most_common()],
     }
 
 
@@ -119,6 +126,8 @@ def markdown(rep: dict[str, Any]) -> str:
         f"- **Bad pile:** {b['size']} files, you agreed on {b['person_agreed']} ({p(b['agreement'])}).",
         f"- **Sent to you to check:** {rep['sent_to_review']} files.",
         f"- **Shelf (VHS / other media / not catalog):** agreed on {s['agreed']} of {s['compared']} ({p(s['agreement'])}).",
+        f"- **What is it (kinds you picked):** agreed on {rep['kind']['agreed']} of {rep['kind']['compared']} "
+        f"({p(rep['kind']['agreement'])}).",
         f"- **Fair test (reviews made after these rules were written):** {u.get('reviewed_files_compared', 0)} files so far; "
         f"good pile {ug.get('person_agreed', 0)} of {ug.get('size', 0)} ({p(ug.get('agreement'))}).",
     ]
@@ -133,6 +142,10 @@ def markdown(rep: dict[str, Any]) -> str:
         lines += ["", f"### Shelf disagreements ({len(rep['shelf_disagreements'])})"]
         for r in rep["shelf_disagreements"][:15]:
             lines.append(f"- {r['name']}: you {r['person_shelf']}, robot {r['robot_shelf']} ({r['robot_format']})")
+    if rep.get("kind_disagreements"):
+        lines += ["", "### Kinds you changed"]
+        for r in rep["kind_disagreements"][:15]:
+            lines.append(f"- robot {r['robot']} → you {r['person']}: {r['files']} files")
     return "\n".join(lines) + "\n"
 
 

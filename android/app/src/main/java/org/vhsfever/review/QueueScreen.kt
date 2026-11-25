@@ -79,7 +79,7 @@ fun fieldColors() = OutlinedTextFieldDefaults.colors(
 
 @Composable
 fun QueueScreen(m: AppModel) {
-    val list = remember(m.files, m.decisions, m.audio, m.mode, m.shelfFilter, m.tagFilter, m.soundOnly, m.search, m.englishOnly, m.foreign, m.wholeOnly, m.split, m.robot, m.robotFilter) { m.queue() }
+    val list = remember(m.files, m.decisions, m.audio, m.mode, m.shelfFilter, m.tagFilter, m.soundOnly, m.search, m.englishOnly, m.foreign, m.wholeOnly, m.split, m.robot, m.robotFilter, m.kindFilter) { m.queue() }
     var confirmAll by remember { mutableStateOf(false) }
     val (good, bad, total) = remember(m.files, m.decisions, m.audio, m.englishOnly, m.foreign, m.wholeOnly, m.split) { m.progress() }
     Column(Modifier.fillMaxSize()) {
@@ -128,6 +128,17 @@ fun QueueScreen(m: AppModel) {
                 Chip("Robot says good · ${counts["good"] ?: 0}", m.robotFilter == "good", { m.robotFilter = if (m.robotFilter == "good") null else "good" }, C.good)
                 Chip("Robot says bad · ${counts["bad"] ?: 0}", m.robotFilter == "bad", { m.robotFilter = if (m.robotFilter == "bad") null else "bad" }, C.bad, Color(0xFF2A0C08))
                 Chip("Robot unsure · ${counts["review"] ?: 0}", m.robotFilter == "review", { m.robotFilter = if (m.robotFilter == "review") null else "review" }, C.warn, Color(0xFF2A1A06))
+            }
+            if (m.robot.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val kinds = remember(m.files, m.robot, m.decisions) {
+                    m.files.asSequence().filter { !it.isCopy }.groupingBy { m.kindFor(it) }.eachCount()
+                }
+                Chip("Any kind", m.kindFilter == null, { m.kindFilter = null }, C.gold)
+                BUCKETS.forEach { b ->
+                    val n = kinds[b.id] ?: 0
+                    if (n > 0 || m.kindFilter == b.id) Chip("${b.label} · $n", m.kindFilter == b.id,
+                        { m.kindFilter = if (m.kindFilter == b.id) null else b.id }, C.gold)
+                }
             }
             if (m.englishOnly && m.foreign.isNotEmpty()) Text("${m.foreign.size} files that look non-English are hidden. Tap “English only” to show them.",
                 color = C.muted, fontSize = 12.sp)
@@ -207,6 +218,7 @@ private fun FileRow(m: AppModel, f: FileItem) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(f.name, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                m.kindFor(f)?.let { Tag(bucketLabel(it)) }
                 val rel = m.releaseFor(f)
                 if (rel.media != null) Tag("${rel.media} ${rel.year ?: ""}".trim(), if (rel.media == "VHS") C.blueBg else C.panel2, if (rel.media == "VHS") C.blue else C.text)
                 soundLabel(sound?.verdict)?.takeIf { sound?.verdict in SOUND_PROBLEMS }?.let { Tag(it, C.warnBg, C.warn) }

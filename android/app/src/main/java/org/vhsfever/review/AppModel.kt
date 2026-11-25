@@ -67,6 +67,8 @@ class AppModel(private val ctx: Context) {
     var soundOnly by mutableStateOf(false)
     /** Show only files the robot called good / bad / review (unsure). */
     var robotFilter by mutableStateOf<String?>(null)
+    /** Show only one kind of video (a [BUCKETS] id). */
+    var kindFilter by mutableStateOf<String?>(null)
     var search by mutableStateOf("")
     /** Hide files that look non-English (on by default). */
     var englishOnly by mutableStateOf(prefs.getBoolean("english_only", true)); private set
@@ -218,7 +220,7 @@ class AppModel(private val ctx: Context) {
         if (s == source) return
         source = s; prefs.edit().putString("source", s).apply()
         files = emptyList(); byId = emptyMap(); audio = emptyMap(); robot = emptyMap(); split = emptyMap(); batchName = null
-        robotFilter = null; shelfFilter = null; tagFilter = null
+        robotFilter = null; shelfFilter = null; tagFilter = null; kindFilter = null
         loadStatus = "Loading…"
         scope.launch { loadCatalog() }
     }
@@ -231,7 +233,7 @@ class AppModel(private val ctx: Context) {
         val g = robotFor(f) ?: return false
         if (g.verdict != "good" && g.verdict != "bad") return false
         update(fileId, if (bulk) null else "Agreed with robot") {
-            it.copy(status = g.verdict, reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
+            it.copy(status = g.verdict, kind = it.kind ?: g.kind.takeIf { k -> k != "unknown" }, reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
                 otherReason = if (g.verdict == "bad" && g.reason == null) "robot: " + g.why.firstOrNull().orEmpty() else "",
                 robot = if (bulk) "agreed_all" else "agreed")
         }
@@ -247,7 +249,8 @@ class AppModel(private val ctx: Context) {
             val g = robotFor(f) ?: continue
             if (g.verdict != "good" && g.verdict != "bad") continue
             val base = decisions[f.id] ?: FileDecision()
-            add[f.id] = base.copy(status = g.verdict, reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
+            add[f.id] = base.copy(status = g.verdict, kind = base.kind ?: g.kind.takeIf { it != "unknown" },
+                reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
                 robot = "agreed_all", updatedAt = stamp)
         }
         if (add.isEmpty()) return 0
@@ -292,6 +295,48 @@ class AppModel(private val ctx: Context) {
 
     fun soundFor(f: FileItem): AudioCheck? = audio[f.id]
 
+    /** The kind of video: the reviewer's pick, else the robot's guess. */
+    fun kindFor(f: FileItem): String? = decisionFor(f)?.kind ?: robotFor(f)?.kind?.takeIf { it != "unknown" }
+
+    /** The release format: the reviewer's pick, else the catalog's, else the robot's guess. */
+    fun formatFor(f: FileItem): String? = releaseFor(f).media?.uppercase()?.let { if (it == "BROADCAST") "TV" else it }
+        ?: robotFor(f)?.format?.takeIf { it != "unknown" }
+
+    private fun isCustomShelf(id: String?) = id != null && customShelves.any { it.id == id }
+
+    /** One tap on "What is it?": saves the kind and moves the file to the matching shelf. */
+    fun setBucket(f: FileItem, kind: String) {
+        update(f.id, "Changed kind") {
+            it.copy(kind = kind, shelf = if (isCustomShelf(it.shelf)) it.shelf else shelfForBucket(kind, formatFor(f)))
+        }
+    }
+
+    fun setFormat(f: FileItem, format: String) {
+        val rel = releaseFor(f).copy(media = format)
+        update(f.id, "Changed format") {
+            it.copy(release = rel, shelf = if (isCustomShelf(it.shelf)) it.shelf else shelfForBucket(kindFor(f), format))
+        }
+    }
+
+    /** Puts the file on one of the user's own shelves (tap again to take it off). */
+    fun toggleCustomShelf(f: FileItem, id: String) {
+        update(f.id, "Changed shelf") {
+            it.copy(shelf = if (it.shelf == id) shelfForBucket(kindFor(f), formatFor(f)) else id)
+        }
+    }
+
+    fun markGood(f: FileItem, notes: String) {
+        update(f.id, "Marked good") {
+            it.copy(status = "good", reasons = emptyList(), otherReason = "", notes = notes, kind = it.kind ?: kindFor(f))
+        }
+    }
+
+    fun markBad(f: FileItem, reasons: List<String>, other: String, notes: String) {
+        update(f.id, "Marked bad") {
+            it.copy(status = "bad", reasons = reasons, otherReason = other, notes = notes, kind = it.kind ?: kindFor(f))
+        }
+    }
+
     /** Copies are hidden unless their sound/picture check differs from the original's. */
     private fun visibleInQueue(f: FileItem): Boolean {
         if (englishOnly && f.id in foreign) return false
@@ -316,6 +361,7 @@ class AppModel(private val ctx: Context) {
             .filter { tagFilter == null || decisionFor(it)?.tags?.contains(tagFilter) == true }
             .filter { !soundOnly || audio[it.id]?.verdict in SOUND_PROBLEMS }
             .filter { robotFilter == null || robotFor(it)?.verdict == robotFilter }
+            .filter { kindFilter == null || kindFor(it) == kindFilter }
             .filter { q.isEmpty() || it.name.lowercase().contains(q) || it.titleName.lowercase().contains(q) || it.archiveItem.lowercase().contains(q) }
             .sortedWith(compareBy({ it.titleName.lowercase() }, { it.titleId }, { it.media != "VHS" }, { it.releaseYear ?: "9999" }, { it.name }))
             .toList()
@@ -410,6 +456,7 @@ class AppModel(private val ctx: Context) {
             .filter { tagFilter == null || decisionFor(it)?.tags?.contains(tagFilter) == true }
             .filter { !soundOnly || audio[it.id]?.verdict in SOUND_PROBLEMS }
             .filter { robotFilter == null || robotFor(it)?.verdict == robotFilter }
+            .filter { kindFilter == null || kindFor(it) == kindFilter }
             .sortedWith(compareBy({ it.titleName.lowercase() }, { it.titleId }, { it.media != "VHS" }, { it.releaseYear ?: "9999" }, { it.name }))
             .toList()
         val i = q.indexOfFirst { it.id == fileId }
