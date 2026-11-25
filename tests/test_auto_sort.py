@@ -21,16 +21,37 @@ def rec(name, dur, *, parts=1, item="item1", probe_id="f1", role="original", fmt
             "catalog_category": "vhs_release"}
 
 
-def sort_one(name, dur, probe=OK, item=None, **kw):
+MATCHED = {"tmdb": {"status": "one_likely_candidate", "confidence": "likely", "candidates": [{"title": "Bambi"}]}}
+
+
+def sort_one(name, dur, probe=OK, item=None, title=None, **kw):
     items = [item or {"archive_identifier": "item1", "collection": ["vhsvault", "vhsmovies"],
                       "video_file_count": 50, "note": "Container only."}]
-    return a.sort_all([rec(name, dur, **kw)], items, [], [], {"f1": probe} if probe else {})[0]
+    r = rec(name, dur, **kw)
+    titles = []
+    if title is not None:
+        r["title_suggestion_id"] = "t1"
+        titles = [dict(title, title_suggestion_id="t1", display_title=name)]
+    return a.sort_all([r], items, [], titles, {"f1": probe} if probe else {})[0]
 
 
 class KindAndVerdict(unittest.TestCase):
     def test_full_vhs_movie_is_good(self):
-        r = sort_one("Bambi (1989 VHS).mp4", 4200)
-        self.assertEqual((r["kind"], r["format"], r["verdict"], r["shelf"]), ("movie", "VHS", "good", "vhs_release"))
+        r = sort_one("Bambi (1989 VHS).mp4", 4200, title=MATCHED)
+        self.assertEqual((r["kind"], r["format"], r["verdict"], r["shelf"], r["confidence"]),
+                         ("movie", "VHS", "good", "vhs_release", "high"))
+
+    def test_plays_fine_but_unknown_is_not_good(self):
+        # A capture-card name, no title match: all we know is that it plays.
+        nomatch = {"tmdb": {"status": "no_candidates", "confidence": "none", "candidates": []}}
+        r = sort_one("0001_0101_000419.mp4", 3500, title=nomatch, item=page("Some tape", 1))
+        self.assertEqual(r["verdict"], "review")
+        self.assertIn("don't know what it is", r["verdict_why"][0])
+        r = sort_one("Bambi (1989 VHS).mp4", 4200, title={"tmdb": {"status": "weak_candidates_only", "confidence": "weak"}})
+        self.assertEqual(r["verdict"], "review")
+        # an ad is known from its name, but only a title match earns high confidence
+        r = sort_one("1990 Michael Jordan Coca Cola Commercial.mp4", 30)
+        self.assertEqual((r["verdict"], r["confidence"]), ("good", "medium"))
 
     def test_split_piece_is_bad_clip(self):
         r = sort_one("Bambi (1989 VHS) - 13of23.mp4", 111, parts=23)
@@ -146,7 +167,7 @@ class PatternsFromRealPages(unittest.TestCase):
         self.assertEqual(r["kind"], "tv_recording")
 
     def test_one_collection_as_plain_text(self):
-        r = sort_one("Bambi (1989 VHS).mp4", 4200, item=dict(page("Bambi"), collection="vhsvault"))
+        r = sort_one("Bambi (1989 VHS).mp4", 4200, item=dict(page("Bambi"), collection="vhsvault"), title=MATCHED)
         self.assertEqual(r["verdict"], "good")
 
 

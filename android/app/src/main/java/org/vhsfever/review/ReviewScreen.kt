@@ -194,6 +194,7 @@ fun RobotLine(g: RobotGuess, myStatus: String?, myRobot: String?, onAgree: () ->
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(buildString {
                 append("Robot: "); append(g.label)
+                if (g.verdict == "good") append(if (g.confidence == "high") " (sure)" else " (fairly sure)")
                 append(" · "); append(g.kindLabel)
                 if (g.format != "unknown") { append(" · "); append(g.format) }
                 when (g.commercialsInside) { "true" -> append(" · ads in it"); "likely" -> append(" · ads likely") }

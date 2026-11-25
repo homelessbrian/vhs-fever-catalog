@@ -59,7 +59,7 @@ MEDIA_FROM_MODEL = {"VHS": "VHS", "DVD": "DVD", "BLU-RAY": "BLU-RAY", "LASERDISC
                     "BETAMAX": "BETAMAX", "VCD": "VCD", "BROADCAST": "TV", "TAPE_UNSPECIFIED": "VHS"}
 TAPE_FORMATS = {"VHS", "BETAMAX"}
 
-COMMERCIAL = re.compile(r"\b(?:commercials?|tv[\s._-]*ads?|adverts?|advertisements?|infomercials?|psas?|"
+COMMERCIAL = re.compile(r"\b(?:comm?m?ercials?|tv[\s._-]*ads?|adverts?|advertisements?|infomercials?|psas?|"
                         r"public service announcements?|(?:ad|tv|radio|commercial) spots?)\b", I)
 WITH_ADS = re.compile(r"\bwith (?:the )?(?:original )?(?:commercials|ads)\b|\b(?:w/|incl\.?|including) ?(?:commercials|ads)\b|"
                       r"\bcommercials? (?:intact|included)\b|\bas[\s._-]*aired\b|\boriginal (?:tv )?broadcast\b|"
@@ -435,8 +435,39 @@ def plays_fine(probe: dict[str, Any] | None) -> bool:
 TV_SOURCED = {"tv_recording", "commercial", "commercial_compilation", "promo_or_bump"}
 
 
+# Kinds that are known from what the name or page says, even with no title match.
+SELF_EVIDENT = {"commercial", "commercial_compilation", "promo_or_bump", "trailer", "tape_opening", "home_video"}
+
+
+def identity(kind: dict[str, Any], title: dict[str, Any] | None, rec: dict[str, Any]) -> tuple[str | None, str]:
+    """How sure we are of what the video is. Playing fine is not enough to call it good.
+
+    "matched": TMDB/TVDB found the title (sure or likely match, or one likely episode);
+    "named":   no title match, but the name or page clearly says what it is (an ad,
+               a tape opening, an off-air tape with its shows and dates, an episode number);
+    None:      nothing says what it is."""
+    tm = (title or {}).get("tmdb") or {}
+    if tm.get("confirmed_tmdb_id"):
+        return "matched", "title confirmed"
+    if tm.get("confidence") in {"sure", "likely"}:
+        return "matched", f"matched to “{(tm.get('candidates') or [{}])[0].get('title') or 'a title'}” ({tm['confidence']})"
+    if tm.get("status") == "one_likely_episode":
+        return "matched", "matched to one episode"
+    k = kind["kind"]
+    it = rec.get("interpretation") or {}
+    if k in SELF_EVIDENT:
+        return "named", "the name or page says what it is"
+    if k == "tv_recording" and (it.get("tv_tape") or kind.get("air_date") or it.get("air_date")):
+        return "named", "off-air tape with its air date" + (" and shows" if it.get("tv_tape") else "")
+    if tm.get("status") == "episode_by_number_only":
+        return "named", "episode number in the name, episode not found"
+    return None, {"weak": "only weak title matches", "several": "several possible titles, none sure"}.get(
+        tm.get("confidence") or "", "no title match")
+
+
 def decide(kind: dict[str, Any], src: dict[str, Any], probe: dict[str, Any], dur: float | None,
-           name: str, copy_probe: dict[str, Any] | None = None) -> dict[str, Any]:
+           name: str, copy_probe: dict[str, Any] | None = None,
+           known: tuple[str | None, str] = ("matched", "")) -> dict[str, Any]:
     v = probe.get("verdict")
     k = kind["kind"]
     # Hard "bad": the file itself is broken, or it is a piece of a split video.
@@ -490,12 +521,19 @@ def decide(kind: dict[str, Any], src: dict[str, Any], probe: dict[str, Any], dur
         return {"verdict": "review", "reason": "Clip", "confidence": "medium", "why": kind["why"] + worries}
     if worries:
         return {"verdict": "review", "reason": None, "confidence": "low", "why": worries + note}
+    level, how = known
+    if level is None:
+        # It plays, but nothing says what it is: a person has to look.
+        return {"verdict": "review", "reason": None, "confidence": "low",
+                "why": [f"plays fine, but we don't know what it is ({how})"] + note}
     what = {"commercial": "goes on the ad list", "commercial_compilation": "goes on the ad list",
             "promo_or_bump": "goes on the ad list", "trailer": "goes on the ad list",
             "tape_opening": "kept with the tape openings"}.get(k)
-    return {"verdict": "good", "reason": None, "confidence": "high" if not note else "medium",
-            "why": ["plays, has sound and picture, full length, English name"
-                    if not what else f"plays, has sound and picture, English name; {what}"] + note}
+    plays = ("plays, has sound and picture, full length, English name" if not what
+             else f"plays, has sound and picture, English name; {what}")
+    high = level == "matched" and not note
+    return {"verdict": "good", "reason": None, "confidence": "high" if high else "medium",
+            "why": [how, plays] + note}
 
 
 def shelf_for(fmt: dict[str, Any], kind: str) -> tuple[str | None, str]:
@@ -610,7 +648,8 @@ def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
                 if kind["kind"] in TV_SOURCED and (fmt["scores"].get(fmt["format"], 0) < 4):
                     fmt = dict(fmt, format="TV", confidence="medium",
                                clues=fmt["clues"] + ["recorded from TV, no disc or tape named"])
-                d = decide(kind, src, probe, dur, src.get("original_name") or "", copy_probe)
+                d = decide(kind, src, probe, dur, src.get("original_name") or "", copy_probe,
+                           identity(kind, title, rec))
                 shelf, shelf_why = shelf_for(fmt, kind["kind"])
                 out.append({
                     "file_id": fid, "recording_id": rec["recording_id"],
