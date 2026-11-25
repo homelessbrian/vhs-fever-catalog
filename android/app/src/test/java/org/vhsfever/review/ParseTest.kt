@@ -28,4 +28,15 @@ class ParseTest {
         assertEquals(3, a.size)
         assertTrue(a.values.any { it.verdict == "silent_audio" })
     }
+
+    @Test fun robotGuessesAndDecisionMarkerRoundTrip() {
+        val line = """{"file_id":"f1","verdict":"bad","reason":"Clip","confidence":"high","verdict_why":["piece of a video split into parts"],""" +
+            """"kind":"clip","kind_why":["piece 3 of 20"],"format":"VHS","format_confidence":"high","format_clues":["file name says VHS"],""" +
+            """"shelf":"not_catalog","builtin_commercials":"unknown"}"""
+        val g = parseRobot(line + "\n")["f1"]!!
+        assertEquals("bad", g.verdict); assertEquals("Bad: Clip", g.label); assertEquals("VHS", g.format)
+        val d = FileDecision(status = "bad", reasons = listOf("Clip"), robot = "agreed_all")
+        assertEquals("agreed_all", FileDecision.fromJson(d.toJson()).robot)
+        assertEquals(null, FileDecision.fromJson(FileDecision(status = "good").toJson()).robot)
+    }
 }

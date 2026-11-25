@@ -112,6 +112,7 @@ fun ReviewScreen(m: AppModel, fileId: String) {
                 m.splitReason(f)?.let { Text("Split video: $it", color = C.warn, fontSize = 12.sp) }
                 if (f.modelReasons.isNotEmpty()) Text("Why it’s flagged: " + f.modelReasons.joinToString(", "), color = C.muted, fontSize = 12.sp)
             }
+            m.robotFor(f)?.let { g -> RobotCard(g, d?.status, d?.robot) { m.agreeWithRobot(f.id); goNext() } }
             MovieCard(m, f) { saveNotes(); m.open(Screen.MovieEdit(f.id)) }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionLabel("Shelf")
@@ -173,6 +174,34 @@ fun ReviewScreen(m: AppModel, fileId: String) {
                 if (clean.isNotEmpty()) { m.addTag(clean); m.update(f.id) { it.copy(tags = (it.tags + clean).distinct()) } }
                 newTag = null }) { Text("Add", color = C.gold) } },
             dismissButton = { TextButton(onClick = { newTag = null }) { Text("Cancel", color = C.muted) } })
+    }
+}
+
+/** What the auto-sort thinks of this file, and a one-tap "Agree". */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun RobotCard(g: RobotGuess, myStatus: String?, myRobot: String?, onAgree: () -> Unit) {
+    val color = when (g.verdict) { "good" -> C.good; "bad" -> C.bad; else -> C.warn }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.panel).border(1.dp, color, RoundedCornerShape(14.dp))
+        .padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                SectionLabel("Robot says", color)
+                Text(g.label + if (g.verdict != "review") " · ${g.confidence} confidence" else "", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+            if (myStatus == null && g.verdict in setOf("good", "bad")) Button(onClick = onAgree, shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color(0xFF111111))) { Text("Agree", fontWeight = FontWeight.Bold) }
+            else if (myStatus != null) Text(if (myStatus == g.verdict) "You agreed" + (if (myRobot == "agreed_all") " (all at once)" else "") else "You disagreed",
+                color = if (myStatus == g.verdict) C.good else C.warn, fontSize = 12.sp)
+        }
+        g.why.take(4).forEach { Text("• $it", color = C.muted, fontSize = 12.sp) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Tag(g.kindLabel)
+            Tag(if (g.format == "unknown") "Format unknown" else "${g.format} · ${g.formatConfidence}", if (g.format == "VHS") C.blueBg else C.panel2,
+                if (g.format == "VHS") C.blue else C.text)
+            when (g.commercialsInside) { "true" -> Tag("Has its ads in it"); "likely" -> Tag("Probably has its ads in it") }
+        }
+        if (g.formatClues.isNotEmpty()) Text("Format clues: " + g.formatClues.take(3).joinToString("; "), color = C.muted, fontSize = 11.sp)
     }
 }
 

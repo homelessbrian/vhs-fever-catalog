@@ -29,13 +29,22 @@ enum class QueueMode(val label: String) { REVIEW("To review"), DONE("Done"), ALL
 class AppModel(private val ctx: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val prefs = ctx.getSharedPreferences("vhsfever", Context.MODE_PRIVATE)
-    private val feedRaw = "https://raw.githubusercontent.com/${BuildConfig.REPO}/catalog-model-data/reviewer-feed.json"
-    private val audioRaw = "https://raw.githubusercontent.com/${BuildConfig.REPO}/audio-data/audio-checks.jsonl"
+    /** Which results to review: "latest" (newest batch) or "main" (the current catalog). */
+    var source by mutableStateOf(prefs.getString("source", "latest") ?: "latest"); private set
+    private val raw = "https://raw.githubusercontent.com/${BuildConfig.REPO}"
+    private val feedRaw get() = if (source == "main") "$raw/catalog-model-data/reviewer-feed.json" else "$raw/batch-data/latest/reviewer-feed.json"
+    private val audioRaw get() = if (source == "main") "$raw/audio-data/audio-checks.jsonl" else "$raw/batch-data/latest/audio-checks.jsonl"
+    private val robotRaw get() = if (source == "main") "$raw/auto-sort-data/auto-sort.jsonl" else "$raw/batch-data/latest/auto-sort.jsonl"
+    private val batchInfoRaw get() = "$raw/batch-data/latest/batch.json"
 
     // ---- loaded data
     var files by mutableStateOf<List<FileItem>>(emptyList()); private set
     var byId: Map<String, FileItem> = emptyMap(); private set
     var audio by mutableStateOf<Map<String, AudioCheck>>(emptyMap()); private set
+    /** The auto-sort's guess per file. */
+    var robot by mutableStateOf<Map<String, RobotGuess>>(emptyMap()); private set
+    /** Name of the batch being reviewed, when reviewing the latest batch. */
+    var batchName by mutableStateOf<String?>(null); private set
     var loadStatus by mutableStateOf("Loading catalog…"); private set
 
     // ---- decisions (local copy is the source of truth on the phone)
@@ -56,6 +65,8 @@ class AppModel(private val ctx: Context) {
     var shelfFilter by mutableStateOf<String?>(null)
     var tagFilter by mutableStateOf<String?>(null)
     var soundOnly by mutableStateOf(false)
+    /** Show only files the robot called good / bad / review (unsure). */
+    var robotFilter by mutableStateOf<String?>(null)
     var search by mutableStateOf("")
     /** Hide files that look non-English (on by default). */
     var englishOnly by mutableStateOf(prefs.getBoolean("english_only", true)); private set
@@ -88,11 +99,14 @@ class AppModel(private val ctx: Context) {
 
     // ------------------------------------------------------------------ loading
     private suspend fun loadCatalog() {
-        val feedCache = File(ctx.filesDir, "reviewer-feed.json")
-        val audioCache = File(ctx.filesDir, "audio-checks.jsonl")
+        val prefix = if (source == "main") "" else "latest-"
+        val feedCache = File(ctx.filesDir, "${prefix}reviewer-feed.json")
+        val audioCache = File(ctx.filesDir, "${prefix}audio-checks.jsonl")
+        val robotCache = File(ctx.filesDir, "${prefix}auto-sort.jsonl")
         withContext(Dispatchers.IO) {
             if (feedCache.exists()) runCatching { publish(parseFeed(feedCache.readText())) }
             if (audioCache.exists()) runCatching { val a = parseAudio(audioCache.readText()); withContext(Dispatchers.Main) { audio = a } }
+            if (robotCache.exists()) runCatching { val r = parseRobot(robotCache.readText()); withContext(Dispatchers.Main) { robot = r } }
         }
         loadStatus = if (files.isEmpty()) "Downloading catalog…" else "Checking for catalog updates…"
         withContext(Dispatchers.IO) {
@@ -112,6 +126,16 @@ class AppModel(private val ctx: Context) {
                 val a = parseAudio(text)
                 withContext(Dispatchers.Main) { audio = a }
             } catch (_: Exception) { /* audio check may not have run yet */ }
+            try {
+                val text = Http.request(robotRaw, timeoutMs = 90000)
+                robotCache.writeText(text)
+                val r = parseRobot(text)
+                withContext(Dispatchers.Main) { robot = r }
+            } catch (_: Exception) { /* auto-sort may not have run yet */ }
+            if (source != "main") runCatching {
+                val name = JSONObject(Http.request(batchInfoRaw, timeoutMs = 20000)).optString("batch")
+                withContext(Dispatchers.Main) { batchName = name.ifEmpty { null } }
+            }
         }
         if (files.isNotEmpty()) loadItemLanguages()
     }
@@ -186,6 +210,61 @@ class AppModel(private val ctx: Context) {
 
     fun reloadCatalog() { scope.launch { loadCatalog() } }
 
+    /** Switch between the newest batch and the current catalog. Reviews are kept either way. */
+    fun changeSource(s: String) {
+        if (s == source) return
+        source = s; prefs.edit().putString("source", s).apply()
+        files = emptyList(); byId = emptyMap(); audio = emptyMap(); robot = emptyMap(); split = emptyMap(); batchName = null
+        robotFilter = null; shelfFilter = null; tagFilter = null
+        loadStatus = "Loading…"
+        scope.launch { loadCatalog() }
+    }
+
+    fun robotFor(f: FileItem): RobotGuess? = robot[f.id] ?: f.originalId?.let { robot[it] }
+
+    /** Take the robot's call for one file. Unsure files have nothing to agree with. */
+    fun agreeWithRobot(fileId: String, bulk: Boolean = false): Boolean {
+        val f = byId[fileId] ?: return false
+        val g = robotFor(f) ?: return false
+        if (g.verdict != "good" && g.verdict != "bad") return false
+        update(fileId, if (bulk) null else "Agreed with robot") {
+            it.copy(status = g.verdict, reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
+                otherReason = if (g.verdict == "bad" && g.reason == null) "robot: " + g.why.firstOrNull().orEmpty() else "",
+                robot = if (bulk) "agreed_all" else "agreed")
+        }
+        return true
+    }
+
+    /** "Agree with all shown": the robot's call for every unreviewed file in [list]. */
+    fun agreeWithRobotAll(list: List<FileItem>): Int {
+        val stamp = now()
+        val add = HashMap<String, FileDecision>()
+        for (f in list) {
+            if (decisionFor(f)?.status != null) continue
+            val g = robotFor(f) ?: continue
+            if (g.verdict != "good" && g.verdict != "bad") continue
+            val base = decisions[f.id] ?: FileDecision()
+            add[f.id] = base.copy(status = g.verdict, reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
+                robot = "agreed_all", updatedAt = stamp)
+        }
+        if (add.isEmpty()) return 0
+        decisions = decisions + add
+        lastBulk = add.keys.toList()
+        changed()
+        return add.size
+    }
+
+    /** Files changed by the last "agree with all", so it can be taken back. */
+    var lastBulk by mutableStateOf<List<String>>(emptyList()); private set
+
+    fun undoBulk() {
+        if (lastBulk.isEmpty()) return
+        val stamp = now()
+        decisions = decisions + lastBulk.associateWith { FileDecision(updatedAt = stamp) }
+        lastBulk = emptyList()
+        changed()
+    }
+
     // ------------------------------------------------------------------ effective values
     /** A copy follows its original unless it was reviewed itself. */
     fun decisionFor(f: FileItem): FileDecision? = decisions[f.id] ?: f.originalId?.let { decisions[it] }
@@ -233,6 +312,7 @@ class AppModel(private val ctx: Context) {
         }.filter { shelfFilter == null || shelfFor(it) == shelfFilter }
             .filter { tagFilter == null || decisionFor(it)?.tags?.contains(tagFilter) == true }
             .filter { !soundOnly || audio[it.id]?.verdict in SOUND_PROBLEMS }
+            .filter { robotFilter == null || robotFor(it)?.verdict == robotFilter }
             .filter { q.isEmpty() || it.name.lowercase().contains(q) || it.titleName.lowercase().contains(q) || it.archiveItem.lowercase().contains(q) }
             .sortedWith(compareBy({ it.titleName.lowercase() }, { it.titleId }, { it.media != "VHS" }, { it.releaseYear ?: "9999" }, { it.name }))
             .toList()
@@ -326,6 +406,7 @@ class AppModel(private val ctx: Context) {
             .filter { shelfFilter == null || shelfFor(it) == shelfFilter }
             .filter { tagFilter == null || decisionFor(it)?.tags?.contains(tagFilter) == true }
             .filter { !soundOnly || audio[it.id]?.verdict in SOUND_PROBLEMS }
+            .filter { robotFilter == null || robotFor(it)?.verdict == robotFilter }
             .sortedWith(compareBy({ it.titleName.lowercase() }, { it.titleId }, { it.media != "VHS" }, { it.releaseYear ?: "9999" }, { it.name }))
             .toList()
         val i = q.indexOfFirst { it.id == fileId }

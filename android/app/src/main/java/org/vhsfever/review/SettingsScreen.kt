@@ -132,7 +132,13 @@ fun SettingsScreen(m: AppModel, installApk: (File) -> Unit) {
 
             Card {
                 SectionLabel("Catalog")
-                Text("${m.files.size} files loaded · ${m.audio.size} sound checks", color = C.muted, fontSize = 13.sp)
+                Text("What to review", color = C.text, fontSize = 14.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Latest batch", m.source == "latest", { m.changeSource("latest") })
+                    Chip("Main catalog", m.source == "main", { m.changeSource("main") })
+                }
+                Text("Your reviews are kept for both; switching only changes which files are listed.", color = C.muted, fontSize = 12.sp)
+                Text("${m.files.size} files loaded · ${m.audio.size} sound checks · ${m.robot.size} robot guesses", color = C.muted, fontSize = 13.sp)
                 TextButton(onClick = { m.reloadCatalog() }) { Text("Reload catalog from GitHub", color = C.gold) }
             }
         }

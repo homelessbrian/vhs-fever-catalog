@@ -124,7 +124,10 @@ jobs:
           python scripts/evaluate_auto_sort.py --auto-sort out/auto-sort.jsonl --decisions work-decisions.json --output-dir out
           python scripts/catalog_model.py --feed-from out
           b="${{ needs.model.outputs.batch }}"
-          mkdir -p site/"$b" && cp -r out/. site/"$b"/ && rm -rf site/"$b"/archive-cache
+          rm -rf out/archive-cache
+          echo "{\"batch\": \"$b\", \"built_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > out/batch.json
+          # The batch's own folder, plus "latest" for the review app.
+          mkdir -p site/"$b" site/latest && cp -r out/. site/"$b"/ && cp -r out/. site/latest/
           touch site/.nojekyll
           {
             echo "## Batch $b"; echo '```'

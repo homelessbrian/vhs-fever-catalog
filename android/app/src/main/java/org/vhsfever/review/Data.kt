@@ -135,18 +135,52 @@ data class FileDecision(
     val movie: Movie? = null,
     val release: ReleaseInfo? = null,
     val updatedAt: String = "",
+    /** "agreed": tapped Agree on this file; "agreed_all": part of "agree with all shown". */
+    val robot: String? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().put("status", status).put("reasons", JSONArray(reasons))
         .put("other_reason", otherReason).put("shelf", shelf).put("tags", JSONArray(tags)).put("notes", notes)
         .put("movie", movie?.toJson()).put("release", release?.toJson()).put("updated_at", updatedAt)
+        .put("robot", robot)
 
     companion object {
         fun fromJson(o: JSONObject) = FileDecision(
             o.optStringOrNull("status"), o.optJSONArray("reasons").strings(), o.optString("other_reason", ""),
             o.optStringOrNull("shelf"), o.optJSONArray("tags").strings(), o.optString("notes", ""),
             Movie.fromJson(o.optJSONObject("movie")), ReleaseInfo.fromJson(o.optJSONObject("release")),
-            o.optString("updated_at", ""))
+            o.optString("updated_at", ""), o.optStringOrNull("robot"))
     }
+}
+
+/** The auto-sort's best guess for one file (from auto-sort.jsonl). */
+data class RobotGuess(
+    val verdict: String,          // good | bad | review
+    val reason: String?,          // bad reason, in the app's own words
+    val confidence: String,       // high | medium | low
+    val why: List<String>,
+    val kind: String,             // movie, tv_episode, commercial, clip, ...
+    val kindWhy: List<String>,
+    val format: String,           // VHS, DVD, BLU-RAY, TV, unknown, ...
+    val formatConfidence: String,
+    val formatClues: List<String>,
+    val shelf: String?,
+    val commercialsInside: String?,
+) {
+    val label get() = when (verdict) { "good" -> "Good"; "bad" -> "Bad" + (reason?.let { ": $it" } ?: ""); else -> "Unsure" }
+    val kindLabel get() = kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
+}
+
+fun parseRobot(text: String): Map<String, RobotGuess> {
+    val m = HashMap<String, RobotGuess>()
+    text.lineSequence().filter { it.isNotBlank() }.forEach { line ->
+        val o = JSONObject(line)
+        m[o.optString("file_id")] = RobotGuess(
+            o.optString("verdict"), o.optStringOrNull("reason"), o.optString("confidence"),
+            o.optJSONArray("verdict_why").strings(), o.optString("kind"), o.optJSONArray("kind_why").strings(),
+            o.optString("format"), o.optString("format_confidence"), o.optJSONArray("format_clues").strings(),
+            o.optStringOrNull("shelf"), o.optStringOrNull("builtin_commercials"))
+    }
+    return m
 }
 
 /** Changes made for every file of one release ("apply to all"). */

@@ -38,6 +38,8 @@ def evaluate(rows: list[dict[str, Any]], decisions: dict[str, Any], *, since: st
         r = by_id.get(fid)
         if r is None or (since and (d.get("updated_at") or "") < since):
             continue
+        if d.get("robot") == "agreed_all":
+            continue   # agreed in bulk without looking: says nothing about the robot
         pairs.append((fid, d, r))
 
     status_pairs = [(fid, d, r) for fid, d, r in pairs if d.get("status") in {"good", "bad"}]
