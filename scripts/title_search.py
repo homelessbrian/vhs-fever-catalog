@@ -103,6 +103,11 @@ def name_similarity(a: str, b: str) -> float:
         return 0.0
     if ka == kb:
         return 1.0
+    # "Nick Picks Vol 3" is not "Nick Picks Vol 4": different numbers, different thing.
+    na = {w for w in ka.split() if w.isdigit() and len(w) <= 3}
+    nb = {w for w in kb.split() if w.isdigit() and len(w) <= 3}
+    if na and nb and na != nb:
+        return round(min(0.6, difflib.SequenceMatcher(None, ka, kb).ratio()), 3)
     ratio = difflib.SequenceMatcher(None, ka, kb).ratio()
     # "Pooh's Grand Adventure" vs "Pooh's Grand Adventure: The Search for
     # Christopher Robin": every word of the short name starts the long one.
@@ -214,6 +219,8 @@ STRIP_PATTERNS = [
 SEQUEL_SUBTITLE = re.compile(r"^(?P<main>.+?)\s+(?P<n>[2-9]|ii|iii|iv)\s*[:-]?\s+(?P<sub>\S.{3,})$", re.I)
 GENERIC = re.compile(r"^(?:the )?(?:movie|film|special|series|show|episode|part|volume|vol|chapter|pilot|"
                      r"christmas special|holiday special|trailer|opening|intro)(?: \d+)?$")
+LABEL_ONLY = re.compile(r"^(?:[\d ]+|(?:tape|disc|disk|part|vol|volume|chapter|no) ?\d+|"
+                        r"(?:19|20)\d\d(?: \d\d? \d\d?)?|.*\b(?:vhs|dvd|tape|recording|capture)s?)$")
 SPLIT_DASH = re.compile(r"\s+[-–—:]\s+|\s*:\s+")
 
 
@@ -227,7 +234,7 @@ def search_tries(title: str, vocab: Counter[str] | None = None) -> list[tuple[st
             return
         q = " ".join(q.replace("_", " ").split()).strip(" -.,:")
         k = plain(q)
-        if GENERIC.match(k) or (len(k.split()) < 2 and len(k) < 6 and tries):
+        if GENERIC.match(k) or (len(k.split()) < 2 and len(k) < 6 and tries and "spelling" not in how):
             return   # "The Movie", "Part 2": would match anything
         if len(k) >= 2 and k not in seen and not k.isdigit():
             seen.add(k)
@@ -242,11 +249,19 @@ def search_tries(title: str, vocab: Counter[str] | None = None) -> list[tuple[st
             current = stripped
     if vocab:
         for q, how in list(tries)[:3]:
-            add(fix_spelling(q, vocab), how + ", spelling fixed")
+            add(fix_spelling(q, vocab, min_count=2), how + ", spelling fixed")
+    for q, how in list(tries)[:4]:
+        if re.search(r",| and ", q, re.I) and len(q.split()) >= 4:
+            add(re.sub(r",|\band\b", " ", q, flags=re.I), how + ", without 'and' and commas")
     parts = SPLIT_DASH.split(current)
     if len(parts) > 1:
-        add(parts[0], "part before the dash")
-        add(parts[-1], "part after the dash")
+        if not LABEL_ONLY.match(plain(parts[0])):
+            add(parts[0], "part before the dash")
+        # "Bear in the Big Blue House - Safe and Sound": the part after the
+        # dash is an episode, not a film. Only search it on its own when the
+        # part before is just a number, date or label ("07 - Title").
+        if LABEL_ONLY.match(plain(parts[0])):
+            add(parts[-1], "part after the dash")
     m = SEQUEL_SUBTITLE.match(current)
     if m:
         add(m["sub"], "sequel subtitle on its own")

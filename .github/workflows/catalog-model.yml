@@ -12,6 +12,7 @@ on:
       - 'scripts/catalog_model.py'
       - 'scripts/match_titles_tmdb.py'
       - 'scripts/title_search.py'
+      - 'scripts/auto_sort.py'
       - 'tests/test_title_search.py'
       - 'scripts/tv_episodes.py'
       - 'tests/test_tv_episodes.py'

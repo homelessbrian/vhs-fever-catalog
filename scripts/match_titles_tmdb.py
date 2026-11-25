@@ -28,6 +28,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from catalog_model import episode_title_pieces, title_key  # noqa: E402
+import auto_sort  # noqa: E402
 import title_search  # noqa: E402
 import tv_episodes  # noqa: E402
 
@@ -123,6 +124,31 @@ def main() -> None:
     for e in editions:
         y = int(e["release_year"])
         first_release[e["title_suggestion_id"]] = min(y, first_release.get(e["title_suggestion_id"], y))
+    names: dict[str, list[str]] = {}
+    for r in recs:
+        tid = r.get("title_suggestion_id")
+        if not tid:
+            continue
+        names.setdefault(tid, []).append(r.get("display_name") or "")
+        # "Opening to Pinocchio 1993 VHS" has no edition, but its name still
+        # says when the tape came out.
+        ry = r["interpretation"].get("release_year")
+        if ry and str(ry).isdigit() and len(str(ry)) == 4 and tid not in first_release:
+            first_release[tid] = int(ry)
+
+    def not_a_movie(tid: str, title: str) -> str | None:
+        """Commercials, bumpers and promos aren't on TMDB, so they aren't searched."""
+        ns = names.get(tid) or [title]
+        def tv_block(n: str) -> bool:
+            n = auto_sort.norm_words(n)
+            # Airings of real shows ("Dental Hyjinks (Nick Jr. Airing)") are still looked up.
+            return bool((auto_sort.COMMERCIAL.search(n) and not auto_sort.WITH_ADS.search(n))
+                        or (auto_sort.PROMO.search(n) and not auto_sort.SCREENER.search(n)))
+        if all(tv_block(n) for n in ns):
+            return "skipped_commercial_or_promo"
+        if all(auto_sort.foreign_reason(n) for n in ns):
+            return "skipped_not_english"
+        return None
 
     tmdb_tv = tv_episodes.Tmdb(token, delay=args.delay) if token else None
     tvdb_key = os.environ.get("TVDB_API_KEY")
@@ -244,8 +270,12 @@ def main() -> None:
         c = cats.get(tid, set())
         series = t.get("series")
         dash = t.get("show_dash_hint")
+        skip = None if series else not_a_movie(tid, t["display_title"])
         if c == {"vhs_opening_or_previews"}:
             t["tmdb"] = {"status": "skipped_tape_opening"}
+        elif skip:
+            t["tmdb"] = {"status": skip, "search_title": t["tmdb"].get("search_title"),
+                         "note": "Not looked up: commercials, promos and non-English titles are skipped."}
         elif not token:
             t["tmdb"] = {"status": "skipped_no_api_token"}
         elif lookups >= args.max_lookups:

@@ -54,7 +54,7 @@ MEDIA_FROM_MODEL = {"VHS": "VHS", "DVD": "DVD", "BLU-RAY": "BLU-RAY", "LASERDISC
 TAPE_FORMATS = {"VHS", "BETAMAX"}
 
 COMMERCIAL = re.compile(r"\b(?:commercials?|tv[\s._-]*ads?|adverts?|advertisements?|infomercials?|psas?|"
-                        r"public service announcements?|spots?)\b", I)
+                        r"public service announcements?|(?:ad|tv|radio|commercial) spots?)\b", I)
 WITH_ADS = re.compile(r"\bwith (?:the )?(?:original )?(?:commercials|ads)\b|\b(?:w/|incl\.?|including) ?(?:commercials|ads)\b|"
                       r"\bcommercials? (?:intact|included)\b|\bas[\s._-]*aired\b|\boriginal (?:tv )?broadcast\b|"
                       r"\bfull broadcast\b|\bwith breaks\b", I)
