@@ -11,6 +11,8 @@ on:
     paths:
       - 'scripts/catalog_model.py'
       - 'scripts/match_titles_tmdb.py'
+      - 'scripts/title_search.py'
+      - 'tests/test_title_search.py'
       - 'scripts/tv_episodes.py'
       - 'tests/test_tv_episodes.py'
       - 'reviewer/catalog.html'
@@ -29,7 +31,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,6 +52,9 @@ jobs:
             --fetch-from-inventory work/latest.jsonl \
             --cache-dir work/archive-cache \
             --output-dir out
+
+      - name: Install English word list (for typo fixes in title searches)
+        run: (sudo apt-get update -qq && sudo apt-get install -y -qq wamerican) || echo 'word list not installed; typo fixes will be looser'
 
       - name: Add TMDB suggestions, TV episodes too, TVDB as backup (never confirmed automatically)
         env:

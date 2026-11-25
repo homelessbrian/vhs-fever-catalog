@@ -912,9 +912,10 @@ def build_reviewer_feed(model_dir: str) -> dict[str, Any]:
             "tmdb": {"status": tm.get("status"), "q": tm.get("search_title"),
                      "kind": tm.get("search_kind"), "src": tm.get("source"),
                      "ceiling": tm.get("latest_allowed_year"),
+                     "conf": tm.get("confidence"), "found_with": tm.get("found_with"),
                      "c": [{k: c.get(k) for k in ("tmdb_id", "tvdb_id", "source", "media_type", "title",
                                                   "release_date", "similarity", "year_consistent", "poster",
-                                                  "overview", "tmdb_url", "episode")
+                                                  "overview", "tmdb_url", "episode", "runtime", "why")
                             if c.get(k) is not None or k in ("tmdb_id", "title")}
                            for c in tm.get("candidates") or []]},
             "eds": eds, "un": un,

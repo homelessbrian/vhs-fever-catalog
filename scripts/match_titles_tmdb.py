@@ -28,6 +28,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from catalog_model import episode_title_pieces, title_key  # noqa: E402
+import title_search  # noqa: E402
 import tv_episodes  # noqa: E402
 
 API = "https://api.themoviedb.org/3"
@@ -99,7 +100,7 @@ def verdict(cands: list[dict[str, Any]]) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--model-dir", required=True)
-    ap.add_argument("--max-lookups", type=int, default=4000)
+    ap.add_argument("--max-lookups", type=int, default=15000)
     ap.add_argument("--delay", type=float, default=0.05)
     args = ap.parse_args()
     token = os.environ.get("TMDB_API_READ_ACCESS_TOKEN")
@@ -109,8 +110,11 @@ def main() -> None:
 
     cats: dict[str, set[str]] = {}
     hints: dict[str, set[str]] = {}
+    lengths: dict[str, list[float]] = {}
     for r in recs:
         tid = r.get("title_suggestion_id")
+        if tid and r.get("duration_seconds"):
+            lengths.setdefault(tid, []).append(float(r["duration_seconds"]))
         if tid:
             cats.setdefault(tid, set()).add(r["catalog_category"])
             if r["interpretation"].get("work_year"):
@@ -136,20 +140,82 @@ def main() -> None:
             out.append(tvdb_state["client"])
         return out
 
-    def movie_search(query: str, tid: str, hint_year: int | None, kind: str = "movie") -> list[dict[str, Any]]:
+    vocab = title_search.build_vocabulary(t["display_title"] for t in titles)
+    raw_cache: dict[tuple, list[dict[str, Any]]] = {}
+    detail_cache: dict[tuple, dict[str, Any]] = {}
+
+    def typical_minutes(tid: str) -> float | None:
+        vals = sorted(lengths.get(tid) or [])
+        return round(vals[len(vals) // 2] / 60, 1) if vals else None
+
+    def raw_find(kind: str) -> Any:
+        def find(query: str, year: int | None) -> list[dict[str, Any]]:
+            nonlocal lookups
+            key = (kind, title_search.plain(query), year)
+            if key not in raw_cache:
+                params = {"query": query, "include_adult": "false"}
+                if year:
+                    params["year" if kind == "movie" else "first_air_date_year"] = year
+                try:
+                    res = _get(f"/search/{kind}", params, token).get("results") or []
+                except Exception:  # noqa: BLE001
+                    res = []
+                lookups += 1
+                time.sleep(args.delay)
+                raw_cache[key] = [{
+                    "tmdb_id": r.get("id"), "media_type": kind,
+                    "title": r.get("title") or r.get("name") or "",
+                    "original_title": r.get("original_title") or r.get("original_name") or None,
+                    "release_date": r.get("release_date") or r.get("first_air_date") or None,
+                    "popularity": r.get("popularity"),
+                    "animated": 16 in (r.get("genre_ids") or []),
+                    "poster": (IMG + "w342" + r["poster_path"]) if r.get("poster_path") else None,
+                    "backdrop": (IMG + "w780" + r["backdrop_path"]) if r.get("backdrop_path") else None,
+                    "overview": (r.get("overview") or "")[:400] or None,
+                    "tmdb_url": f"https://www.themoviedb.org/{kind}/{r.get('id')}",
+                } for r in res[:20]]
+            return [dict(x) for x in raw_cache[key]]
+        return find
+
+    def details(c: dict[str, Any]) -> dict[str, Any]:
         nonlocal lookups
-        key = (kind, title_key(query), hint_year, first_release.get(tid))
-        if key not in cache:
+        key = (c["media_type"], c["tmdb_id"])
+        if key not in detail_cache:
+            out: dict[str, Any] = {}
             try:
-                res = _get(f"/search/{kind}", {"query": query, "include_adult": "false"}, token)
-                cache[key] = score_candidates(query, res.get("results") or [], kind=kind,
-                                              latest_allowed_year=first_release.get(tid),
-                                              hint_year=hint_year)
-            except Exception as exc:  # noqa: BLE001
-                cache[key] = [{"error": str(exc)[:200]}]
+                if c["media_type"] == "movie":
+                    d = _get(f"/movie/{c['tmdb_id']}", {"append_to_response": "alternative_titles"}, token)
+                    out["runtime"] = d.get("runtime") or None
+                    alts = (d.get("alternative_titles") or {}).get("titles") or []
+                else:
+                    d = _get(f"/tv/{c['tmdb_id']}", {"append_to_response": "alternative_titles"}, token)
+                    rts = d.get("episode_run_time") or []
+                    out["runtime"] = rts[0] if rts else None
+                    alts = (d.get("alternative_titles") or {}).get("results") or []
+                out["alt_titles"] = [a.get("title") for a in alts
+                                     if a.get("title") and (a.get("iso_3166_1") in (None, "US", "GB", "CA", "AU"))][:15]
+                out["animated"] = any(g.get("id") == 16 for g in d.get("genres") or [])
+            except Exception:  # noqa: BLE001
+                pass
             lookups += 1
             time.sleep(args.delay)
-        return cache[key]
+            detail_cache[key] = out
+        return detail_cache[key]
+
+    def smart_search(query: str, tid: str, hint_year: int | None) -> dict[str, Any]:
+        common = dict(vocab=vocab, ceiling=first_release.get(tid), hint_year=hint_year,
+                      minutes=typical_minutes(tid), details=details)
+        res = title_search.search(query, find=raw_find("movie"), **common)
+        if res["confidence"] in {"none", "weak"}:
+            # TV specials and video collections of shows live under TV on TMDB.
+            tv = title_search.search(query, find=raw_find("tv"), max_tries=3, **common)
+            order = ["none", "weak", "several", "likely", "sure"]
+            if order.index(tv["confidence"]) > order.index(res["confidence"]):
+                tv["tried"] = res["tried"] + tv["tried"]
+                tv["kind"] = "tv"
+                return tv
+        res["kind"] = "movie"
+        return res
 
     # Files with no show name ("Season 2 Episode 15 - Strange Vet Fellows"):
     # another file with the same episode title often names the show.
@@ -171,6 +237,8 @@ def main() -> None:
     ep_cache: dict[tuple, dict[str, Any]] = {}
     lookups = 0
     counts: dict[str, int] = {}
+    conf_counts: dict[str, int] = {}
+    rescued: dict[str, int] = {}
     for t in titles:
         tid = t["title_suggestion_id"]
         c = cats.get(tid, set())
@@ -218,27 +286,31 @@ def main() -> None:
                 r = ep_cache[key]
                 if r["status"] in {"one_likely_episode", "several_episode_candidates"}:
                     ep_result = r
-            cands = movie_search(query, tid, hint_year)
-            if cands and "error" in cands[0] and not ep_result:
-                t["tmdb"] = {"status": "lookup_error", "error": cands[0]["error"], "search_title": query}
+            found = smart_search(query, tid, hint_year)
+            movies = found["candidates"]
+            if ep_result:
+                t["tmdb"] = {
+                    "status": ep_result["status"], "search_title": dash["show"], "search_kind": "tv_episode",
+                    "source": ep_result["source"], "sources_tried": ep_result["tried"],
+                    "latest_allowed_year": first_release.get(tid), "filename_film_year": hint_year,
+                    "candidates": (ep_result["candidates"] + movies)[:6], "confirmed_tmdb_id": None,
+                    "note": "Filename looks like 'Show - Episode'. Suggestions only.",
+                }
             else:
-                movies = [x for x in cands if "error" not in x]
-                if ep_result:
-                    t["tmdb"] = {
-                        "status": ep_result["status"], "search_title": dash["show"], "search_kind": "tv_episode",
-                        "source": ep_result["source"], "sources_tried": ep_result["tried"],
-                        "latest_allowed_year": first_release.get(tid), "filename_film_year": hint_year,
-                        "candidates": (ep_result["candidates"] + movies)[:6], "confirmed_tmdb_id": None,
-                        "note": "Filename looks like 'Show - Episode'. Suggestions only.",
-                    }
-                else:
-                    t["tmdb"] = {
-                        "status": verdict(movies), "search_title": query, "search_kind": "movie",
-                        "latest_allowed_year": first_release.get(tid), "filename_film_year": hint_year,
-                        "candidates": movies, "confirmed_tmdb_id": None,
-                        "note": "Suggestions only. A person must confirm the match.",
-                    }
+                t["tmdb"] = {
+                    "status": found["status"], "confidence": found["confidence"],
+                    "search_title": query, "search_kind": found["kind"],
+                    "found_with": found["found_with"], "searches_tried": found["tried"],
+                    "latest_allowed_year": first_release.get(tid), "filename_film_year": hint_year,
+                    "file_minutes": typical_minutes(tid),
+                    "candidates": movies, "confirmed_tmdb_id": None,
+                    "note": "Suggestions only. A person must confirm the match.",
+                }
         counts[t["tmdb"]["status"]] = counts.get(t["tmdb"]["status"], 0) + 1
+        if t["tmdb"].get("confidence"):
+            conf_counts[t["tmdb"]["confidence"]] = conf_counts.get(t["tmdb"]["confidence"], 0) + 1
+            if t["tmdb"].get("found_with") and t["tmdb"]["found_with"] != "name as written":
+                rescued[t["tmdb"]["found_with"]] = rescued.get(t["tmdb"]["found_with"], 0) + 1
 
     with (d / "titles.jsonl").open("w", encoding="utf-8") as fh:
         for t in titles:
@@ -247,7 +319,9 @@ def main() -> None:
                "tvdb": ("on, " + str(tvdb_state["client"].calls) + " calls") if tvdb_state.get("client")
                else ("error: " + tvdb_state["error"]) if tvdb_state.get("error")
                else "off (no TVDB_API_KEY)" if not tvdb_key else "on, not needed",
-               "title_status_counts": dict(sorted(counts.items()))}
+               "title_status_counts": dict(sorted(counts.items())),
+               "movie_match_confidence": dict(sorted(conf_counts.items())),
+               "found_only_by_a_later_search": dict(sorted(rescued.items(), key=lambda x: -x[1]))}
     (d / "tmdb.summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
 
