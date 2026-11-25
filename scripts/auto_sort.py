@@ -44,7 +44,7 @@ RIP_TAGS = [  # (pattern, format, strength)
     (re.compile(r"\bhdtv\b|\bpdtv\b|\bdsr\b|\bsatrip\b|\btvrip\b", I), "TV", 3),
     (re.compile(r"\bbetamax\b|\bbeta[\s._-]*rip\b", I), "BETAMAX", 3),
     (re.compile(r"\blaser[\s._-]*disc\b", I), "LASERDISC", 2),
-    (re.compile(r"\bvhs\b", I), "VHS", 2),
+    (re.compile(r"\bvhs(?![a-z])", I), "VHS", 2),   # also "VHS1984_VID_..."
     (re.compile(r"\bdvd\b|\bvideo_ts\b", I), "DVD", 2),
     (re.compile(r"\bvcd\b", I), "VCD", 2),
     (re.compile(r"\bupscaled?\b|\bai[\s._-]*enhanced\b", I), "UPSCALED", 1),
@@ -182,9 +182,10 @@ def detect_format(rec: dict[str, Any], src: dict[str, Any], probe: dict[str, Any
     if w and h:
         aspect = w / h
         if h >= 700 and not upscaled:
+            # Only a light hint: tapes are often captured at HD size too.
             for fmt in ("BLU-RAY", "WEB"):
-                score[fmt] += 1.5
-            clues.append(f"sharp HD picture ({w}x{h})")
+                score[fmt] += 0.75
+            clues.append(f"HD-size picture ({w}x{h}), not proof of Blu-ray")
             if score["VHS"] >= 4:
                 clues.append("HD picture but named VHS: an upscaled tape or a wrong label")
         elif h <= 576:

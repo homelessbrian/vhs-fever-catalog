@@ -64,6 +64,7 @@ RELEASE_GROUP_REV = re.compile(rf"^\s*(?P<media>{MEDIA_RE})\s*(?P<year>\d{{3,4}}
 # "(2002 Australian VHS)", "(1999 UK VHS)": a country between year and format.
 REGION_WORDS = re.compile(r"\b(?:US|USA|U\.S\.A?\.?|UK|U\.K\.|British|English|American|Australian|Australia|AUS|"
                           r"Canadian|Canada|CAN|NZ|New Zealand|Irish|PAL|NTSC|Original|Rental|Retail)\b", re.I)
+SPLIT_PART = re.compile(r"^(?P<base>.+?)\s+(?:part|pt\.?|clip|segment)\s*#?(?P<i>\d{1,3})(?:\s*[-:]\s+.*)?$", re.I)
 CAPTURE_NUMBER = re.compile(r"\s+-\s+0\d{2,3}\s*$")
 VERSION_GROUP = re.compile(r"^\s*(?:version|ver\.?|v)\s*#?\s*(?P<n>\d+)\s*$", re.I)
 YEAR_GROUP = re.compile(r"^\s*(?P<year>(?:18|19|20)\d{2})(?P<letter>[a-z])?\s*$", re.I)
@@ -743,17 +744,23 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 continue
             stem = PurePosixPath(f["name"]).stem
             match = None
+            basis = "none_unassigned"
             for vstem, pk in sorted(video_stems.items(), key=lambda kv: -len(kv[0])):
                 if stem.startswith(vstem):
                     match = pk
+                    basis = "filename_prefix_matches_video"
                     break
+            if match is None and len(set(video_stems.values())) == 1:
+                # One tape per page: the scans on the page belong to it.
+                match = next(iter(video_stems.values()))
+                basis = "only_video_on_its_page"
             artwork.append({
                 "artwork_id": archive_file_id(ident, f["name"]),
                 "archive_identifier": ident, "original_name": f["name"],
                 "category": "authentic_packaging_candidate",
                 "role_guess": _artwork_role(stem) or "unknown",
                 "linked_piece_key": match,
-                "link_basis": "filename_prefix_matches_video" if match else "none_unassigned",
+                "link_basis": basis,
                 "image_url": "https://archive.org/download/" + ident + "/" + "/".join(urllib.parse.quote(x) for x in f["name"].split("/")),
                 "review_status": "needs_review",
             })
@@ -774,6 +781,28 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         p["duration_seconds"] = max(durs) if durs else None
         if len(p["also_named"]) > 1:
             p.setdefault("flags", []).append("identical_bytes_under_different_names")
+
+    # "Pocahontas part 01" ... "part 17": pieces of one split video. Without
+    # "of N" this looks like a sequel ("Bambi Part 2"), so it only counts when
+    # the same page holds at least three numbered parts of the same name.
+    split_groups: dict[tuple, list[tuple[dict[str, Any], int, str]]] = defaultdict(list)
+    for p in pieces.values():
+        it = p["interpretation"]
+        if it["part_index"] is not None or not it.get("title"):
+            continue
+        m = SPLIT_PART.match(it["title"])
+        if m:
+            first = p["original_files"][0] if p["original_files"] else p["sources"][0]
+            split_groups[(first.get("archive_identifier"), title_key(m["base"]))].append((p, int(m["i"]), m["base"]))
+    for (_ident, _base), members in split_groups.items():
+        if len({i for _p, i, _b in members}) < 3:
+            continue
+        for p, i, base in members:
+            it = p["interpretation"]
+            it["part_index"], it["part_total"] = i, None
+            it["split_base"] = base.strip()
+            it["title"] = base.strip()
+            it["flags"] = list(it["flags"]) + ["split_part_from_numbered_siblings"]
 
     # Other files on the same page: when nearly every named file on a page is
     # the same format, the few unnamed ones almost certainly are too.
@@ -815,6 +844,8 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                     break
             whole = PART_SUFFIX.sub("", whole)
             whole = re.sub(r"\s*(?:part|pt\.?)\s*\d{1,3}\s*$", "", whole, flags=re.I)
+            if it.get("split_base"):
+                whole = it["split_base"]
             multipart[(ident, whole.strip(), it["part_total"])].append(p)
         else:
             recordings.append(_recording([p], it))
