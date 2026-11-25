@@ -66,9 +66,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view tv-latest >/dev/null 2>&1 || \
-            gh release create tv-latest --prerelease --target "${{ github.sha }}" \
-              --title "VHS FEVER TV (latest test build)" \
-              --notes "Proof-of-concept TV app for testing playback. Install vhs-fever-tv.apk on the TV."
-          gh release upload tv-latest vhs-fever-tv.apk --clobber
-          gh release edit tv-latest --notes "Proof-of-concept TV app for testing playback. Build ${{ github.run_number }} from ${{ github.ref_name }} (${{ github.sha }})."
+          # Remake the release each time so its tag always sits on the build's own commit.
+          notes="Proof-of-concept TV app for testing playback. Build ${{ github.run_number }} from ${{ github.ref_name }}."
+          gh release delete tv-latest --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create tv-latest vhs-fever-tv.apk --prerelease --target "${{ github.sha }}" \
+            --title "VHS FEVER TV (latest test build)" --notes "$notes"
