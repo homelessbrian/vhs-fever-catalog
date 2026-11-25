@@ -27,7 +27,7 @@ object Split {
     /** [vobChunks] = how many chunk files share this file's [vobKey]. */
     fun reason(f: FileItem, vobChunks: Int = 0): String? {
         f.partLabel?.let { return "$it of one video" }
-        val name = f.name.substringAfterLast('/')
+        val name = f.name
         if (!episodeCode.containsMatchIn(name)) {
             val m = ofN.find(name) ?: slashN.find(name)
             if (m != null) {
