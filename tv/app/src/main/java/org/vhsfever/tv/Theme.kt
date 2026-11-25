@@ -1,6 +1,8 @@
 package org.vhsfever.tv
 
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -11,13 +13,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /*
- * The mockups are drawn on a 1280×720 canvas. Android TV screens are 960×540 dp,
- * so every mockup pixel is 0.75 dp. `.px` and `.fs` convert mockup sizes directly.
+ * The mockups are drawn on a 1280×720 canvas. TVs report different sizes (960×540 dp on many,
+ * 1280×720 dp on others), so one mockup pixel is worth [Ui.unit] dp, worked out from the real
+ * screen when the app opens. `.px` and `.fs` convert mockup sizes. The app also ignores the TV's
+ * "large text" setting (see MainActivity), so text always fits the space drawn for it.
  */
-val Int.px: Dp get() = (this * 0.75f).dp
-val Float.px: Dp get() = (this * 0.75f).dp
-val Int.fs: TextUnit get() = (this * 0.75f).sp
-val Float.fs: TextUnit get() = (this * 0.75f).sp
+object Ui {
+    @Volatile var unit = 0.75f
+    fun fit(widthDp: Float, heightDp: Float) { unit = minOf(widthDp / 1280f, heightDp / 720f) }
+}
+val Int.px: Dp get() = (this * Ui.unit).dp
+val Float.px: Dp get() = (this * Ui.unit).dp
+val Int.fs: TextUnit get() = (this * Ui.unit).sp
+val Float.fs: TextUnit get() = (this * Ui.unit).sp
 
 object Ink {
     val Navy = Color(0xFF080B22)
@@ -77,3 +85,11 @@ private val PALETTE = listOf(
 fun colorsFor(key: String): BoxColors = PALETTE[Math.floorMod(key.hashCode(), PALETTE.size)]
 
 fun Color.alpha(a: Float) = copy(alpha = a)
+
+/**
+ * Lifts something off the shelf when highlighted. Only the drawing moves, not its place on screen,
+ * so the remote still sees the boxes in a straight row (a real move made Down jump to the next box).
+ */
+fun androidx.compose.ui.Modifier.lift(dy: Dp): androidx.compose.ui.Modifier = drawWithContent {
+    translate(0f, dy.toPx()) { this@drawWithContent.drawContent() }
+}

@@ -3,6 +3,7 @@ package org.vhsfever.tv
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,12 +80,14 @@ fun GenreArt(name: String, scale: Float = 1f) {
     val g = genreLook(name)
     Box(Modifier.fillMaxSize().drawBehind { drawRect(g.bg(size.width, size.height)) }, contentAlignment = Alignment.Center) {
         val label = if (name == "Cult Classics") "CULT\nCLASSICS" else if (g.upper) name.uppercase() else name
-        val style = TextStyle(fontFamily = g.font, fontSize = (g.size * scale * if (label.length > 9 && !label.contains('\n')) 0.72f else 1f).fs,
+        val style = TextStyle(fontFamily = g.font, fontSize = (g.size * scale).fs,
             lineHeight = (g.size * scale).fs, color = g.color, shadow = g.shadow, letterSpacing = g.letter.fs,
             textAlign = TextAlign.Center).let { st -> if (g.textBrush != null) st.copy(brush = g.textBrush) else st }
-        Text(label, style = style, maxLines = 2, modifier = Modifier
-            .graphicsLayer { rotationZ = g.tilt }
-            .skewX(g.skew))
+        // shrink long names ("ANIMATION", "DOCUMENTARY") to one line instead of breaking the word
+        FitText(label, style = style, maxLines = if (label.contains('\n')) 2 else 1, minScale = 0.4f,
+            modifier = Modifier.padding(horizontal = (14 * scale).px)
+                .graphicsLayer { rotationZ = g.tilt }
+                .skewX(g.skew))
     }
 }
 

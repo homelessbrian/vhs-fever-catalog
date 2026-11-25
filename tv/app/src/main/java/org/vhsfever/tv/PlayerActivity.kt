@@ -114,14 +114,15 @@ class PlayerActivity : ComponentActivity() {
                 if (state == Player.STATE_ENDED) prefs.edit().remove(fileId).apply()
             }
         })
-        start(0, resume = true)
+        val from = intent.getLongExtra("startMs", -1L)
+        if (from >= 0) start(0, resume = false, fromMs = from) else start(0, resume = true)
     }
 
-    private fun start(i: Int, resume: Boolean) {
+    private fun start(i: Int, resume: Boolean, fromMs: Long = 0L) {
         index = i
         videoCheckDone = false
         player.setMediaItem(MediaItem.fromUri(urls[i]))
-        val pos = if (resume) prefs.getLong(fileId, 0L) else 0L
+        val pos = if (resume) prefs.getLong(fileId, 0L) else fromMs
         if (pos > 0) player.seekTo(pos)
         player.prepare()
         player.playWhenReady = true
@@ -173,7 +174,9 @@ class PlayerActivity : ComponentActivity() {
     }
 
     companion object {
-        fun intent(ctx: Context, title: String, tape: Tape): Intent = Intent(ctx, PlayerActivity::class.java)
+        /** [startMs] ≥ 0 starts there (e.g. where the little TV preview was); otherwise resumes where you stopped. */
+        fun intent(ctx: Context, title: String, tape: Tape, startMs: Long = -1L): Intent = Intent(ctx, PlayerActivity::class.java)
+            .putExtra("startMs", startMs)
             .putExtra("title", title)
             .putExtra("label", tape.label)
             .putExtra("fileId", tape.fileId)

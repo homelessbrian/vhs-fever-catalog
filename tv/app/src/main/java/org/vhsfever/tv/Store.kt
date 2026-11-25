@@ -1,5 +1,21 @@
 package org.vhsfever.tv
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -97,9 +113,9 @@ fun LogoBadge(modifier: Modifier = Modifier) {
         .background(Brush.linearGradient(listOf(Ink.BadgeTop, Ink.BadgeBottom), Offset.Zero, Offset(200f, 400f)), RoundedCornerShape(10.px))
         .border(3.px, Ink.Gold, RoundedCornerShape(10.px))
         .padding(start = 10.px, end = 10.px, top = 9.px, bottom = 10.px)) {
-        Text("VHS FEVER", style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 35.fs, lineHeight = 35.fs,
+        FitText("VHS FEVER", style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 35.fs, lineHeight = 35.fs,
             letterSpacing = 1f.fs, color = Ink.Gold, shadow = Shadow(Ink.BadgeShadow, Offset(3f, 3f), 0f)))
-        Text("THE VIDEO RENTAL STORE", modifier = Modifier.padding(top = 3.px), style = TextStyle(fontFamily = Type.Condensed,
+        FitText("THE VIDEO RENTAL STORE", modifier = Modifier.padding(top = 3.px), style = TextStyle(fontFamily = Type.Condensed,
             fontWeight = FontWeight.Bold, fontSize = 13.fs, letterSpacing = 1.8f.fs, color = Color.White))
         Box(Modifier.padding(top = 5.px).fillMaxWidth().height(4.px).background(Ink.Pink, RoundedCornerShape(2.px)))
     }
@@ -111,12 +127,25 @@ fun Grain() {
     Image(painterResource(R.drawable.grain), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.18f)
 }
 
+/*
+ * Highlight rules, used on every screen:
+ *  - where you are (focused): solid gold with dark text, a little bigger. Pictures (boxes, tiles, spines,
+ *    the TV) get a gold ring and glow and lift instead, since they can't be filled.
+ *  - chosen but you're elsewhere (the current menu page, the current box view, the current tape): gold tint, gold text.
+ *  - everything else: dark with white text.
+ */
+object Hi {
+    val tint = Ink.Gold.alpha(0.2f)
+    val ring = 3
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun StoreScreen(
     catalog: Catalog, section: Section, status: String, watchlist: Set<String>, restoreKey: String?,
     onSection: (Section) -> Unit, onOpen: (Title) -> Unit, onRefresh: () -> Unit,
 ) {
-    val railFocus = remember { FocusRequester() }
+    val selectedFr = remember { FocusRequester() }
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.NavyTop, 0.6f to Ink.Navy))) {
         when (section) {
             Section.Home -> HomeContent(catalog, restoreKey, onOpen, onSection)
@@ -131,10 +160,12 @@ fun StoreScreen(
             Section.Settings -> SettingsContent(catalog, status, onRefresh)
         }
         LogoBadge(Modifier.offset(18.px, 16.px))
-        Column(Modifier.offset(16.px, 134.px).width(204.px), verticalArrangement = Arrangement.spacedBy(2.px)) {
-            NAV.forEachIndexed { i, n ->
+        // Coming back to the menu lands on the page you're on, not wherever the remote happens to point.
+        Column(Modifier.offset(16.px, 140.px).width(204.px).focusRestorer { selectedFr }.focusGroup(),
+            verticalArrangement = Arrangement.spacedBy(4.px)) {
+            NAV.forEach { n ->
                 val selected = when (section) { is Section.Genre -> n.section == Section.Genres; else -> n.section == section }
-                RailButton(n, selected, if (i == 0) Modifier.focusRequester(railFocus) else Modifier) { onSection(n.section) }
+                RailButton(n, selected, if (selected) Modifier.focusRequester(selectedFr) else Modifier) { onSection(n.section) }
             }
         }
         if (status.isNotBlank() && section != Section.Settings) {
@@ -151,42 +182,48 @@ private fun RailButton(n: NavItem, selected: Boolean, modifier: Modifier, onClic
         onClick = onClick,
         modifier = modifier.fillMaxWidth().height(44.px),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.px)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) Ink.Gold else Color.Transparent,
-            focusedContainerColor = if (selected) Ink.Gold else Color.White.alpha(0.14f),
-            contentColor = if (selected) Ink.Dark else Ink.RailText,
-            focusedContentColor = if (selected) Ink.Dark else Color.White,
+            containerColor = if (selected) Hi.tint else Color.Transparent, focusedContainerColor = Ink.Gold,
+            contentColor = if (selected) Ink.Gold else Ink.RailText, focusedContentColor = Ink.Dark,
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.px, if (selected) Color.White else Ink.Gold), shape = RoundedCornerShape(10.px))),
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 16.px), verticalAlignment = Alignment.CenterVertically) {
             Icon(n.icon, null, Modifier.size(24.px))
             Spacer(Modifier.width(14.px))
-            Text(n.label, style = TextStyle(fontFamily = Type.Barlow, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, fontSize = 19.fs))
+            FitText(n.label, style = TextStyle(fontFamily = Type.Barlow, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, fontSize = 19.fs))
         }
     }
 }
 
-/** A box on the shelf. Focus lifts it off the shelf with a gold ring, like the mockup. */
+/**
+ * A box on the shelf. DVDs are wider than VHS, like the real cases. Highlighting lifts it with a gold ring;
+ * only the drawing lifts, so Up/Down on the remote still go between rows.
+ */
 @Composable
-fun ShelfBox(t: Title, w: Int, h: Int, restore: Boolean, onOpen: (Title) -> Unit) {
+fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) -> Unit, onFocused: (Title) -> Unit = {}) {
     val fr = remember { FocusRequester() }
     var focused by remember { mutableStateOf(false) }
     if (restore) LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
-    Surface(
-        onClick = { onOpen(t) },
-        modifier = Modifier.size(w.px, h.px).focusRequester(fr).onFocusChanged { focused = it.isFocused }
-            .then(if (focused) Modifier.offset(y = (-8).px) else Modifier),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.px)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color.Black, focusedContainerColor = Color.Black),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, Color.White.alpha(0.2f)), shape = RoundedCornerShape(4.px)),
-            focusedBorder = Border(BorderStroke(3.px, Ink.Gold), shape = RoundedCornerShape(4.px))),
-        glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.5f), 26.px)),
-    ) {
-        BoxFront(t, scale = w / 86f, modifier = Modifier.fillMaxSize())
+    val w = boxWidth(t, vhsWidth)
+    val shape = RoundedCornerShape(4.px)
+    Box(Modifier.lift(if (focused) (-8).px else 0.px)) {
+        Surface(
+            onClick = { onOpen(t) },
+            modifier = Modifier.size(w.px, h.px).focusRequester(fr).onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused(t)
+            },
+            shape = ClickableSurfaceDefaults.shape(shape),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            colors = ClickableSurfaceDefaults.colors(containerColor = Color.Black, focusedContainerColor = Color.Black),
+            border = ClickableSurfaceDefaults.border(
+                border = Border(BorderStroke(1.dp, Color.White.alpha(0.2f)), shape = shape),
+                focusedBorder = Border(BorderStroke(Hi.ring.px, Ink.Gold), shape = shape)),
+            glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.5f), 26.px)),
+        ) {
+            BoxFront(t, scale = vhsWidth / 86f, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
@@ -199,54 +236,108 @@ private fun RowHeader(text: String) {
     }
 }
 
+/*
+ * Where the store photo sits and where the TV screen in it is, in mockup pixels.
+ * The photo (803×425) is scaled ×1.1831 and slid right so the TV's right edge meets the screen edge.
+ */
+private const val HERO_X = 330f
+private const val HERO_W = 950f
+private const val HERO_H = 346f
+private const val PHOTO_SCALE = 1.1831f
+private const val PHOTO_X = 30.8f           // inside the hero area
+private const val PHOTO_Y = -70.6f
+private const val TV_X = PHOTO_X + 557 * PHOTO_SCALE
+private const val TV_Y = PHOTO_Y + 110 * PHOTO_SCALE
+private const val TV_W = 165 * PHOTO_SCALE
+private const val TV_H = 148 * PHOTO_SCALE
+
+/** The store photo at the top of Home. The highlighted movie plays (muted) on the TV in the photo. */
+@Composable
+private fun HeroPhoto(playing: Title?) {
+    Box(Modifier.offset(HERO_X.px, 0.px).size(HERO_W.px, HERO_H.px).clipToBounds()) {
+        Image(painterResource(R.drawable.store_hero), null, contentScale = ContentScale.FillBounds,
+            modifier = Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).offset(PHOTO_X.px, PHOTO_Y.px)
+                .size((803 * PHOTO_SCALE).px, (425 * PHOTO_SCALE).px))
+        val tape = playing?.tapes?.firstOrNull()
+        if (tape != null) {
+            var showing by remember(tape.fileId) { mutableStateOf(false) }
+            Box(Modifier.offset(TV_X.px, TV_Y.px).size(TV_W.px, TV_H.px).clip(RoundedCornerShape(18.px))
+                .graphicsLayer { alpha = if (showing) 1f else 0f }.background(Color.Black)) {
+                TapeVideo(tape, onShowing = { showing = it }, onPosition = {})
+                CrtGlass(k = 0.8f)
+                Text("PLAY ▶", modifier = Modifier.padding(start = 10.px, top = 6.px),
+                    style = TextStyle(fontFamily = Type.Vt, fontSize = 18.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f)))
+            }
+        }
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+            0f to Ink.NavyTop, 0.12f to Color(0xD90C1340), 0.5f to Color(0x000C1340))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.7f to Color(0x00080B22), 1f to Ink.Navy)))
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -> Unit, onSection: (Section) -> Unit) {
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { if (restoreKey == null) runCatching { first.requestFocus() } }
-    val rows = buildList {
-        add("New Arrivals" to catalog.newArrivals.take(14))
-        for ((g, list) in catalog.genreShelves.take(3)) add(g to list)
-        for ((shelf, list) in catalog.shelves) add(shelf to list)
-    }.filter { it.second.isNotEmpty() }
+    val rows = remember(catalog) {
+        buildList {
+            add("New Arrivals" to catalog.newArrivals.take(16))
+            for ((g, list) in catalog.genreShelves.take(3)) add(g to list)
+            for ((shelf, list) in catalog.shelves) add(shelf to list)
+        }.filter { it.second.isNotEmpty() }
+    }
     val restoreRow = rows.indexOfFirst { r -> r.second.any { it.key == restoreKey } }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.px)) {
-        item(key = "hero") {
-            Box(Modifier.fillMaxWidth().height(452.px)) {
-                Box(Modifier.offset(330.px, 0.px).size(950.px, 346.px)) {
-                    Image(painterResource(R.drawable.store_hero), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
-                        alignment = androidx.compose.ui.BiasAlignment(0f, -0.1f))
-                    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
-                        0f to Ink.NavyTop, 0.12f to Color(0xD90C1340), 0.55f to Color(0x000C1340))))
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.62f to Color(0x00080B22), 1f to Ink.Navy)))
-                }
-                Column(Modifier.offset(252.px, 112.px).width(480.px)) {
-                    val sh = Shadow(Color(0xB3000000), Offset(0f, 4f), 10f)
-                    Text("Welcome to", style = TextStyle(fontFamily = Type.Playfair, fontSize = 36.fs, lineHeight = 36.fs, color = Color.White, shadow = sh))
-                    Text("VHS FEVER", style = TextStyle(fontFamily = Type.Playfair, fontSize = 58.fs, lineHeight = 60.fs, color = Color.White, shadow = sh))
-                    Box(Modifier.padding(top = 2.px).size(250.px, 5.px).shadow(6.px, RoundedCornerShape(3.px), ambientColor = Ink.Pink, spotColor = Ink.Pink)
-                        .background(Ink.Pink, RoundedCornerShape(3.px)))
-                    Text("Classic, cult and forgotten tapes from the Internet Archive. Rewound and ready.",
-                        modifier = Modifier.padding(top = 16.px).width(400.px),
-                        style = TextStyle(fontFamily = Type.Barlow, fontSize = 18.fs, lineHeight = 24.fs, color = Color(0xFFE9EBFF),
-                            shadow = Shadow(Color(0xCC000000), Offset(0f, 2f), 6f)))
-                }
-                val genres = catalog.genreShelves.map { it.first }.take(6)
-                if (genres.isNotEmpty()) LazyRow(Modifier.offset(0.px, 352.px).fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 252.px, end = 40.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
-                    items(genres) { g -> GenreTile(g, 150, 84) { onSection(Section.Genre(g)) } }
+    // which row the remote is on (-1 = genre tiles); below the first row the tiles fold away to show more shelf
+    var focusRow by remember { mutableIntStateOf(restoreRow.coerceAtLeast(0)) }
+    var highlighted by remember { mutableStateOf(rows.getOrNull(restoreRow)?.second?.firstOrNull { it.key == restoreKey }) }
+    var playing by remember { mutableStateOf<Title?>(null) }
+    LaunchedEffect(highlighted?.key) {
+        playing = null
+        delay(900)            // wait for the remote to settle before loading a video
+        playing = highlighted
+    }
+    LaunchedEffect(Unit) { if (restoreKey == null) runCatching { first.requestFocus() } }
+    val collapsed = focusRow > 0
+    val rowsTop by animateDpAsState(if (collapsed) 352.px else 452.px, label = "rowsTop")
+    val genres = catalog.genreShelves.map { it.first }.take(8)
+
+    Box(Modifier.fillMaxSize()) {
+        HeroPhoto(playing)
+        Column(Modifier.offset(252.px, 112.px).width(440.px)) {
+            val sh = Shadow(Color(0xB3000000), Offset(0f, 4f), 10f)
+            Text("Welcome to", style = TextStyle(fontFamily = Type.Playfair, fontSize = 36.fs, lineHeight = 36.fs, color = Color.White, shadow = sh))
+            FitText("VHS FEVER", style = TextStyle(fontFamily = Type.Playfair, fontSize = 58.fs, lineHeight = 60.fs, color = Color.White, shadow = sh))
+            Box(Modifier.padding(top = 2.px).size(250.px, 5.px).background(Ink.Pink, RoundedCornerShape(3.px)))
+            Text(highlighted?.let { h -> h.name + (h.year?.let { " · $it" } ?: "") }
+                ?: "Classic, cult and forgotten tapes from the Internet Archive. Rewound and ready.",
+                modifier = Modifier.padding(top = 16.px).width(400.px), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                style = TextStyle(fontFamily = Type.Barlow, fontWeight = if (highlighted != null) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 18.fs, lineHeight = 24.fs, color = Color(0xFFE9EBFF), shadow = Shadow(Color(0xCC000000), Offset(0f, 2f), 6f)))
+        }
+        AnimatedVisibility(!collapsed && genres.isNotEmpty(), enter = fadeIn(), exit = fadeOut(),
+            modifier = Modifier.offset(0.px, 352.px)) {
+            LazyRow(Modifier.fillMaxWidth().focusRestorer(), contentPadding = PaddingValues(start = 252.px, end = 40.px, top = 4.px, bottom = 8.px),
+                horizontalArrangement = Arrangement.spacedBy(12.px)) {
+                items(genres) { g ->
+                    Box(Modifier.onFocusChanged { if (it.hasFocus) focusRow = -1 }) {
+                        GenreTile(g, 150, 84) { onSection(Section.Genre(g)) }
+                    }
                 }
             }
         }
-        rows.forEachIndexed { ri, (name, list) ->
-            item(key = "row-$name") {
-                Column(Modifier.padding(bottom = 16.px)) {
-                    Box(Modifier.padding(start = 252.px)) { RowHeader(name) }
-                    LazyRow(contentPadding = PaddingValues(start = 252.px, end = 40.px, top = 16.px, bottom = 12.px),
-                        horizontalArrangement = Arrangement.spacedBy(14.px)) {
-                        items(list, key = { it.key }) { t ->
-                            val r = ri == restoreRow && t.key == restoreKey
-                            Box(if (ri == 0 && t == list.first()) Modifier.focusRequester(first) else Modifier) {
-                                ShelfBox(t, 86, 152, r, onOpen)
+        LazyColumn(Modifier.fillMaxSize().padding(top = rowsTop), contentPadding = PaddingValues(top = 4.px, bottom = 80.px)) {
+            rows.forEachIndexed { ri, (name, list) ->
+                item(key = "row-$name") {
+                    Column(Modifier.padding(bottom = 8.px)) {
+                        Box(Modifier.padding(start = 252.px)) { RowHeader(name) }
+                        LazyRow(Modifier.focusRestorer(),
+                            contentPadding = PaddingValues(start = 252.px, end = 60.px, top = 16.px, bottom = 16.px),
+                            horizontalArrangement = Arrangement.spacedBy(14.px), verticalAlignment = Alignment.Bottom) {
+                            items(list, key = { it.key }) { t ->
+                                Box(if (ri == 0 && t == list.first()) Modifier.focusRequester(first) else Modifier) {
+                                    ShelfBox(t, 86, 152, ri == restoreRow && t.key == restoreKey, onOpen,
+                                        onFocused = { highlighted = it; focusRow = ri })
+                                }
                             }
                         }
                     }
@@ -258,25 +349,43 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
 
 @Composable
 fun GenreTile(name: String, w: Int, h: Int, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(10.px)
     Surface(
         onClick = onClick,
         modifier = Modifier.size(w.px, h.px),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.px)),
+        shape = ClickableSurfaceDefaults.shape(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(2.px, Color.White.alpha(0.55f)), shape = RoundedCornerShape(10.px)),
-            focusedBorder = Border(BorderStroke(3.px, Ink.Gold), shape = RoundedCornerShape(10.px))),
+            border = Border(BorderStroke(2.px, Color.White.alpha(0.55f)), shape = shape),
+            focusedBorder = Border(BorderStroke(Hi.ring.px, Ink.Gold), shape = shape)),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.5f), 20.px)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Black, focusedContainerColor = Color.Black),
     ) { GenreArt(name, scale = w / 150f) }
 }
 
 @Composable
 private fun SectionHeader(title: String, sub: String) {
-    Column(Modifier.padding(start = 252.px, top = 40.px, bottom = 18.px)) {
+    Column(Modifier.padding(start = 252.px, top = 40.px, bottom = 18.px, end = 40.px)) {
         Text(sub.uppercase(), style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.6f.fs, color = Ink.Gold))
-        Text(title, style = TextStyle(fontFamily = Type.Playfair, fontSize = 52.fs, lineHeight = 56.fs, color = Color.White,
+        FitText(title, style = TextStyle(fontFamily = Type.Playfair, fontSize = 52.fs, lineHeight = 56.fs, color = Color.White,
             shadow = Shadow(Color(0xB3000000), Offset(0f, 4f), 10f)))
         Box(Modifier.padding(top = 4.px).size(180.px, 5.px).background(Ink.Pink, RoundedCornerShape(3.px)))
+    }
+}
+
+/** A grid of boxes; each cell fits a DVD, and VHS boxes stand in the middle of theirs. */
+@Composable
+private fun BoxGrid(titles: List<Title>, restoreKey: String?, onOpen: (Title) -> Unit, first: FocusRequester?, top: Int) {
+    LazyVerticalGrid(GridCells.Adaptive(150.px), Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 252.px, end = 40.px, top = top.px, bottom = 40.px),
+        horizontalArrangement = Arrangement.spacedBy(10.px), verticalArrangement = Arrangement.spacedBy(26.px)) {
+        items(titles, key = { it.key }) { t ->
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                Box(if (first != null && t == titles.first()) Modifier.focusRequester(first) else Modifier) {
+                    ShelfBox(t, 112, 198, t.key == restoreKey, onOpen)
+                }
+            }
+        }
     }
 }
 
@@ -288,15 +397,7 @@ private fun GridContent(title: String, sub: String, titles: List<Title>, restore
         SectionHeader(title, "$sub · ${titles.size}")
         if (titles.isEmpty()) Text(empty, modifier = Modifier.padding(start = 252.px),
             style = TextStyle(fontFamily = Type.Barlow, fontSize = 22.fs, color = Ink.Body))
-        LazyVerticalGrid(GridCells.Adaptive(126.px), Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 252.px, end = 40.px, top = 14.px, bottom = 40.px),
-            horizontalArrangement = Arrangement.spacedBy(22.px), verticalArrangement = Arrangement.spacedBy(26.px)) {
-            items(titles, key = { it.key }) { t ->
-                Box(if (t == titles.first()) Modifier.focusRequester(first) else Modifier) {
-                    ShelfBox(t, 112, 198, t.key == restoreKey, onOpen)
-                }
-            }
-        }
+        BoxGrid(titles, restoreKey, onOpen, first, 14)
     }
 }
 
@@ -340,18 +441,14 @@ private fun SearchContent(catalog: Catalog, restoreKey: String?, onOpen: (Title)
             textStyle = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Medium, fontSize = 26.fs, color = Color.White),
             cursorBrush = SolidColor(Ink.Gold),
             modifier = Modifier.padding(start = 252.px).width(640.px).focusRequester(field).onFocusChanged { focused = it.isFocused }
-                .background(Color(0xB3080B22), RoundedCornerShape(10.px))
-                .border(if (focused) 3.px else 2.px, if (focused) Ink.Gold else Color.White.alpha(0.5f), RoundedCornerShape(10.px))
+                .background(if (focused) Hi.tint else Color(0xB3080B22), RoundedCornerShape(10.px))
+                .border(if (focused) Hi.ring.px else 2.px, if (focused) Ink.Gold else Color.White.alpha(0.5f), RoundedCornerShape(10.px))
                 .padding(horizontal = 18.px, vertical = 12.px),
             decorationBox = { inner ->
                 if (q.isEmpty()) Text("Title, year or file name…", style = TextStyle(fontFamily = Type.Barlow, fontSize = 26.fs, color = Ink.Muted))
                 inner()
             })
-        LazyVerticalGrid(GridCells.Adaptive(126.px), Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 252.px, end = 40.px, top = 28.px, bottom = 40.px),
-            horizontalArrangement = Arrangement.spacedBy(22.px), verticalArrangement = Arrangement.spacedBy(26.px)) {
-            items(hits, key = { it.key }) { t -> ShelfBox(t, 112, 198, t.key == restoreKey, onOpen) }
-        }
+        BoxGrid(hits, restoreKey, onOpen, null, 28)
     }
 }
 
@@ -362,7 +459,7 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
     val tapes = catalog.titles.sumOf { it.tapes.size }
     Column(Modifier.fillMaxSize()) {
         SectionHeader("Settings", "VHS FEVER TV")
-        Column(Modifier.padding(start = 252.px).width(640.px)) {
+        Column(Modifier.padding(start = 252.px).width(700.px)) {
             for ((k, v) in listOf(
                 "IN THE STORE" to "${catalog.titles.size} titles · $tapes tapes",
                 "WHERE THE TAPES COME FROM" to "Files marked good in the review app",
@@ -371,9 +468,10 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
             )) {
                 Row(Modifier.fillMaxWidth().drawBehind {
                     drawLine(Color(0x4DCFD4FF), Offset(0f, size.height), Offset(size.width, size.height), 1f)
-                }.padding(vertical = 12.px), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                }.padding(vertical = 12.px), horizontalArrangement = Arrangement.spacedBy(16.px), verticalAlignment = Alignment.CenterVertically) {
                     Text(k, style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.3f.fs, color = Ink.Muted))
-                    Text(v, style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Medium, fontSize = 21.fs, color = Color.White))
+                    Text(v, modifier = Modifier.weight(1f), style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Medium,
+                        fontSize = 21.fs, color = Color.White, textAlign = TextAlign.End))
                 }
             }
             Spacer(Modifier.height(26.px))
@@ -384,36 +482,32 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
     }
 }
 
+/** The main action. Gold outline when you're elsewhere, solid gold when you're on it. */
 @Composable
-fun GoldButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = modifier.height(48.px),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.px)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Ink.Gold.alpha(0.85f), focusedContainerColor = Ink.Gold,
-            contentColor = Ink.Dark, focusedContentColor = Ink.Dark),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.px, Color.White), shape = RoundedCornerShape(8.px))),
-        glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.45f), 30.px)),
-    ) {
-        Box(Modifier.padding(horizontal = 30.px).fillMaxHeight(), contentAlignment = Alignment.Center) {
-            Text(text, style = TextStyle(fontFamily = Type.Condensed, fontWeight = FontWeight.Bold, fontSize = 24.fs, letterSpacing = 1.9f.fs))
-        }
-    }
-}
+fun GoldButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) =
+    StoreButton(text, modifier, Ink.Gold, Ink.Gold, onClick)
+
+/** Other actions. White outline when you're elsewhere, solid gold when you're on it. */
+@Composable
+fun OutlineButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) =
+    StoreButton(text, modifier, Color.White.alpha(0.6f), Color.White, onClick)
 
 @Composable
-fun OutlineButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = modifier.height(48.px),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.px)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-        colors = ClickableSurfaceDefaults.colors(containerColor = Color(0x99080B22), focusedContainerColor = Color.White.alpha(0.18f),
-            contentColor = Color.White, focusedContentColor = Color.White),
+fun StoreButton(text: String, modifier: Modifier, edge: Color, label: Color, onClick: () -> Unit, size: Int = 24, chosen: Boolean = false) {
+    val shape = RoundedCornerShape(8.px)
+    Surface(onClick = onClick, modifier = modifier.heightIn(min = 48.px),
+        shape = ClickableSurfaceDefaults.shape(shape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+        colors = ClickableSurfaceDefaults.colors(containerColor = if (chosen) Hi.tint else Color(0x99080B22), focusedContainerColor = Ink.Gold,
+            contentColor = if (chosen) Ink.Gold else label, focusedContentColor = Ink.Dark),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, Color.White.alpha(0.55f)), shape = RoundedCornerShape(8.px)),
-            focusedBorder = Border(BorderStroke(3.px, Ink.Gold), shape = RoundedCornerShape(8.px))),
+            border = Border(BorderStroke(2.px, if (chosen) Ink.Gold else edge), shape = shape),
+            focusedBorder = Border(BorderStroke(2.px, Ink.Gold), shape = shape)),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.4f), 24.px)),
     ) {
-        Box(Modifier.padding(horizontal = 24.px).fillMaxHeight(), contentAlignment = Alignment.Center) {
-            Text(text, style = TextStyle(fontFamily = Type.Condensed, fontWeight = FontWeight.Bold, fontSize = 24.fs, letterSpacing = 1.9f.fs))
+        Box(Modifier.padding(horizontal = 22.px, vertical = 8.px), contentAlignment = Alignment.Center) {
+            Text(text, maxLines = 1, softWrap = false,
+                style = TextStyle(fontFamily = Type.Condensed, fontWeight = FontWeight.Bold, fontSize = size.fs, letterSpacing = (size * 0.08f).fs))
         }
     }
 }
-
