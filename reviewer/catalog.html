@@ -61,8 +61,8 @@ details>summary{cursor:pointer;list-style:none}details>summary::-webkit-details-
 </div>
 <script>
 const FEED=new URLSearchParams(location.search).get("feed")||"https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-model-data/reviewer-feed.json";
-const SHELVES=[["","All"],["vhs_release","VHS releases"],["other_media_release","Other media"],["vhs_opening_or_previews","Openings & previews"],["manual_review","Manual review"]];
-const SHELF_LABEL={vhs_release:"VHS release",other_media_release:"Other media",vhs_opening_or_previews:"Opening / previews",manual_review:"Manual review"};
+const SHELVES=[["","All"],["vhs_release","VHS releases"],["other_media_release","Other media"],["vhs_opening_or_previews","Openings & previews"],["tv_recording","TV recordings"],["manual_review","Manual review"]];
+const SHELF_LABEL={vhs_release:"VHS release",other_media_release:"Other media",vhs_opening_or_previews:"Opening / previews",tv_recording:"TV recording",manual_review:"Manual review"};
 const KEY="vhsfever-catalog-decisions-v1";
 let data=null,shelf="",sel=null,decisions={};
 try{decisions=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){decisions={}}

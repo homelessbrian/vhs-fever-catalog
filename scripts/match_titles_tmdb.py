@@ -290,6 +290,10 @@ def main() -> None:
             counts["reused_from_earlier_run"] = counts.get("reused_from_earlier_run", 0) + 1
         elif c == {"vhs_opening_or_previews"}:
             t["tmdb"] = {"status": "skipped_tape_opening"}
+        elif c == {"tv_recording"}:
+            # Whole tapes recorded off TV: the shows and air dates come from
+            # the Archive page, not from TMDB.
+            t["tmdb"] = {"status": "skipped_tv_recording"}
         elif skip:
             t["tmdb"] = {"status": skip, "search_title": t["tmdb"].get("search_title"),
                          "note": "Not looked up: commercials, promos and non-English titles are skipped."}

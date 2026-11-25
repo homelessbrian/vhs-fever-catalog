@@ -70,11 +70,12 @@ data class Catalog(val titles: List<Title>) {
             titles.filter { it.shelf !in SHELF_ORDER }.groupBy { it.shelf }.toList()
 
     companion object {
-        val SHELF_ORDER = listOf("VHS Tapes", "DVDs", "Other Releases", "Openings & Previews", "Extras")
+        val SHELF_ORDER = listOf("VHS Tapes", "DVDs", "Other Releases", "TV Recordings", "Openings & Previews", "Extras")
 
         fun shelfName(id: String?, media: String?): String = when {
             id == "vhs_opening_or_previews" -> "Openings & Previews"
             id == "other_media_release" -> "Other Releases"
+            id == "tv_recording" -> "TV Recordings"
             id == "not_catalog" -> "Extras"
             media == "DVD" -> "DVDs"
             else -> "VHS Tapes"

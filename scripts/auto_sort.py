@@ -227,6 +227,19 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
     kind = None
     commercials = "unknown"
 
+    tv = it.get("tv_tape")
+    if it.get("content_hint") == "off_air_tv_tape" and tv:
+        # A whole tape recorded off TV (Oakley Tapes). It is often cut into a
+        # few long files; played in order they are the tape, so a piece is not a clip.
+        kind = "tv_recording"
+        commercials = tv.get("commercials") or "likely"
+        why.append("taped off live TV (the Archive page names the shows and air date)")
+        if tv.get("channels"):
+            why.append("channel: " + ", ".join(tv["channels"]))
+        if (tv.get("pieces") or 1) > 1:
+            why.append(f"piece {tv['piece']} of {tv['pieces']} of one tape; play them in order")
+        why.append("taped off TV, so ads are probably in it")
+        return {"kind": kind, "builtin_commercials": commercials, "why": why}
     if (it.get("part_total") or 0) > 1 or rec.get("part_count", 1) > 1:
         kind = "clip"
         why.append(f"piece {it.get('part_index') or '?'} of {it.get('part_total') or rec.get('part_count')} of a split video")
@@ -366,6 +379,8 @@ def shelf_for(fmt: dict[str, Any], kind: str) -> tuple[str | None, str]:
     if fmt["format"] in TAPE_FORMATS:
         return "vhs_release", "tape"
     if fmt["format"] == "TV":
+        if kind in {"tv_recording", "tv_episode"}:
+            return "tv_recording", "recorded from TV"
         return None, "recorded from TV"
     if fmt["format"] in {"DVD", "BLU-RAY", "LASERDISC", "VCD", "WEB"}:
         return "other_media_release", fmt["format"]
@@ -411,6 +426,16 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
+def tv_summary(tv: dict[str, Any]) -> dict[str, Any]:
+    """What the live-TV guide needs about one piece of an off-air tape."""
+    return {"tape_number": tv.get("tape_number"), "tape_type": tv.get("tape_type"),
+            "shows": [s["name"] for s in tv.get("shows") or []], "channels": tv.get("channels") or [],
+            "air_date": tv.get("air_date"), "air_date_end": tv.get("air_date_end"),
+            "air_dates": tv.get("air_dates") or [], "air_month": tv.get("air_month"),
+            "lineup": tv.get("lineup") or [], "piece": tv.get("piece"), "pieces": tv.get("pieces"),
+            "transcript": tv.get("transcript")}
+
+
 def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
     item_by_id = {i["archive_identifier"]: i for i in items}
     art_by_rec: dict[str, list[dict[str, Any]]] = {}
@@ -451,6 +476,7 @@ def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
                     "title": (title or {}).get("display_title") or it.get("title"),
                     "title_suggestion_id": rec.get("title_suggestion_id"),
                     "artwork": art_pick, "version": VERSION,
+                    **({"tv": tv_summary(it["tv_tape"])} if it.get("tv_tape") else {}),
                 })
     return out
 
@@ -497,7 +523,9 @@ def build_ad_list(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         name = r["name"] or ""
         text = norm_words(name)
         years = r["years_in_name"]
-        year = int(r["air_date"][:4]) if r.get("air_date") else (years[0] if len(years) == 1 else None)
+        tv_month = (r.get("tv") or {}).get("air_month")
+        year = int(r["air_date"][:4]) if r.get("air_date") else (int(tv_month[:4]) if tv_month else
+                                                                (years[0] if len(years) == 1 else None))
         kind = AD_KINDS.get(r["kind"])
         if kind is None:
             kind = "TV recording with ads in it"
@@ -508,7 +536,11 @@ def build_ad_list(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "duration_seconds": r["duration_seconds"],
             "year": year, "decade": f"{year // 10 * 10}s" if year else None, "air_date": r.get("air_date"),
             "holidays": [k for k, rx in HOLIDAY_RX.items() if rx.search(text)],
-            "channel": (CHANNEL.search(text).group(0) if CHANNEL.search(text) else None),
+            "channel": ((r.get("tv") or {}).get("channels") or [None])[0]
+                       or (CHANNEL.search(text).group(0) if CHANNEL.search(text) else None),
+            **({"shows": r["tv"]["shows"], "tape_number": r["tv"]["tape_number"],
+                "tape_piece": r["tv"]["piece"], "tape_pieces": r["tv"]["pieces"],
+                "air_date_end": r["tv"]["air_date_end"]} if r.get("tv") else {}),
             "ads_inside": r["builtin_commercials"] if r["kind"] in {"tv_recording", "tv_episode"} else None,
             "play_url": next((g["playback_url"] for g in group if g.get("playback_url") and g["verdict"] != "bad"),
                              r.get("playback_url")),

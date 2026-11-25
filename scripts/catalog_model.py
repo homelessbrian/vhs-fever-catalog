@@ -33,6 +33,8 @@ from collections import Counter, defaultdict
 from pathlib import PurePosixPath
 from typing import Any, Iterable
 
+import tv_tapes
+
 SCHEMA_VERSION = 2
 
 VIDEO_EXTS = {".mp4", ".m4v", ".mpg", ".mpeg", ".avi", ".mkv", ".mov", ".wmv",
@@ -648,6 +650,35 @@ def _fill_from_page_title(it: dict[str, Any], page: dict[str, Any]) -> None:
         it["flags"] = flags + ["filled_from_archive_page_title"]
 
 
+def _apply_tv_tape(it: dict[str, Any], tv: dict[str, Any], name: str, pieces: list[str]) -> None:
+    """A capture file of an off-air TV tape: the page names the shows and air
+    dates; the file name ("0002_0102_045252.mp4") says nothing."""
+    if name not in pieces:
+        it["flags"] = list(it.get("flags") or []) + ["on_tv_tape_page_but_not_a_tape_capture_file"]
+        return
+    n = pieces.index(name) + 1
+    it["title"] = tv_tapes.display_title(tv)
+    it["title_qualifiers"] = []
+    it["content_hint"] = "off_air_tv_tape"
+    it["media_format"] = "BROADCAST"
+    it["media_label_raw"] = "page: off-air TV tape"
+    it["release_year"] = None
+    it["work_year"] = None
+    it["air_date"] = tv.get("air_date")
+    it["episode"] = it["season"] = it["part_index"] = it["part_total"] = None
+    it["tv_tape"] = {
+        "tape_number": tv.get("tape_number"), "tape_type": tv.get("tape_type"),
+        "shows": tv["shows"], "channels": tv["channels"],
+        "air_date": tv.get("air_date"), "air_date_end": tv.get("air_date_end"), "air_dates": tv["air_dates"],
+        "air_month": tv.get("air_month"), "lineup": tv["lineup"],
+        "piece": n, "pieces": len(pieces), "commercials": tv["commercials"],
+        "transcript": next((t for t in tv["transcripts"]
+                            if PurePosixPath(t).name.startswith(PurePosixPath(name).stem + ".")), None),
+    }
+    drop = {"no_media_format_in_filename", "no_usable_title", "tape_format_not_stated", "release_year_malformed"}
+    it["flags"] = [f for f in it.get("flags") or [] if f not in drop] + ["off_air_tv_tape_from_archive_page"]
+
+
 def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     archive_items: list[dict[str, Any]] = []
     archive_files: list[dict[str, Any]] = []
@@ -659,10 +690,19 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     page_by_item: dict[str, dict[str, Any]] = {}
 
     ctx_by_item: dict[str, dict[str, Any]] = {}
+    # Off-air TV tapes (Oakley Tapes): what the page says about the tape, and
+    # its capture files in order (one tape is cut into a few long files).
+    tv_by_item: dict[str, dict[str, Any]] = {}
+    tv_pieces: dict[str, list[str]] = {}
     for item in items:
         ident = item["identifier"]
         files = [f for f in item.get("files") or [] if str(f.get("name") or "")]
-        ctx = page_context(item)
+        tv = tv_tapes.read_page(item)
+        if tv:
+            tv_by_item[ident] = tv
+            tv_pieces[ident] = tv_tapes.tape_pieces(
+                [f["name"] for f in files if _is_video(f) and str(f.get("source") or "").lower() != "derivative"], tv)
+        ctx = None if tv else page_context(item)
         if ctx:
             ctx_by_item[ident] = ctx
         by_name = {f["name"]: f for f in files}
@@ -671,6 +711,7 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             "archive_title": item.get("title"),
             "collection": item.get("collection"),
             "page_context": ctx_by_item.get(ident),
+            "tv_tape": tv_by_item.get(ident),
             "access_restricted": bool(item.get("access_restricted")),
             "archive_url": f"https://archive.org/details/{ident}",
             "video_file_count": sum(_is_video(f) for f in files),
@@ -680,7 +721,8 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         })
         video_stems: dict[str, str] = {}
         originals = [f for f in files if _is_video(f) and str(f.get("source") or "").lower() != "derivative"]
-        page = interpret_filename(str(item.get("title") or "") + ".mp4") if len(originals) == 1 and item.get("title") else None
+        page = interpret_filename(str(item.get("title") or "") + ".mp4") \
+            if len(originals) == 1 and item.get("title") and ident not in tv_by_item else None
         if page:
             page_by_item[ident] = page
         for f in files:
@@ -775,6 +817,9 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         ctx = ctx_by_item.get(first.get("archive_identifier"))
         if ctx:
             _apply_page_context(p["interpretation"], ctx)
+        tv_ident = first.get("archive_identifier")
+        if tv_ident in tv_by_item:
+            _apply_tv_tape(p["interpretation"], tv_by_item[tv_ident], first["original_name"], tv_pieces[tv_ident])
         p["also_named"] = sorted({o["original_name"] for o in p["original_files"]})
         p["archive_identifiers"] = sorted({s["archive_identifier"] for s in p["sources"]})
         durs = [s["duration_seconds"] for s in p["sources"] if s["duration_seconds"]]
@@ -976,6 +1021,7 @@ NOT_A_RELEASE_FLAGS = {
     "tape_format_not_stated": "tape format not stated in filename",
     "release_year_malformed": "release year in filename is malformed",
     "no_usable_title": "filename has no usable title",
+    "on_tv_tape_page_but_not_a_tape_capture_file": "on a TV tape page, but not one of the tape's own capture files",
 }
 
 
@@ -983,6 +1029,9 @@ def categorize(rec: dict[str, Any]) -> tuple[str, list[str]]:
     """Which shelf a recording belongs on. Nothing is removed; anything that is
     not clearly a VHS (or other physical-media) release goes to manual review."""
     it = rec["interpretation"]
+    if it.get("content_hint") == "off_air_tv_tape":
+        tv = it["tv_tape"]
+        return "tv_recording", tv_tapes.reasons(tv, tv["piece"], tv["pieces"])
     reasons = [label for flag, label in NOT_A_RELEASE_FLAGS.items() if flag in rec["flags"]]
     if it.get("content_hint") == "tv_episode":
         reasons.append("TV episode, not a home-video release")
@@ -1091,7 +1140,7 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
         items.append({
             "identifier": ident, "title": md.get("title"),
             "collection": md.get("collection"),
-            "subject": md.get("subject"), "description": md.get("description"),
+            "subject": md.get("subject"), "description": md.get("description"), "date": md.get("date"),
             "access_restricted": bool(data.get("is_dark")) or str(md.get("access-restricted-item", "")).lower() == "true",
             "files": data.get("files") or [],
         })
@@ -1118,6 +1167,7 @@ def build_reviewer_feed(model_dir: str) -> dict[str, Any]:
             "why": r["category_reasons"], "flags": r["flags"], "dur": r["duration_seconds"],
             "parts": r["part_count"], "items": r["archive_identifiers"], "also": r["also_named"],
             "ver": it.get("version_label"), "notes": it.get("edition_notes"),
+            **({"tv": it["tv_tape"]} if it.get("tv_tape") else {}),
             "ident": r["identity_basis"],
             "art": [{"url": art_by[a]["image_url"], "role": art_by[a]["role_guess"],
                      "name": art_by[a]["original_name"]} for a in r["artwork_ids"] if a in art_by],
