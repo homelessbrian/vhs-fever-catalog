@@ -60,7 +60,11 @@ abstract class ScreensBase(private val tag: String) {
 
     protected fun show(content: @Composable () -> Unit) {
         rule.mainClock.autoAdvance = false
-        rule.setContent { StoreTheme { content() } }
+        rule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalInspectionMode provides true) {
+                StoreTheme { content() }
+            }
+        }
     }
 
     /** The highlighted thing on screen (the smallest focused node, so a box rather than the row it sits in). */

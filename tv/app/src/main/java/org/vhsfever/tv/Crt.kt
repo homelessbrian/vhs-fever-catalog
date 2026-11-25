@@ -82,7 +82,14 @@ fun previewStartMs(tape: Tape) = ((tape.minutes ?: 0) * 60_000L * 0.2).toLong()
 @OptIn(UnstableApi::class)
 @Composable
 fun TapeVideo(tape: Tape, onShowing: (Boolean) -> Unit, onPosition: (Long) -> Unit, modifier: Modifier = Modifier) {
-    if (LocalInspectionMode.current) return
+    if (LocalInspectionMode.current) {
+        // screen pictures / previews: a stand-in where the video would be
+        LaunchedEffect(tape.fileId) { onShowing(true) }
+        Box(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF3A6A9A), Color(0xFF1A2A4A)))), contentAlignment = Alignment.Center) {
+            Text("VIDEO", style = TextStyle(fontFamily = Type.Vt, fontSize = 28.fs, color = Color.White))
+        }
+        return
+    }
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val showing by rememberUpdatedState(onShowing)
