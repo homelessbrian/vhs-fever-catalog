@@ -142,7 +142,9 @@ fun QueueScreen(m: AppModel) {
             if (list.isEmpty() && m.files.isNotEmpty()) item { Text("Nothing here. Try another filter.", color = C.muted, modifier = Modifier.padding(24.dp)) }
         }
         val first = list.firstOrNull { m.decisionFor(it)?.status == null }
-        if (first != null) Button(onClick = { m.open(Screen.Review(first.id)) }, shape = RoundedCornerShape(14.dp),
+        if (!m.firstSyncDone && m.files.isNotEmpty()) Text("Loading your saved reviews…", color = C.muted, fontSize = 13.sp,
+            modifier = Modifier.fillMaxWidth().padding(16.dp))
+        else if (first != null) Button(onClick = { m.open(Screen.Review(first.id)) }, shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = C.gold, contentColor = Color(0xFF1A1206)),
             modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp)) { Text("Start reviewing · next unreviewed file", fontWeight = FontWeight.Bold) }
     }

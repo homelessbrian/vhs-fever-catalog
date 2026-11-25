@@ -46,6 +46,8 @@ class AppModel(private val ctx: Context) {
     private var settingsUpdatedAt = ""
     var dirty by mutableStateOf(false); private set
     var syncStatus by mutableStateOf("Not synced yet"); private set
+    /** False until saved reviews have been checked against GitHub once after opening the app. */
+    var firstSyncDone by mutableStateOf(false); private set
     private var syncJob: Job? = null
 
     // ---- navigation & queue
@@ -77,7 +79,7 @@ class AppModel(private val ctx: Context) {
     init {
         loadLocalDecisions()
         scope.launch { loadCatalog() }
-        if (token.isNotBlank()) scope.launch { sync(); checkForUpdate(quiet = true) }
+        if (token.isNotBlank()) scope.launch { sync(); checkForUpdate(quiet = true) } else firstSyncDone = true
     }
 
     // ------------------------------------------------------------------ loading
@@ -388,7 +390,10 @@ class AppModel(private val ctx: Context) {
             repeat(3) { attempt ->
                 val remote = withContext(Dispatchers.IO) { gh.readDecisions() }
                 val merged = if (remote == null) toJson().toString() else mergeWith(parse(remote.first))
-                if (remote != null && !dirty && merged == remote.first) { syncStatus = "Up to date · ${clock()}"; return }
+                if (remote != null && !dirty && merged == remote.first) {
+                    saveLocal()   // keep reviews made on other runs/devices on this phone too
+                    syncStatus = "Up to date · ${clock()}"; return
+                }
                 try {
                     withContext(Dispatchers.IO) { gh.writeDecisions(merged, remote?.second) }
                     dirty = false; saveLocal()
@@ -400,6 +405,8 @@ class AppModel(private val ctx: Context) {
             }
         } catch (e: Exception) {
             syncStatus = "Not saved to GitHub yet (${e.message?.take(60)}) · kept on phone"
+        } finally {
+            firstSyncDone = true
         }
     }
 
