@@ -160,7 +160,8 @@ fun BoxBack(t: Title, tapeText: String, modifier: Modifier = Modifier) {
 /**
  * The 3D rental box on the detail page. [angle] is how far the box is turned:
  * 24 = three-quarter view, 0 = front, 90 = spine, 180 = back.
- * Each side is drawn turned by its own angle and slid into place, so the edges meet.
+ * Each side is squeezed by how far it faces away (a flat, even view of the box) and slid into place,
+ * so the edges meet. This draws the same on every TV, unlike real 3D layers.
  */
 @Composable
 fun Box3D(t: Title, angle: Float, tapeText: String, modifier: Modifier = Modifier) {
@@ -183,8 +184,7 @@ fun Box3D(t: Title, angle: Float, tapeText: String, modifier: Modifier = Modifie
             val faceW = if (name == "front" || name == "back") w else d
             Box(Modifier.size(faceW.px, h.px).graphicsLayer {
                 translationX = cx * toPx
-                rotationY = -f
-                cameraDistance = 1300f * toPx
+                scaleX = cos(Math.toRadians(f.toDouble())).toFloat()
                 clip = true
             }) {
                 when (name) {

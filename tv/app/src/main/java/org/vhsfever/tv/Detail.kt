@@ -159,27 +159,26 @@ fun DetailScreen(
                     t.posterIsSuggestion -> "TMDB poster (unconfirmed match)"
                     else -> "TMDB poster · no tape scan yet"
                 }
-                for ((k, v) in listOf(
-                    "FILM" to (t.year ?: "—"),
-                    "THIS TAPE" to listOfNotNull(tape?.label, tape?.minutes?.let { "$it min" }).joinToString(" · ").ifBlank { "—" },
-                    "TAPES ON FILE" to t.tapes.size.toString(),
-                    "BOX ART" to art,
-                )) {
-                    Row(Modifier.fillMaxWidth().drawBehind {
-                        drawLine(Color(0x4DCFD4FF), Offset(0f, size.height), Offset(size.width, size.height), 1f)
-                    }.padding(vertical = 9.px), horizontalArrangement = Arrangement.spacedBy(12.px), verticalAlignment = Alignment.CenterVertically) {
-                        Text(k, style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.3f.fs, color = Ink.Muted))
-                        Text(v, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Medium, fontSize = 21.fs, color = Color.White, textAlign = TextAlign.End))
-                    }
-                }
+                InfoRow("FILM", t.year ?: "—")
+                val tapeText = listOfNotNull(tape?.label, tape?.minutes?.let { "$it min" }).joinToString(" · ").ifBlank { "—" }
+                if (t.tapes.size > 1) {
+                    // pick which of the tapes on file to play
+                    Surface(onClick = { chooser = true }, modifier = Modifier.fillMaxWidth(),
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.px)),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+                        colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Ink.Gold.alpha(0.16f),
+                            contentColor = Color.White, focusedContentColor = Color.White),
+                        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.px, Ink.Gold), shape = RoundedCornerShape(6.px))),
+                    ) { InfoRow("THIS TAPE", tapeText, action = "CHANGE ›") }
+                } else InfoRow("THIS TAPE", tapeText)
+                InfoRow("TAPES ON FILE", t.tapes.size.toString())
+                InfoRow("BOX ART", art)
             }
             Row(Modifier.padding(top = 22.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
                 GoldButton("▶ PLAY TAPE", Modifier.focusRequester(play)) {
                     if (tape != null) ctx.startActivity(PlayerActivity.intent(ctx, t.name, tape))
                 }
                 OutlineButton(if (onWatchlist) "✓ SAVED" else "+ WATCHLIST", onClick = onToggleWatchlist)
-                if (t.tapes.size > 1) OutlineButton("TAPES (${t.tapes.size})") { chooser = true }
             }
         }
 
@@ -188,6 +187,19 @@ fun DetailScreen(
 
         if (chooser) TapeChooser(t, tapeIndex, onPick = { tapeIndex = it; chooser = false })
         Grain()
+    }
+}
+
+@Composable
+private fun InfoRow(k: String, v: String, action: String? = null) {
+    Row(Modifier.fillMaxWidth().drawBehind {
+        drawLine(Color(0x4DCFD4FF), Offset(0f, size.height), Offset(size.width, size.height), 1f)
+    }.padding(vertical = 9.px), horizontalArrangement = Arrangement.spacedBy(12.px), verticalAlignment = Alignment.CenterVertically) {
+        Text(k, style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.3f.fs, color = Ink.Muted))
+        Text(v, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Medium, fontSize = 21.fs, color = Color.White, textAlign = TextAlign.End))
+        if (action != null) Text(action, style = TextStyle(fontFamily = Type.Condensed, fontWeight = FontWeight.Bold, fontSize = 16.fs,
+            letterSpacing = 1.2f.fs, color = Ink.Gold))
     }
 }
 

@@ -108,7 +108,7 @@ fun LogoBadge(modifier: Modifier = Modifier) {
 /** Grain over the whole picture, like the mockups. */
 @Composable
 fun Grain() {
-    Image(painterResource(R.drawable.grain), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.35f)
+    Image(painterResource(R.drawable.grain), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.18f)
 }
 
 @Composable
