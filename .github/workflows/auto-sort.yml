@@ -1,0 +1,98 @@
+# This copy lives on main only so GitHub runs it on a schedule (GitHub only
+# runs scheduled jobs from main). It always works on the rebuild/data-model
+# branch's scripts and data.
+name: Auto-sort files and find new Archive uploads
+
+# Gives every video file a best guess (kind, VHS/DVD/Blu-ray/TV, good/bad/
+# review, built-in commercials, artwork) and checks those guesses against the
+# files already reviewed in the app. Also lists new VHS Vault uploads the
+# catalog hasn't seen yet. Results go to the auto-sort-data branch. Nothing is
+# approved automatically and no review decision is changed.
+
+on:
+  workflow_run:
+    workflows: ["Check files for sound and picture"]
+    types: [completed]
+  schedule:
+    - cron: "41 9 * * *"
+  workflow_dispatch:
+    inputs:
+      backfill_pages:
+        description: "Pages of older Archive uploads to list this run (200 items a page)"
+        required: false
+        default: "10"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vhs-fever-auto-sort
+  cancel-in-progress: false
+
+jobs:
+  sort:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rebuild/data-model
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python -m unittest tests.test_auto_sort tests.test_title_search -v
+
+      - name: Get catalog, sound checks, your reviews and the earlier new-items list
+        env:
+          RAW: https://raw.githubusercontent.com/${{ github.repository }}
+        run: |
+          mkdir -p work/model out
+          for f in recordings archive-items artwork titles; do
+            curl -fsSL "$RAW/catalog-model-data/$f.jsonl" -o "work/model/$f.jsonl"
+          done
+          curl -fsSL "$RAW/audio-data/audio-checks.jsonl" -o work/audio-checks.jsonl || touch work/audio-checks.jsonl
+          curl -fsSL "$RAW/review-data/review/decisions.json" -o work/decisions.json || echo '{}' > work/decisions.json
+          curl -fsSL "$RAW/auto-sort-data/new-items.jsonl" -o work/new-items.jsonl || touch work/new-items.jsonl
+
+      - name: Find new VHS Vault uploads
+        continue-on-error: true
+        run: |
+          python scripts/discover_new_items.py \
+            --known work/new-items.jsonl \
+            --catalog-items work/model/archive-items.jsonl \
+            --backfill-pages "${{ inputs.backfill_pages || '10' }}" \
+            --output-dir out
+
+      - name: Keep the earlier list if the Archive search failed
+        run: |
+          if [ ! -s out/new-items.jsonl ] && [ -s work/new-items.jsonl ]; then cp work/new-items.jsonl out/; fi
+
+      - name: Auto-sort every file
+        run: |
+          python scripts/auto_sort.py --model-dir work/model \
+            --audio work/audio-checks.jsonl --output-dir out
+
+      - name: Check against your reviews
+        run: |
+          python scripts/evaluate_auto_sort.py --auto-sort out/auto-sort.jsonl \
+            --decisions work/decisions.json --output-dir out
+          cat out/accuracy.md >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo; echo '## Auto-sort totals'; echo '```'; cat out/auto-sort.summary.json; echo '```'
+            if [ -f out/new-items.summary.json ]; then
+              echo '## New Archive uploads'; echo '```'; cat out/new-items.summary.json; echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          touch out/.nojekyll
+
+      - name: Publish to auto-sort-data
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: auto-sort-data
+          publish_dir: ./out
+          force_orphan: true
+          enable_jekyll: false
+          commit_message: "Auto-sort from ${{ github.sha }}"

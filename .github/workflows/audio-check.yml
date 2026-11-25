@@ -1,0 +1,99 @@
+# This copy lives on main only so GitHub runs it on a schedule (GitHub only
+# runs scheduled jobs from main). It always works on the rebuild/data-model
+# branch's scripts and data.
+name: Check files for sound and picture
+
+# Probes every video file (small reads only) for a sound track, silent sound,
+# and a picture. Earlier results are reused, so later runs only check new
+# files. Results are published to the audio-data branch for the review app.
+
+on:
+  workflow_run:
+    workflows: ["Build catalog model and review page"]
+    types: [completed]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 7 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vhs-fever-audio-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rebuild/data-model
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Get file list and earlier results
+        run: |
+          mkdir -p work
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/catalog-model-data/recordings.jsonl" -o work/recordings.jsonl
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/audio-data/audio-checks.jsonl" -o work/previous.jsonl || touch work/previous.jsonl
+      - name: Check this shard
+        run: |
+          python scripts/check_audio.py --recordings work/recordings.jsonl \
+            --previous work/previous.jsonl --output work/audio-${{ matrix.shard }}.jsonl \
+            --shard ${{ matrix.shard }} --shards 10 --workers 8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-${{ matrix.shard }}
+          path: work/audio-${{ matrix.shard }}.jsonl
+          retention-days: 3
+
+  publish:
+    needs: check
+    if: ${{ always() && needs.check.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+          pattern: audio-*
+          merge-multiple: true
+      - name: Merge results (keep earlier results for any shard that failed)
+        run: |
+          mkdir -p out
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/audio-data/audio-checks.jsonl" -o previous.jsonl || touch previous.jsonl
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json, collections, glob
+          merged = {}
+          for path in ["previous.jsonl", *sorted(glob.glob("parts/*.jsonl"))]:
+              for line in open(path, encoding="utf-8"):
+                  if line.strip():
+                      r = json.loads(line)
+                      merged[r["file_id"]] = r
+          rows = sorted(merged.values(), key=lambda r: r["file_id"])
+          with open("out/audio-checks.jsonl", "w", encoding="utf-8") as fh:
+              for r in rows:
+                  fh.write(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n")
+          c = collections.Counter(r["verdict"] for r in rows)
+          print("## Sound & picture check")
+          print(f"{len(rows)} files checked")
+          for k, v in c.most_common():
+              print(f"- {k}: {v}")
+          EOF
+          touch out/.nojekyll
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: audio-data
+          publish_dir: ./out
+          force_orphan: true
+          enable_jekyll: false
+          commit_message: "Sound & picture check results"
