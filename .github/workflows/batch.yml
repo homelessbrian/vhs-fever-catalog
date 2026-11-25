@@ -47,6 +47,13 @@ jobs:
           test -n "$b" && test -f "data/batches/$b.txt"
           echo "batch=$b" >> "$GITHUB_OUTPUT"
           echo "Batch $b: $(grep -cv '^#' "data/batches/$b.txt") Archive pages"
+      - name: Restore saved Archive page details
+        uses: actions/cache@v4
+        with:
+          path: work/archive-cache
+          key: archive-pages-${{ github.run_id }}
+          restore-keys: archive-pages-
+
       - name: Read the Archive pages
         run: |
           python scripts/catalog_model.py --identifiers "data/batches/${{ steps.pick.outputs.batch }}.txt" \

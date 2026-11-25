@@ -1049,20 +1049,28 @@ def summarize(model: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
 
 
 def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
-                delay: float = 0.5) -> list[dict[str, Any]]:
-    """Read-only Archive /metadata fetch (keeps md5 checksums). Cached on disk."""
+                delay: float = 0.5, max_age_days: float = 14) -> list[dict[str, Any]]:
+    """Read-only Archive /metadata fetch (keeps md5 checksums). Cached on disk.
+
+    A saved copy is reused until it is ``max_age_days`` old, so a nightly
+    rebuild doesn't download every page again; pages rarely change."""
     import time
     import urllib.request
     from pathlib import Path
     items = []
+    fetched_now: list[str] = []
     cache = Path(cache_dir) if cache_dir else None
     if cache:
         cache.mkdir(parents=True, exist_ok=True)
     for ident in identifiers:
         path = cache / (ident.replace("/", "_") + ".json") if cache else None
+        data = None
         if path and path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
-        else:
+            fetched = data.get("_vhsfever_fetched_at") or path.stat().st_mtime
+            if time.time() - float(fetched) > max_age_days * 86400:
+                data = None
+        if data is None:
             url = "https://archive.org/metadata/" + urllib.parse.quote(ident, safe="")
             req = urllib.request.Request(url, headers={"User-Agent": "VHS-FEVER-Catalog/0.3 (metadata only)"})
             for attempt in range(3):
@@ -1074,8 +1082,10 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
                     if attempt == 2:
                         raise
                     time.sleep(2 * (attempt + 1))
+            data["_vhsfever_fetched_at"] = time.time()
             if path:
                 path.write_text(json.dumps(data), encoding="utf-8")
+            fetched_now.append(ident)
             time.sleep(delay)
         md = data.get("metadata") or {}
         items.append({
@@ -1085,6 +1095,9 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
             "access_restricted": bool(data.get("is_dark")) or str(md.get("access-restricted-item", "")).lower() == "true",
             "files": data.get("files") or [],
         })
+    import sys
+    print(f"Archive pages: {len(fetched_now)} downloaded, {len(items) - len(fetched_now)} reused from the saved copy",
+          file=sys.stderr)
     return items
 
 

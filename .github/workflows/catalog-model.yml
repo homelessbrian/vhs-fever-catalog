@@ -47,6 +47,13 @@ jobs:
           mkdir -p work
           curl -fsSL "https://raw.githubusercontent.com/homelessbrian/vhs-fever-catalog/catalog-data/latest.jsonl" -o work/latest.jsonl
 
+      - name: Restore saved Archive page details
+        uses: actions/cache@v4
+        with:
+          path: work/archive-cache
+          key: archive-pages-${{ github.run_id }}
+          restore-keys: archive-pages-
+
       - name: Build catalog model (reads Archive metadata, keeps checksums)
         run: |
           python scripts/catalog_model.py \
