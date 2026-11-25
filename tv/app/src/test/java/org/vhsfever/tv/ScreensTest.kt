@@ -7,7 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
@@ -77,6 +80,13 @@ abstract class ScreensBase(private val tag: String) {
     @OptIn(ExperimentalTestApi::class)
     @Test fun downGoesToNextRow() {
         show { StoreScreen(catalog, Section.Home, "", emptySet(), null, {}, {}, {}) }
+        rule.mainClock.advanceTimeBy(1000)
+        // put the highlight on the first box of the first shelf (the top-left box-shaped button)
+        val clickable = rule.onAllNodes(hasClickAction())
+        val nodes = clickable.fetchSemanticsNodes()
+        val box = nodes.withIndex().filter { (_, n) -> n.boundsInRoot.height > n.boundsInRoot.width * 1.3f }
+            .minWith(compareBy({ it.value.boundsInRoot.top }, { it.value.boundsInRoot.left })).index
+        clickable[box].performSemanticsAction(SemanticsActions.RequestFocus)
         rule.mainClock.advanceTimeBy(1000)
         shot("1-home-start")
         val before = focusedBounds()

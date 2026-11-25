@@ -187,7 +187,7 @@ fun Box3D(t: Title, angle: Float, tapeText: String, dvd: Boolean, modifier: Modi
     val w = if (dvd) 238f else 190f; val d = if (dvd) 26f else 46f; val h = 336f
     val density = LocalDensity.current.density
     val rad = Math.toRadians(a.toDouble())
-    val toPx = 0.75f * density
+    val toPx = Ui.unit * density
     // where each face's middle ends up (mockup pixels), and which way it faces
     val faces = listOf(
         Triple("front", (d / 2) * sin(rad).toFloat(), a),

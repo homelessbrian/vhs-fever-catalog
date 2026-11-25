@@ -151,7 +151,7 @@ fun DetailScreen(
             FitText(t.name.uppercase(), modifier = Modifier.padding(top = 10.px).fillMaxWidth(), maxLines = 3, minScale = 0.5f,
                 style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 44.fs, lineHeight = 46.fs,
                     letterSpacing = 0.9f.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(0f, 3f), 8f)))
-            val meta = listOfNotNull(t.year?.let { "$it film" }, tapeRelease(tape)?.let { "$it tape" } ?: "tape edition unresolved",
+            val meta = listOfNotNull(t.year?.let { "$it film" }, tapeRelease(tape)?.let { "$it " + if (dvd) "disc" else "tape" } ?: "edition unresolved",
                 "${t.tapes.size} ${if (t.tapes.size == 1) "tape" else "tapes"} on file").joinToString(" · ")
             Text(meta, modifier = Modifier.padding(top = 8.px),
                 style = TextStyle(fontFamily = Type.Mono, fontSize = 14.fs, lineHeight = 20.fs, color = Ink.Lavender))
