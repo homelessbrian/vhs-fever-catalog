@@ -133,8 +133,11 @@ class AppModel(private val ctx: Context) {
                 withContext(Dispatchers.Main) { robot = r }
             } catch (_: Exception) { /* auto-sort may not have run yet */ }
             if (source != "main") runCatching {
-                val name = JSONObject(Http.request(batchInfoRaw, timeoutMs = 20000)).optString("batch")
-                withContext(Dispatchers.Main) { batchName = name.ifEmpty { null } }
+                val info = JSONObject(Http.request(batchInfoRaw, timeoutMs = 20000))
+                val n = info.optJSONArray("batches")?.length() ?: 0
+                val label = if (n > 0) "$n batch${if (n == 1) "" else "es"} · ${info.optInt("pages")} pages"
+                    else info.optString("batch")
+                withContext(Dispatchers.Main) { batchName = label.ifEmpty { null } }
             }
         }
         if (files.isNotEmpty()) loadItemLanguages()

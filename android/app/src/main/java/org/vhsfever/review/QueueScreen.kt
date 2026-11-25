@@ -90,7 +90,7 @@ fun QueueScreen(m: AppModel) {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Review", color = C.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(if (m.source == "main") "Main catalog" else "Latest batch" + (m.batchName?.let { " · $it" } ?: ""),
+                    Text(if (m.source == "main") "Main catalog" else "New pages" + (m.batchName?.let { " · $it" } ?: ""),
                         color = C.muted, fontSize = 12.sp)
                 }
                 IconButton(onClick = { m.open(Screen.Settings) }) { Icon(Icons.Filled.Settings, "Settings", tint = C.text) }

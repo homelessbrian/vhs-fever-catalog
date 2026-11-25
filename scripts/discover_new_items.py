@@ -42,6 +42,36 @@ def fetch_page(query: str, page: int, rows: int) -> list[dict[str, Any]]:
     raise RuntimeError(f"Archive search failed on page {page}")
 
 
+SCRAPE = "https://archive.org/services/search/v1/scrape"
+
+
+def scrape_all(query: str, fields: list[str]) -> list[dict[str, Any]]:
+    """Every matching page via the Archive's bulk listing (cursor-based, up to
+    10,000 per call). Used once to list the whole collection quickly."""
+    out: list[dict[str, Any]] = []
+    cursor = None
+    while True:
+        params = [("q", query), ("fields", ",".join(fields)), ("count", "10000")]
+        if cursor:
+            params.append(("cursor", cursor))
+        req = urllib.request.Request(SCRAPE + "?" + urllib.parse.urlencode(params), headers={"User-Agent": UA})
+        for attempt in range(5):
+            try:
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    data = json.load(r)
+                break
+            except Exception:  # noqa: BLE001
+                if attempt == 4:
+                    raise
+                time.sleep(5 * (attempt + 1))
+        out += data.get("items") or []
+        print(f"  listed {len(out)} of {data.get('total')}", file=sys.stderr)
+        cursor = data.get("cursor")
+        if not cursor:
+            return out
+        time.sleep(1)
+
+
 def as_list(v: Any) -> list[str]:
     if v is None:
         return []
@@ -90,6 +120,7 @@ def main() -> None:
     ap.add_argument("--backfill-pages", type=int, default=10,
                     help="also read this many pages of older uploads not seen yet, to work through the backlog")
     ap.add_argument("--delay", type=float, default=1.0)
+    ap.add_argument("--full", action="store_true", help="list the whole collection now with the bulk listing")
     a = ap.parse_args()
 
     known: dict[str, dict[str, Any]] = {}
@@ -122,6 +153,14 @@ def main() -> None:
                 "url": f"https://archive.org/details/{ident}", **first_guess(d),
             }
         return fresh
+
+    if a.full:
+        docs = scrape_all(a.query, [f for f in FIELDS if f != "num_files"])
+        added += take(docs)
+        pages += 1
+        stopped = "listed the whole collection"
+        a.max_pages = 0
+        a.backfill_pages = 0
 
     # 1) Newest uploads, until a page holds nothing new.
     for page in range(1, a.max_pages + 1):

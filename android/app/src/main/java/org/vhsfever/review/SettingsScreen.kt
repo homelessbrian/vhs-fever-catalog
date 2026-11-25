@@ -134,7 +134,7 @@ fun SettingsScreen(m: AppModel, installApk: (File) -> Unit) {
                 SectionLabel("Catalog")
                 Text("What to review", color = C.text, fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("Latest batch", m.source == "latest", { m.changeSource("latest") })
+                    Chip("New pages (all batches)", m.source == "latest", { m.changeSource("latest") })
                     Chip("Main catalog", m.source == "main", { m.changeSource("main") })
                 }
                 Text("Your reviews are kept for both; switching only changes which files are listed.", color = C.muted, fontSize = 12.sp)

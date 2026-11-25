@@ -103,6 +103,8 @@ def main() -> None:
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--max-lookups", type=int, default=15000)
     ap.add_argument("--delay", type=float, default=0.05)
+    ap.add_argument("--reuse", nargs="*", default=[],
+                    help="earlier titles.jsonl files: titles already looked up there are copied, not searched again")
     args = ap.parse_args()
     token = os.environ.get("TMDB_API_READ_ACCESS_TOKEN")
     d = Path(args.model_dir)
@@ -150,6 +152,18 @@ def main() -> None:
             return "skipped_not_english"
         return None
 
+    reused: dict[str, dict[str, Any]] = {}
+    for path in args.reuse:
+        p_ = Path(path)
+        if not p_.is_file():
+            continue
+        for line in p_.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                old = json.loads(line)
+                tm = old.get("tmdb") or {}
+                if tm.get("status") and tm["status"] not in {"lookup_error", "deferred_lookup_limit",
+                                                             "skipped_no_api_token", "not_searched"}:
+                    reused[old["title_suggestion_id"]] = tm
     tmdb_tv = tv_episodes.Tmdb(token, delay=args.delay) if token else None
     tvdb_key = os.environ.get("TVDB_API_KEY")
     tvdb_state: dict[str, Any] = {}
@@ -271,7 +285,10 @@ def main() -> None:
         series = t.get("series")
         dash = t.get("show_dash_hint")
         skip = None if series else not_a_movie(tid, t["display_title"])
-        if c == {"vhs_opening_or_previews"}:
+        if tid in reused:
+            t["tmdb"] = reused[tid]
+            counts["reused_from_earlier_run"] = counts.get("reused_from_earlier_run", 0) + 1
+        elif c == {"vhs_opening_or_previews"}:
             t["tmdb"] = {"status": "skipped_tape_opening"}
         elif skip:
             t["tmdb"] = {"status": skip, "search_title": t["tmdb"].get("search_title"),
