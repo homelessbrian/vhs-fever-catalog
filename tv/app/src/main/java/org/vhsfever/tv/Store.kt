@@ -238,19 +238,19 @@ private fun RowHeader(text: String) {
 }
 
 /*
- * Where the store photo sits and where the TV screen in it is, in mockup pixels.
- * The photo (803×425) is scaled ×1.1831 and slid right so the TV's right edge meets the screen edge.
+ * Where the store banner sits and where the TV screen in it is, in mockup pixels.
+ * The banner (2172×724) is scaled to 352 tall and runs to the right edge, so its TV sits at the right.
  */
-private const val HERO_X = 330f
-private const val HERO_W = 950f
-private const val HERO_H = 346f
-private const val PHOTO_SCALE = 1.1831f
-private const val PHOTO_X = 30.8f           // inside the hero area
-private const val PHOTO_Y = -70.6f
-private const val TV_X = PHOTO_X + 557 * PHOTO_SCALE
-private const val TV_Y = PHOTO_Y + 110 * PHOTO_SCALE
-private const val TV_W = 165 * PHOTO_SCALE
-private const val TV_H = 148 * PHOTO_SCALE
+private const val HERO_H = 352f
+private const val PHOTO_SCALE = HERO_H / 724f
+private const val HERO_W = 2172 * PHOTO_SCALE
+private const val HERO_X = 1280 - HERO_W
+private const val PHOTO_X = 0f
+private const val PHOTO_Y = 0f
+private const val TV_X = PHOTO_X + 1606 * PHOTO_SCALE
+private const val TV_Y = PHOTO_Y + 200 * PHOTO_SCALE
+private const val TV_W = 387 * PHOTO_SCALE
+private const val TV_H = 272 * PHOTO_SCALE
 
 /** The store photo at the top of Home. The highlighted movie plays (muted) on the TV in the photo. */
 @Composable
@@ -258,11 +258,11 @@ private fun HeroPhoto(playing: Title?) {
     Box(Modifier.offset(HERO_X.px, 0.px).size(HERO_W.px, HERO_H.px).clipToBounds()) {
         Image(painterResource(R.drawable.store_hero), null, contentScale = ContentScale.FillBounds,
             modifier = Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).offset(PHOTO_X.px, PHOTO_Y.px)
-                .size((803 * PHOTO_SCALE).px, (425 * PHOTO_SCALE).px))
+                .size((2172 * PHOTO_SCALE).px, (724 * PHOTO_SCALE).px))
         val tape = playing?.tapes?.firstOrNull()
         if (tape != null) {
             var showing by remember(tape.fileId) { mutableStateOf(false) }
-            Box(Modifier.offset(TV_X.px, TV_Y.px).size(TV_W.px, TV_H.px).clip(RoundedCornerShape(18.px))
+            Box(Modifier.offset(TV_X.px, TV_Y.px).size(TV_W.px, TV_H.px).clip(RoundedCornerShape(12.px))
                 .graphicsLayer { alpha = if (showing) 1f else 0f }.background(Color.Black)) {
                 TapeVideo(tape, onShowing = { showing = it }, onPosition = {})
                 CrtGlass(k = 0.8f)
@@ -270,9 +270,10 @@ private fun HeroPhoto(playing: Title?) {
                     style = TextStyle(fontFamily = Type.Vt, fontSize = 18.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f)))
             }
         }
+        // fade the left under the menu and welcome text, and the bottom into the shelves
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
-            0f to Ink.NavyTop, 0.12f to Color(0xD90C1340), 0.5f to Color(0x000C1340))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.7f to Color(0x00080B22), 1f to Ink.Navy)))
+            0f to Ink.NavyTop, 0.08f to Color(0xE60C1340), 0.45f to Color(0x660C1340), 0.6f to Color(0x000C1340))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.72f to Color(0x00080B22), 1f to Ink.Navy)))
     }
 }
 
