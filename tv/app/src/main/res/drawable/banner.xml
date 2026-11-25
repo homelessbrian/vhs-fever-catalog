@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 launcher banner: black tape label with neon stripes. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#0B0A12" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#FF2E88" android:pathData="M0,118h320v10h-320z" />
+    <path android:fillColor="#FFB000" android:pathData="M0,132h320v10h-320z" />
+    <path android:fillColor="#00D1FF" android:pathData="M0,146h320v10h-320z" />
+    <!-- simple block letters "VHS" -->
+    <path android:fillColor="#F4F1E8" android:pathData="M60,30h16l14,50l14,-50h16l-22,70h-16z" />
+    <path android:fillColor="#F4F1E8" android:pathData="M130,30h14v28h24v-28h14v70h-14v-30h-24v30h-14z" />
+    <path android:fillColor="#F4F1E8" android:pathData="M196,30h56v12h-42v17h42v41h-56v-12h42v-17h-42z" />
+</vector>
