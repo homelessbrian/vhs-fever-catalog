@@ -73,7 +73,24 @@ object Tmdb {
             val o = JSONObject(Http.request("$API/find/$imdb?external_source=imdb_id", headers = auth))
             val rows = o.optJSONArray("movie_results").objects().map { it to "movie" } +
                 o.optJSONArray("tv_results").objects().map { it to "tv" }
-            return rows.map { (r, t) -> toMovie(r, t, ceiling).copy(imdbId = imdb) }
+            val found = rows.map { (r, t) -> toMovie(r, t, ceiling).copy(imdbId = imdb) }
+            // An IMDb link to a single TV episode: show the episode under its show.
+            val eps = o.optJSONArray("tv_episode_results").objects().mapNotNull { e ->
+                val showId = e.optInt("show_id")
+                if (showId == 0) return@mapNotNull null
+                val show = runCatching { JSONObject(Http.request("$API/tv/$showId", headers = auth)) }.getOrNull()
+                val season = e.optIntOrNull("season_number")
+                val number = e.optIntOrNull("episode_number")
+                val ep = Episode(season, number, e.optString("name"), e.optStringOrNull("air_date"),
+                    e.optStringOrNull("still_path")?.let { "https://image.tmdb.org/t/p/w300$it" }, e.optStringOrNull("overview"),
+                    "https://www.themoviedb.org/tv/$showId/season/$season/episode/$number")
+                val y = show?.optStringOrNull("first_air_date")?.take(4)
+                Movie(showId, "tv", show?.optStringOrNull("name") ?: "Show #$showId", y,
+                    show?.optStringOrNull("poster_path")?.let { IMG + it }, e.optStringOrNull("overview"), imdb,
+                    tooNew = ceiling != null && e.optStringOrNull("air_date")?.take(4)?.toIntOrNull()?.let { it > ceiling } == true,
+                    episode = ep)
+            }
+            return eps + found
         }
         var q = query.trim()
         var year: String? = null
