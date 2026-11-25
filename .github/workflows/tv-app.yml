@@ -36,10 +36,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls tv/app/build/screens/*.png >/dev/null 2>&1 || exit 0
-          gh release view tv-screens >/dev/null 2>&1 || \
-            gh release create tv-screens --prerelease --target "${{ github.sha }}" \
-              --title "VHS FEVER TV screen pictures" --notes "Screens rendered by the TV app build."
-          gh release upload tv-screens tv/app/build/screens/*.png --clobber
+          for i in 1 2 3; do
+            gh release view tv-screens >/dev/null 2>&1 || \
+              gh release create tv-screens --prerelease \
+                --title "VHS FEVER TV screen pictures" --notes "Screens rendered by the TV app build." || true
+            gh release upload tv-screens tv/app/build/screens/*.png --clobber && exit 0
+            sleep 15
+          done
+          exit 1
       - name: Name the app file
         run: cp tv/app/build/outputs/apk/release/app-release.apk vhs-fever-tv.apk
       - uses: actions/upload-artifact@v4
