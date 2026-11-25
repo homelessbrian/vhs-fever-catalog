@@ -1,5 +1,6 @@
 # Batch 1: 500 VHS Vault pages that look like full movies or kids' tapes,
 # English names, VHS/DVD in the name, 0.25-15 GB. One Archive identifier per line.
+# Re-run with page clues (show short forms, page format, other files on the page).
 thomas-comes-to-breakfast_202611
 once-upon-a-time-1999-vhs-0002
 blinky-bill-and-the-winters-tale-2002-australian-vhs

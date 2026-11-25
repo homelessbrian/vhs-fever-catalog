@@ -139,8 +139,16 @@ def detect_format(rec: dict[str, Any], src: dict[str, Any], probe: dict[str, Any
     upscaled = False
     model_media = MEDIA_FROM_MODEL.get(rec["interpretation"].get("media_format") or "")
     if model_media:
-        score[model_media] += 4
-        clues.append(f"file name says {model_media}")
+        raw = str(rec["interpretation"].get("media_label_raw") or "")
+        if raw.startswith("page:"):
+            score[model_media] += 3
+            clues.append(f"Archive page title says {model_media}")
+        elif raw.startswith("other files on page"):
+            score[model_media] += 2.5
+            clues.append(f"the other files on its page are {model_media}")
+        else:
+            score[model_media] += 4
+            clues.append(f"file name says {model_media}")
     name = norm_words(src.get("original_name") or "")
     for rx, fmt, strength in RIP_TAGS:
         if rx.search(name):

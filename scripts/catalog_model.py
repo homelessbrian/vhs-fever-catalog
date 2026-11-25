@@ -511,6 +511,119 @@ def _artwork_role(name: str) -> str | None:
 # Model build
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Context from the Archive page a file sits on
+# ---------------------------------------------------------------------------
+PAGE_FORMAT = [
+    (re.compile(r"\bvhs\b|\bvideo ?cassettes?\b|\bvideotapes?\b", re.I), "VHS"),
+    (re.compile(r"\btv\s*(?:\+|and|&|/)|\btv (?:rips?|recordings?|captures?)\b|\boff[- ]air\b|\bbroadcasts?\b|\bweb[- ]?(?:dl|rips?)\b", re.I),
+     "BROADCAST"),
+    (re.compile(r"\bbeta(?:max)?\b", re.I), "BETAMAX"),
+    (re.compile(r"\blaser ?discs?\b", re.I), "LASERDISC"),
+    (re.compile(r"\bdvds?\b", re.I), "DVD"),
+    (re.compile(r"\bblu[- ]?rays?\b", re.I), "BLU-RAY"),
+]
+# Page titles that say nothing about which show is inside.
+GENERIC_PAGE = re.compile(r"\b(?:capture|captures|rips?|misc|miscellaneous|various|random|assorted|mixed|"
+                          r"all animated|my|old|home videos?|tapes? \d+|lot|archive|uploads?)\b", re.I)
+PAGE_NOISE = re.compile(r"\b(?:vhs|dvd|blu[- ]?ray|laser ?disc|betamax|tapes?|video ?cassettes?|videos?|"
+                        r"collection|complete|full|set|series|compilation|releases?|rips?|captures?|"
+                        r"(?:19|20)\d\d|uk|us|usa|canadian|australian)\b", re.I)
+REGION_TAIL = re.compile(r"(?:\s|^)(CANADA|CANADIAN|UK|USA|US|AUS|AUSTRALIA|AUSTRALIAN|NZ|IRELAND|IRISH|"
+                         r"FRENCH|SPANISH|PAL|NTSC)\s*$")
+
+
+def _as_list(v: Any) -> list[str]:
+    if v is None:
+        return []
+    if isinstance(v, list):
+        out = []
+        for x in v:
+            out += [p.strip() for p in str(x).split(";") if p.strip()]
+        return out
+    return [p.strip() for p in str(v).split(";") if p.strip()]
+
+
+def page_context(item: dict[str, Any]) -> dict[str, Any] | None:
+    """What the page itself says: the format of everything on it, and which
+    show it is about (from its title and tags). "Blue's Clues VHS Collection"
+    tagged "blue's clues" -> format VHS, show "Blue's Clues"."""
+    title = str(item.get("title") or "")
+    if not title:
+        return None
+    ctx: dict[str, Any] = {}
+    found = [fmt for rx, fmt in PAGE_FORMAT if rx.search(title)]
+    if len(found) == 1 and found[0] != "BROADCAST":   # "VHS and DVD Capture" names two formats, so it settles nothing
+        ctx["format"] = found[0]
+        ctx["format_from"] = "page title"
+    show = None
+    if not GENERIC_PAGE.search(title):
+        tkey = title_key(title)
+        # A tag that is also in the page title names the show ("blue's clues").
+        tags = sorted((t for t in _as_list(item.get("subject")) if len(title_key(t)) >= 3 and "/" not in t
+                       and title_key(t) in tkey and title_key(t) not in {"vhs", "dvd", "nick jr", "nickelodeon"}),
+                      key=lambda t: -len(t))
+        if tags:
+            # Use the page title's own spelling of the tag.
+            m = re.search(re.escape(tags[0]).replace("\\ ", r"[\s_]+"), title, re.I)
+            show = m.group(0) if m else tags[0]
+        elif sum(1 for f in item.get("files") or [] if _is_video(f)
+                 and str(f.get("source") or "").lower() != "derivative") >= 3:
+            # Only a page holding several videos is a show collection; a
+            # single-video page's title is the video's own title.
+            rest = PAGE_NOISE.sub(" ", re.sub(r"[(\[].*?[)\]]", " ", title))
+            rest = re.sub(r"\s+", " ", rest).strip(" -:,&")
+            if rest and len(rest.split()) <= 5 and len(rest) >= 4:
+                show = rest
+    if show:
+        show = re.sub(r"\s+", " ", show).strip(" -:")
+        words = [w for w in re.findall(r"[A-Za-z0-9']+", show) if w.lower() not in {"the", "of", "and", "a"}]
+        ctx["show"] = show
+        ctx["show_initials"] = "".join(w[0] for w in words).upper() if len(words) >= 2 else None
+    return ctx or None
+
+
+def _split_glued(text: str) -> str:
+    """'StoryTime' -> 'Story Time', 'Arts&Crafts' -> 'Arts & Crafts', 'Abc&123' -> 'Abc & 123'."""
+    t = re.sub(r"\s*&\s*", " & ", text)
+    t = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", t)
+    t = re.sub(r"(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _apply_page_context(it: dict[str, Any], ctx: dict[str, Any]) -> None:
+    """Fill in what the file name leaves out, from the page. Never overwrites."""
+    flags = list(it.get("flags") or [])
+    title = it.get("title") or ""
+    show = ctx.get("show")
+    initials = ctx.get("show_initials")
+    # "BCStoryTimeCANADA" -> "Blue's Clues Story Time", note "Canada"
+    if initials and title:
+        m = re.match(rf"^(?:\d+\s+)?{re.escape(initials)}(?=[A-Z][a-z]|[\s_-])", title)
+        if m:
+            rest = _split_glued(title[m.end():])
+            region = REGION_TAIL.search(rest)
+            if region:
+                rest = rest[: region.start()]
+                it["edition_notes"] = list(dict.fromkeys((it.get("edition_notes") or []) + [region.group(1).title()]))
+            rest = rest.strip(" -_")
+            if rest:
+                it["title"] = f"{show} {rest}"
+                flags.append("show_short_form_expanded_from_page")
+                title = it["title"]
+    elif title and " " not in title.strip() and re.search(r"[a-z][A-Z]", title):
+        it["title"] = _split_glued(title)
+        title = it["title"]
+        flags.append("glued_words_split")
+    digital = {"web_download_not_tape", "dvd_video_ts_file", "scene_style_encoding_tags_removed"} & set(flags)
+    if not it.get("media_format") and ctx.get("format") and not digital:
+        it["media_format"] = ctx["format"]
+        it["media_label_raw"] = it.get("media_label_raw") or f"page: {ctx['format']}"
+        flags = [f for f in flags if f != "no_media_format_in_filename"]
+        flags.append("format_from_page_title")
+    it["flags"] = flags
+
+
 def _fill_from_page_title(it: dict[str, Any], page: dict[str, Any]) -> None:
     """A page holding a single video: its title often says what the file name
     doesn't ("Barney & Friends: Carnival of Numbers (1992 VHS)" for
@@ -544,14 +657,19 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     pieces: dict[str, dict[str, Any]] = {}
     page_by_item: dict[str, dict[str, Any]] = {}
 
+    ctx_by_item: dict[str, dict[str, Any]] = {}
     for item in items:
         ident = item["identifier"]
         files = [f for f in item.get("files") or [] if str(f.get("name") or "")]
+        ctx = page_context(item)
+        if ctx:
+            ctx_by_item[ident] = ctx
         by_name = {f["name"]: f for f in files}
         archive_items.append({
             "archive_identifier": ident,
             "archive_title": item.get("title"),
             "collection": item.get("collection"),
+            "page_context": ctx_by_item.get(ident),
             "access_restricted": bool(item.get("access_restricted")),
             "archive_url": f"https://archive.org/details/{ident}",
             "video_file_count": sum(_is_video(f) for f in files),
@@ -647,12 +765,41 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         page = page_by_item.get(first.get("archive_identifier"))
         if page:
             _fill_from_page_title(p["interpretation"], page)
+        ctx = ctx_by_item.get(first.get("archive_identifier"))
+        if ctx:
+            _apply_page_context(p["interpretation"], ctx)
         p["also_named"] = sorted({o["original_name"] for o in p["original_files"]})
         p["archive_identifiers"] = sorted({s["archive_identifier"] for s in p["sources"]})
         durs = [s["duration_seconds"] for s in p["sources"] if s["duration_seconds"]]
         p["duration_seconds"] = max(durs) if durs else None
         if len(p["also_named"]) > 1:
             p.setdefault("flags", []).append("identical_bytes_under_different_names")
+
+    # Other files on the same page: when nearly every named file on a page is
+    # the same format, the few unnamed ones almost certainly are too.
+    by_page: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for p in pieces.values():
+        first = p["original_files"][0] if p["original_files"] else p["sources"][0]
+        by_page[first.get("archive_identifier")].append(p)
+    for ident, group in by_page.items():
+        named = Counter(p["interpretation"]["media_format"] for p in group if p["interpretation"]["media_format"])
+        if len(group) < 5 or not named:
+            continue
+        fmt, n = named.most_common(1)[0]
+        page_fmt = (ctx_by_item.get(ident) or {}).get("format")
+        if n < 4 or n / sum(named.values()) < 0.9 or (page_fmt and page_fmt != fmt):
+            continue
+        if len(group) > 40 and page_fmt != fmt:
+            continue   # a big mixed page ("Nick Jr. Tapes/Nick Jr. Shows") proves little
+        for p in group:
+            it = p["interpretation"]
+            digital = {"web_download_not_tape", "dvd_video_ts_file", "scene_style_encoding_tags_removed"} & set(it["flags"])
+            late = fmt == "VHS" and any(int(y) >= 2007 for y in re.findall(r"(?<!\d)(20[0-2]\d)(?!\d)", it["original_name"]))
+            if not it["media_format"] and not digital and not late and it.get("content_hint") != "tv_episode":
+                it["media_format"] = fmt
+                it["media_label_raw"] = f"other files on page: {fmt}"
+                it["flags"] = [f for f in it["flags"] if f != "no_media_format_in_filename"] + [
+                    "format_from_other_files_on_page"]
 
     recordings: list[dict[str, Any]] = []
     multipart: dict[tuple, list[dict[str, Any]]] = defaultdict(list)
@@ -903,6 +1050,7 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
         items.append({
             "identifier": ident, "title": md.get("title"),
             "collection": md.get("collection"),
+            "subject": md.get("subject"), "description": md.get("description"),
             "access_restricted": bool(data.get("is_dark")) or str(md.get("access-restricted-item", "")).lower() == "true",
             "files": data.get("files") or [],
         })

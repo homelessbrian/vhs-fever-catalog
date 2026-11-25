@@ -275,3 +275,35 @@ class ReviewerFeed(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PageContextTests(unittest.TestCase):
+    """Clues from the Archive page a file sits on."""
+
+    def _item(self, title, names, subject=None):
+        from catalog_model import build
+        files = [{"name": n, "source": "original", "format": "MPEG4", "length": "3000", "md5": f"m{i}"}
+                 for i, n in enumerate(names)]
+        return build([{"identifier": "page1", "title": title, "subject": subject, "files": files}])
+
+    def test_show_short_form_and_page_format(self):
+        model = self._item("Blue's Clues VHS Collection",
+                           ["01 BCStoryTimeCANADA.mpg", "02 BCArts&Crafts.mpg", "03 BCBirthday.mpg"],
+                           ["blue's clues", "nick jr"])
+        recs = {r["display_name"]: r["interpretation"] for r in model["recordings"]}
+        story = recs["01 BCStoryTimeCANADA.mpg"]
+        self.assertEqual(story["title"], "Blue's Clues Story Time")
+        self.assertEqual(story["media_format"], "VHS")
+        self.assertIn("Canada", story["edition_notes"])
+        self.assertEqual(recs["02 BCArts&Crafts.mpg"]["title"], "Blue's Clues Arts & Crafts")
+
+    def test_page_naming_two_formats_settles_nothing(self):
+        model = self._item("All Animated VHS and DVD Capture", ["Some Movie.mp4", "Other Movie.mp4"])
+        self.assertTrue(all(r["interpretation"]["media_format"] is None for r in model["recordings"]))
+
+    def test_other_files_on_page_fill_the_gap(self):
+        names = [f"Show Tape {i} (199{i} VHS).mp4" for i in range(1, 6)] + ["Show Tape Extra.mp4"]
+        model = self._item("Some Uploads", names)
+        extra = next(r for r in model["recordings"] if r["display_name"] == "Show Tape Extra.mp4")
+        self.assertEqual(extra["interpretation"]["media_format"], "VHS")
+        self.assertIn("format_from_other_files_on_page", extra["interpretation"]["flags"])
