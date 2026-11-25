@@ -358,18 +358,29 @@ class AppModel(private val ctx: Context) {
     }
 
     private fun loadLocalDecisions() {
-        if (!localFile.exists()) return
+        val text = listOf(localFile, File(ctx.filesDir, "decisions.json.bak"))
+            .firstNotNullOfOrNull { f -> runCatching { f.readText().also { parse(it) } }.getOrNull() } ?: return
         runCatching {
-            val p = parse(localFile.readText())
+            val p = parse(text)
             decisions = p.files; releaseDecisions = p.releases; customShelves = p.shelves; tags = p.tags
             settingsUpdatedAt = p.settingsAt
             dirty = prefs.getBoolean("dirty", false)
         }
     }
 
+    private val saveLock = Any()
+
+    /** Writes one save at a time, through a temp file, so a save can never leave a half-written file behind. */
     private fun saveLocal() {
         val text = toJson().toString()
-        scope.launch(Dispatchers.IO) { localFile.writeText(text) }
+        scope.launch(Dispatchers.IO) {
+            synchronized(saveLock) {
+                val tmp = File(ctx.filesDir, "decisions.json.tmp")
+                tmp.writeText(text)
+                if (localFile.exists()) localFile.copyTo(File(ctx.filesDir, "decisions.json.bak"), overwrite = true)
+                if (!tmp.renameTo(localFile)) { localFile.writeText(text); tmp.delete() }
+            }
+        }
         prefs.edit().putBoolean("dirty", dirty).apply()
     }
 

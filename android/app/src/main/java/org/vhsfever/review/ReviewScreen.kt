@@ -97,6 +97,10 @@ fun ReviewScreen(m: AppModel, fileId: String) {
                 f.versionLabel?.let { Tag("“Version $it”") }
                 f.partLabel?.let { Tag(it) }
                 if (f.copyIds.isNotEmpty()) Tag("Decision also covers its Archive copy")
+                when (d?.status) {
+                    "good" -> Tag("Already marked good", Color(0xFF1F3D27), Color(0xFFA8E6B4))
+                    "bad" -> Tag("Already marked bad", C.warnBg, C.warn)
+                }
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(f.name, color = C.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
