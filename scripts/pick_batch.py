@@ -92,9 +92,16 @@ def main() -> None:
         rows += [r for r in load(a.more_items) if r["identifier"] not in vault_ids]
     pool = [r for r in rows if r["identifier"] not in seen and wanted(r, a.kind)]
     pool.sort(key=lambda r: r.get("added_to_archive") or "", reverse=True)
-    # Vault pages and outside finds from Vault uploaders are the cleanest, so
-    # they go first; keyword and collection finds after. Newest first within each.
-    pool.sort(key=lambda r: not ("found_by" not in r or r.get("found_by_uploader")))
+    # Outside finds from Vault uploaders are the cleanest, so they go before
+    # keyword and collection finds. Newest first within each.
+    pool.sort(key=lambda r: "found_by" in r and not r.get("found_by_uploader"))
+    if a.source == "both":
+        # Half Vault, half outside in every batch, so both keep coming in.
+        inside = [r for r in pool if "found_by" not in r]
+        outside = [r for r in pool if "found_by" in r]
+        pool = [r for pair in zip(inside, outside) for r in pair]
+        n = min(len(inside), len(outside))
+        pool += inside[n:] + outside[n:]
     pick = pool[: a.size]
     if not pick:
         print("Nothing left to pick.")
