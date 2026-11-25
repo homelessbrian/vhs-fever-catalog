@@ -105,3 +105,138 @@ class SearchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --------------------------------------------------------------------------
+# Real file names that found nothing before (batches 1-4), matched by hand.
+# --------------------------------------------------------------------------
+REAL_FILMS = [
+    {"tmdb_id": 1, "title": "Thomas' Sodor Celebration!", "release_date": "2004-01-01", "runtime": 60},
+    {"tmdb_id": 2, "title": "Boo to You Too! Winnie the Pooh", "release_date": "1996-10-25", "runtime": 25},
+    {"tmdb_id": 3, "title": "Star Wars", "release_date": "1977-05-25", "runtime": 121},
+    {"tmdb_id": 4, "title": "8 Mile", "release_date": "2002-11-08", "runtime": 110},
+    {"tmdb_id": 5, "title": "The Natural", "release_date": "1984-05-11", "runtime": 138},
+    {"tmdb_id": 6, "title": "The Big Country", "release_date": "1958-10-01", "runtime": 166},
+    {"tmdb_id": 7, "title": "Barney's Halloween Party", "release_date": "1998-08-11", "runtime": 50},
+    {"tmdb_id": 8, "title": "Barney Live! In New York City", "release_date": "1994-01-01", "runtime": 70},
+    {"tmdb_id": 9, "title": "Rock with Barney", "release_date": "1991-01-01", "runtime": 40},
+    {"tmdb_id": 10, "title": "The Adventures of Elmo in Grouchland", "release_date": "1999-10-01", "runtime": 73},
+    {"tmdb_id": 11, "title": "Luxo Jr.", "release_date": "1986-08-17", "runtime": 2},
+    {"tmdb_id": 12, "title": "Charlie St. Cloud", "release_date": "2010-07-30", "runtime": 99},
+    {"tmdb_id": 13, "title": "Elmo's World: Singing, Drawing & More!", "release_date": "2000-01-01", "runtime": 30},
+    {"tmdb_id": 14, "title": "Mickey Loves Minnie", "release_date": "1996-01-01", "runtime": 30},
+    {"tmdb_id": 15, "title": "Thomas and the Magic Railroad", "release_date": "2000-07-26", "runtime": 85},
+    {"tmdb_id": 16, "title": "The Wiggles: Wiggledance!", "release_date": "1997-01-01", "runtime": 40},
+    {"tmdb_id": 17, "title": "Shrek 2", "release_date": "2004-05-19", "runtime": 93},
+]
+
+
+class StrictTmdb:
+    """Like TMDB search: a film comes back only if every query word is in its title."""
+
+    def __init__(self):
+        self.queries = []
+
+    def find(self, query, year):
+        self.queries.append(query)
+        q = ts.plain(query).split()
+        out = []
+        for f in REAL_FILMS:
+            tw = set(ts.plain(f["title"]).split())
+            if q and all(w in tw for w in q) and (not year or f["release_date"].startswith(str(year))):
+                out.append({k: v for k, v in f.items() if k != "runtime"} | {"media_type": "movie", "popularity": 5})
+        return out
+
+    def details(self, c):
+        return {"runtime": next(f["runtime"] for f in REAL_FILMS if f["tmdb_id"] == c["tmdb_id"])}
+
+
+class RealNameTests(unittest.TestCase):
+    CASES = [
+        # (file name, Archive page title or None, film year hint, expected TMDB title)
+        ("02 Thomas' Sodor Celebration", None, None, "Thomas' Sodor Celebration!"),
+        ("02 Winnie the Pooh - Boo to You Too!", None, None, "Boo to You Too! Winnie the Pooh"),
+        ("Winnie the Pooh Boo to You Too", None, None, "Boo to You Too! Winnie the Pooh"),
+        ("Star Wars CBS FOX", None, 1984, "Star Wars"),
+        ("VH1 movie 8 mile February 2005 WOC", None, None, "8 Mile"),
+        ("NBC Network Movie Premiere The Natural 10-26-1986 WOC", None, None, "The Natural"),
+        ("ABC 13 Saturday Night Movie The Big Country 1988 WOC", None, None, "The Big Country"),
+        ("Barney's Halloween Party 2000 Screener VHS", None, None, "Barney's Halloween Party"),
+        ("Barney Live! In New York City Custom Lyrick Studios", None, None, "Barney Live! In New York City"),
+        ("Rock with Barney Custom Lyrick Studios", None, None, "Rock with Barney"),
+        ("The Adventures of Elmo in Grouchland 2005 Disney VHS (Fanmade)", None, None,
+         "The Adventures of Elmo in Grouchland"),
+        ("Pixar - Luxo Jr Short Film (1986-2000) (HQ VHS Capture)", None, None, "Luxo Jr."),
+        ("Full VHS tape Disney Presents Mickey Loves Minnie", None, None, "Mickey Loves Minnie"),
+        ("The Wiggles Wiggledance FULL 2001 US VHS (Fanmade)", None, None, "The Wiggles: Wiggledance!"),
+        ("Singing Drawimng and More", "Elmo's World: Singing Drawing And More (2000 VHS)", None,
+         "Elmo's World: Singing, Drawing & More!"),
+        ("Charlie St. Cloud (2010) WMax (September 2nd, 2011) Full Movie", None, None, "Charlie St. Cloud"),
+        ("1. Opening to Shrek 2", None, None, "Shrek 2"),
+    ]
+
+    def test_hand_matched_names_now_match(self):
+        for name, page, year, want in self.CASES:
+            with self.subTest(name=name):
+                fake = StrictTmdb()
+                extra = [(page, "Archive page title")] if page else None
+                res = ts.search(name, find=fake.find, details=fake.details, hint_year=year, extra=extra)
+                self.assertTrue(res["candidates"], f"nothing found; searched {fake.queries}")
+                self.assertEqual(res["candidates"][0]["title"], want)
+                self.assertNotIn(res["confidence"], {"none", "weak"})
+
+    def test_track_numbers_removed_but_real_numbers_kept(self):
+        self.assertEqual(ts.clean_name("02 Thomas' Sodor Celebration"), "Thomas' Sodor Celebration")
+        self.assertEqual(ts.clean_name("8e. Thomas, Percy and the Dragon (US VHS) (Anchor Bay) ([2003])"),
+                         "Thomas, Percy and the Dragon")
+        self.assertEqual(ts.clean_name("#205. Little Ones [2000]"), "Little Ones")
+        self.assertEqual(ts.clean_name("003 Pingu Helps To Deliver Mail"), "Pingu Helps To Deliver Mail")
+        self.assertEqual(ts.clean_name("24. 10 Years of Thomas the Tank Engine and Friends (US VHS) ([1999])"),
+                         "10 Years of Thomas the Tank Engine and Friends")
+        for keep in ("2 Girls in Love", "60 Minutes", "101 Dalmatians", "8 Mile"):
+            self.assertEqual(ts.clean_name(keep), keep)
+
+    def test_clutter_removed(self):
+        cases = {
+            "y2mate.is - The Circus Musical Landscape-1zIwJNKveKM-360p-1692124082 2": "The Circus Musical Landscape",
+            "022 Pingu's Dream.avi-i0Uq5oQ613k-nomusic": "Pingu's Dream",
+            "1996 VHS • Over Canada, An Aerial Adventure 60 FPS": "Over Canada, An Aerial Adventure",
+            "Fireman Sam Deep Trouble 1995 Australian VHS 1996 Extermley Rare Reprint": "Fireman Sam Deep Trouble",
+            "Trust Thomas Other Stories Australian VHS Roadshow Re Release": "Trust Thomas",
+            "Our House QTQ-9, 30-07-97": "Our House",
+            "60 Minutes partial NWS-9, 01-11-92": "60 Minutes",
+            "Opening-to-The-Mexican": "Opening to The Mexican",
+            "OpeningClosing to The Matrix US VHS": "The Matrix",
+            "The Sick Engine Custom VHSDVD": "The Sick Engine",
+        }
+        for raw, want in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(ts.clean_name(raw), want)
+
+    def test_camera_names_have_nothing_to_search(self):
+        for n in ("20240102 222243", "VHS1984 VID 20261016 200948", "videoplayback (3)", "CaptureA 11173",
+                  "clideo editor 87a1232950044eef9eb4f131dfb550cc", "bandicam 2026-05-22 20-06-19-856",
+                  "vhs sp 20261107 151756", "VTS 01 1", "Untitled 471", "pastedownload cnuxE9z"):
+            self.assertTrue(ts.looks_like_no_name(n), n)
+        for n in ("Video Aquarium", "Tape 4 Jake 1", "2 Girls in Love", "Dumbo", "Capture the Flag"):
+            self.assertFalse(ts.looks_like_no_name(n), n)
+
+    def test_show_name_taken_off(self):
+        self.assertEqual(ts.without_show("Barney Our Earth, Our Home", "Barney"), "Our Earth, Our Home")
+        self.assertEqual(ts.without_show("Barneys Home Sweet Homes", "Barney"), "Home Sweet Homes")
+        self.assertIsNone(ts.without_show("Dumbo", "Barney"))
+
+    def test_tape_year_after_the_film_is_not_held_against_it(self):
+        ranked = ts.rank("Star Wars", [{"title": "Star Wars", "release_date": "1977-05-25", "popularity": 5}],
+                         ceiling=None, hint_year=1984, minutes=None)
+        self.assertIsNot(ranked[0]["year_consistent"], False)
+        # A film made after the year in the name still counts against it.
+        ranked = ts.rank("Aladdin", [{"title": "Aladdin", "release_date": "2019-05-22", "popularity": 5}],
+                         ceiling=None, hint_year=1992, minutes=None)
+        self.assertIs(ranked[0]["year_consistent"], False)
+
+    def test_shortened_search_is_not_overconfident(self):
+        films = [{"tmdb_id": 50, "title": "Jealous", "release_date": "2017-01-01", "popularity": 5}]
+        res = ts.search("Absolutely Fabulous Jealous", find=lambda q, y: [dict(f, media_type="movie") for f in films]
+                        if ts.plain(q) == "jealous" else [], show="Absolutely Fabulous")
+        self.assertIn(res["confidence"], {"none", "weak"})

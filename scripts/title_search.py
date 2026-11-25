@@ -109,6 +109,10 @@ def name_similarity(a: str, b: str) -> float:
     if na and nb and na != nb:
         return round(min(0.6, difflib.SequenceMatcher(None, ka, kb).ratio()), 3)
     ratio = difflib.SequenceMatcher(None, ka, kb).ratio()
+    # "Winnie the Pooh Boo to You Too" vs "Boo to You Too! Winnie the Pooh":
+    # the same words in a different order.
+    if len(ka.split()) >= 3 and sorted(ka.split()) == sorted(kb.split()):
+        ratio = max(ratio, 0.95)
     # "Pooh's Grand Adventure" vs "Pooh's Grand Adventure: The Search for
     # Christopher Robin": every word of the short name starts the long one.
     sa, sb = ka.split(), kb.split()
@@ -200,6 +204,118 @@ def fix_spelling(title: str, vocab: Counter[str], *, min_count: int = 3) -> str 
 
 
 # --------------------------------------------------------------------------
+# Cleaning file names before searching
+# --------------------------------------------------------------------------
+# Learned from the names that found nothing in the first 2,400 titles: most
+# carried a track number ("02 ", "1. ", "8e. "), a download-site or encoder
+# tag, a "1987 VHS •" style label, or tape/edition words TMDB never uses.
+
+# "02 Thomas", "1. Opening to", "8e. Thomas", "19b. Thomas", "#205. Little
+# Ones", "003 Pingu". A plain "10 Years of Thomas" / "2 Girls in Love" /
+# "60 Minutes" is left alone: no dot, letter, '#' or leading zero.
+TRACK_NUMBER = re.compile(r"^\s*(?:#\s*\d{1,4}[a-z]?\.?|\d{1,3}[a-z][.)]?|\d{1,3}[.)]|0\d{1,3}\.?)\s*[-–]?\s+(?=\S)", re.I)
+DOWNLOAD_SITE = re.compile(r"^\s*(?:y2mate|ssyoutube|savefrom|ytmp3|yt1s|keepvid|clipconverter|snapsave|"
+                           r"onlinevideoconverter|loader)\.?\w*\s*-\s*", re.I)
+# "-BESskV0WmT0-480pp-1692124241" / ".avi-i0Uq5oQ613k-nomusic" / " F4ps6zFf"
+YOUTUBE_TAIL = re.compile(r"(?:\.\w{2,4})?-[A-Za-z0-9_-]{11}(?:-\d{3,4}p+)?(?:-\d{6,})?(?:-\w+)?(?:\s+\d+)?\s*$")
+YEAR_LABEL = re.compile(r"^\s*(?:(?:19|20)\d\d\s+)?(?:found\s+)?(?:vhs|dvd|tape)\s*[•|·:-]\s*", re.I)
+NOISE = re.compile(
+    r"\b(?:\d{2,3}\s?fps|\d{3,4}p+|\d{3,4}i|prores(?:\s+\d{3,4}[ip])?|hevc|nvenc|x26[45]|h\.?26[45]|xvid|divx|"
+    r"deinterlaced|lagarith|"
+    r"(?:full\s+)?(?:hd\s+|hq\s+|lq\s+)?(?:vhs|dvd|tv)\s*(?:rip|capture|transfer|recording)(?:\s+version)?|"
+    r"full\s+vhs(?:\s+tape)?|vhs\s+tape|full\s+tape|"
+    r"screener(?:\s+vhs)?|fan\s?made|home\s?made|custom|bootleg|"
+    r"(?:better|alternate|alt|original)\s+version|"
+    r"(?:us|uk|usa|aus|australian|canadian|nz|pal|ntsc)\s+(?:vhs|dvd|release|version)|"
+    r"(?:roadshow|abc\s+video)?\s*re[\s-]?release|(?:\d{4}\s+)?reprint|"
+    r"lyrick\s+studios|anchor\s+bay|strand\s+home\s+video|golden\s+books(?:\s+version)?|cbs\s+fox|"
+    r"video\s+release(?:\s+\d+)?|vhs\s+release|short\s+film|music\s+video|full\s+movie|full\s+episodes?|"
+    r"ext[a-z]*(?:ly|ley)|ultra\s+rare|very\s+rare|rare)\b",
+    re.I)
+# Australian / UK TV-tape notes: "partial, NWS-9, 18-08-97", "(KCB Tape 7)",
+# "(HB14)", "(Tape 95)", "WOC", "Ch4 14th May 2002".
+TV_TAPE_NOTES = re.compile(
+    r"\b(?:partial|incomplete|missing\s+start|woc)\b|\b[A-Z]{3}-\d{1,2}\b|\b[A-Z]{3}-[A-Z]{3}\b|"
+    r"\b\d{1,2}[-./]\d{1,2}[-./](?:19|20)?\d\d\b|\(\s*(?:kcb\s+)?(?:tape|hb)\s*\d+\s*\)", re.I)
+LEAD_LABELS = re.compile(r"^\s*(?:(?:walt\s+)?disney\s+presents|pbs(?:\s+kids)?|nick\s+jr\.?|pixar\s*-)\s+(?=\S)", re.I)
+# TV airings of films: "VH1 movie 8 mile", "ABC 13 Saturday Night Movie The Big
+# Country", "NBC Network Movie Premiere The Natural", "CBS TV Movie
+# Presentation of Northern Exposure".
+AIRING_LEAD = re.compile(
+    r"^\s*(?:(?!TV\b)[A-Z][A-Z0-9]{1,4}\s+(?:\d{1,2}\s+)?)(?i:(?:the\s+)?(?:\w+\s+){0,2}"
+    r"(?:movie|film|cinema)s?(?:\s+(?:premiere|presentation|special|night))?(?:\s+of)?)\s+(?=\S)")
+MONTH_TAIL = re.compile(r"\s+(?:\d{1,2}(?:st|nd|rd|th)?\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)"
+                        r"[a-z]*\.?(?:\s+\d{1,2}(?:st|nd|rd|th)?)?\s*$", re.I)
+PART_TAIL = re.compile(r"\s+(?:part|pt\.?)\s*\d{1,3}\b.*$", re.I)
+OTHER_STORIES = re.compile(r"\s*(?:&|and)?\s+other\s+(?:stories|adventures)\b", re.I)
+
+
+def clean_name(title: str) -> str:
+    """A file name with the clutter TMDB never has taken out.
+
+    The original name is never changed; this is only what gets searched.
+    """
+    t = (title or "").replace("_", " ").replace("⁄", "/").replace("¦", " ").replace("’", "'")
+    if " " not in t.strip() and t.count("-") >= 2:
+        t = t.replace("-", " ")                    # "Opening-to-The-Mexican"
+    t = DOWNLOAD_SITE.sub("", t)
+    t = YOUTUBE_TAIL.sub("", t)
+    t = re.sub(r"\.(?:avi|mp4|mkv|mov|mpg|mpeg|wmv|flv|webm|m4v|ts|vob)\b", " ", t, flags=re.I)
+    t = re.sub(r"\s*•\s*vhs\b.*$", "", t, flags=re.I)  # "... on ABC • VHS 60 FPS"
+    t = YEAR_LABEL.sub("", t)
+    for _ in range(3):                             # "([2000])": brackets inside brackets
+        t = re.sub(r"\s*[(\[][^()\[\]]*[)\]]", " ", t)
+    t = re.sub(r"[()\[\]]", " ", t)
+    t = re.sub(r"\b\d+(?:[.:]\d+){2,}\b", " ", t)  # tape counters "01.52.31.561"
+    for _ in range(2):
+        t = NOISE.sub(" ", t)
+        t = TV_TAPE_NOTES.sub(" ", t)
+        t = re.sub(r"\b(?:vhs\s*/?\s*dvd|vhs|dvd|blu[\s-]?ray)\b", " ", t, flags=re.I)
+        t = re.sub(r"\b(?:version|video\s+release)\s+\d+\b|\bfull\s*$|\b\w+ly\s+rare\b", " ", t, flags=re.I)
+        t = " ".join(t.split())
+        t = TRACK_NUMBER.sub("", t)
+        t = re.sub(r"^\s*(?:opening\s*(?:&|and)?\s*closing|openingclosing)\s+(?:to|of)\s+", "", t, flags=re.I)
+        t = LEAD_LABELS.sub("", t)
+        if AIRING_LEAD.match(t):
+            rest = AIRING_LEAD.sub("", t)
+            if len(plain(rest)) >= 3:
+                t = rest
+        t = MONTH_TAIL.sub("", t)
+        t = re.sub(r"\b((?:19|20)\d\d)(?:\s+(?:19|20)\d\d)+\b", r"\1", t)   # "1995 1996"
+        t = re.sub(r"(?:\s+(?:19|20)\d\d)+\s*$", "", t)                     # trailing years
+    t = OTHER_STORIES.sub(" ", t)
+    t = re.sub(r"\s+(?:tv\s+series|the\s+series)\s*$", "", t, flags=re.I)
+    t = re.sub(r"[\s,;:•|&+-]+$", "", " ".join(t.split()))
+    t = re.sub(r"^[\s,;:•|&+-]+", "", t)
+    return t.strip() or " ".join((title or "").split())
+
+
+# Names a camera, phone, capture card or download tool gave the file. There is
+# nothing to search for in these; the Archive page title is used instead.
+NO_NAME_PREFIX = re.compile(
+    r"^(?:vhs\d*\s+)?(?:vid|img|mov|mvi|dsc\w?|pxl|gopr\w*|capture\w?|vts|untitled|vhs\s+[sle]p|bandicam|"
+    r"videoplayback|clideo(?:\s+editor)?|pastedownload|screen\s*recording|new\s+video)\b", re.I)
+
+
+def _codey(tok: str) -> bool:
+    """A date, counter or random code rather than a word."""
+    return (any(ch.isdigit() for ch in tok) or len(tok) <= 2 or re.fullmatch(r"[0-9a-f]{8,}", tok, re.I) is not None
+            or re.search(r"[a-z][A-Z]|[A-Z]{2}[a-z]", tok) is not None)
+
+
+def looks_like_no_name(title: str) -> bool:
+    """'20240102 222243', 'VHS1984 VID 20261016 200948', 'videoplayback (3)', 'CaptureA 11173'."""
+    t = " ".join(re.sub(r"[_()\[\]]", " ", title or "").split())
+    if not re.search(r"[A-Za-z]", t):
+        return True
+    m = NO_NAME_PREFIX.match(t)
+    if not m:
+        return False
+    rest = re.split(r"[\s.-]+", t[m.end():].strip())
+    return all(_codey(tok) for tok in rest if tok)
+
+
+# --------------------------------------------------------------------------
 # Search tries
 # --------------------------------------------------------------------------
 STRIP_PATTERNS = [
@@ -224,8 +340,34 @@ LABEL_ONLY = re.compile(r"^(?:[\d ]+|(?:tape|disc|disk|part|vol|volume|chapter|n
 SPLIT_DASH = re.compile(r"\s+[-–—:]\s+|\s*:\s+")
 
 
-def search_tries(title: str, vocab: Counter[str] | None = None) -> list[tuple[str, str]]:
-    """Ordered (query, how it was made) list, most exact first, no repeats."""
+def without_show(title: str, show: str | None) -> str | None:
+    """'Barney Our Earth, Our Home' with show 'Barney' -> 'Our Earth, Our Home'."""
+    if not show:
+        return None
+    ws, ss = plain(title).split(), plain(show).split()
+    if ws[:1] == ["the"] and ss[:1] != ["the"]:
+        ws = ws[1:]
+    for n in (len(ss), len(ss) + 1):            # "Barneys" / "Barney's" for "Barney"
+        head = ws[:len(ss)]
+        if head and (head == ss or (len(head) == len(ss) and head[:-1] == ss[:-1]
+                                    and head[-1] in (ss[-1] + "s", ss[-1]))):
+            words = (title or "").split()
+            # Drop the same number of words from the original (keeps punctuation).
+            skip = len(ss) + (1 if plain(words[0]) == "the" and ss[:1] != ["the"] else 0)
+            rest = " ".join(words[skip:]).strip(" -:,")
+            return rest if len(plain(rest)) >= 4 else None
+        break
+    return None
+
+
+def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[tuple[str, str]] | None = None,
+                 show: str | None = None) -> list[tuple[str, str]]:
+    """Ordered (query, how it was made) list, most exact first, no repeats.
+
+    ``extra`` adds searches from outside the file name (the Archive page
+    title); ``show`` is a show the file belongs to, so 'Show Special Name'
+    is also searched as 'Special Name'.
+    """
     tries: list[tuple[str, str]] = []
     seen: set[str] = set()
 
@@ -241,7 +383,12 @@ def search_tries(title: str, vocab: Counter[str] | None = None) -> list[tuple[st
             tries.append((q, how))
 
     add(title, "name as written")
-    current = title
+    before_year = re.match(r"^\s*(.{3,}?)\s*[(\[]\s*(?:19|20)\d\d\s*[)\]]", title or "")
+    if before_year and len(plain(before_year[1]).split()) >= 1:
+        add(clean_name(before_year[1]), "name before the year")
+    cleaned = clean_name(title)
+    add(cleaned, "name cleaned up")
+    current = cleaned
     for how, rx in STRIP_PATTERNS:
         stripped = rx.sub(" ", current)
         if plain(stripped) != plain(current):
@@ -268,14 +415,38 @@ def search_tries(title: str, vocab: Counter[str] | None = None) -> list[tuple[st
         add(f"{m['main']} {m['n']}", "sequel number without subtitle")
     for q, how in list(tries):
         words = q.split()
-        if re.match(r"^\d+$", words[0] if words else "") and len(words) > 1:
+        if re.match(r"^[1-9]\d*$", words[0] if words else "") and len(words) > 1:
             n = int(words[0])
             if 1 <= n < 1000:
                 add(number_words(n) + " " + " ".join(words[1:]), how + ", number as words")
     # Glued or dotted names: "AllDogsGoToHeaven" -> "All Dogs Go To Heaven"
     if re.search(r"[a-z][A-Z]", title) and " " not in title.strip():
         add(re.sub(r"(?<=[a-z])(?=[A-Z])", " ", title), "words split apart")
-    return tries[:8]
+    tries = tries[:7]
+    # "The Adventures of Elmo in Grouchland Disney", "Charlie St. Cloud WMax":
+    # a studio, channel or note left at the end. Judged against the full name.
+    ws = current.split()
+    for drop in (1, 2):
+        kept = plain(" ".join(ws[:-drop])).split()
+        if (len(ws) - drop >= 2 and len(" ".join(kept)) >= 8
+                and kept[-1] not in {"the", "a", "an", "and", "of", "in", "to", "my", "on", "at", "for", "with"}):
+            add(" ".join(ws[:-drop]), f"last {drop} word{'s' if drop > 1 else ''} dropped")
+    rest = without_show(current, show)
+    if rest:
+        add(rest, "without the show name")
+    for q, how in extra or []:
+        add(q, how)
+        by = re.match(r"^\s*(.{3,}?)\s*[(\[]\s*(?:19|20)\d\d\s*[)\]]", q)
+        if by:
+            add(clean_name(by[1]), how + ", name before the year")
+        c = clean_name(q)
+        add(c, how + ", cleaned up")
+        for _how, rx in STRIP_PATTERNS:
+            c2 = rx.sub(" ", c)
+            if plain(c2) != plain(c):
+                c = c2
+        add(c, how + ", cleaned up")
+    return tries[:11]
 
 
 # --------------------------------------------------------------------------
@@ -298,9 +469,19 @@ def rank(query: str, cands: list[dict[str, Any]], *, ceiling: int | None, hint_y
         y = year_of(c.get("release_date"))
         ok = None
         if hint_year and y:
-            ok = abs(y - hint_year) <= 1
-            score += 20 if ok else -25
-            why.append("same year as the file name" if ok else f"year {y} vs {hint_year} in the file name")
+            if abs(y - hint_year) <= 1:
+                ok = True
+                score += 20
+                why.append("same year as the file name")
+            elif y < hint_year:
+                # "Star Wars CBS FOX 1984": a year after the film is usually
+                # when the tape came out, not a different film.
+                score -= 3
+                why.append(f"film {y}, file name says {hint_year} (likely the tape's year)")
+            else:
+                ok = False
+                score -= 25
+                why.append(f"year {y} vs {hint_year} in the file name")
         if ceiling and y:
             if y <= ceiling:
                 ok = True if ok is None else ok
@@ -364,7 +545,8 @@ STATUS = {"sure": "one_likely_candidate", "likely": "one_likely_candidate",
 def search(title: str, *, find: Callable[[str, int | None], list[dict[str, Any]]],
            details: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
            vocab: Counter[str] | None = None, ceiling: int | None = None, hint_year: int | None = None,
-           minutes: float | None = None, kids_hint: bool = False, max_tries: int = 8) -> dict[str, Any]:
+           minutes: float | None = None, kids_hint: bool = False, max_tries: int = 11,
+           extra: list[tuple[str, str]] | None = None, show: str | None = None) -> dict[str, Any]:
     """Try each search until a clear match turns up; return ranked candidates.
 
     ``find(query, year)`` returns raw candidate dicts (tmdb_id, title,
@@ -374,7 +556,14 @@ def search(title: str, *, find: Callable[[str, int | None], list[dict[str, Any]]
     pool: dict[Any, dict[str, Any]] = {}
     tried: list[dict[str, Any]] = []
     found_with = None
-    for q, how in search_tries(title, vocab)[:max_tries]:
+    full = clean_name(title)
+
+    def judge(q: str, how: str) -> str:
+        # A shortened search is judged against the whole cleaned name, so
+        # "Jealous" found from "Absolutely Fabulous Jealous" isn't "sure".
+        return full if ("dropped" in how or "without the show name" in how) else q
+
+    for q, how in search_tries(title, vocab, extra=extra, show=show)[:max_tries]:
         results = find(q, hint_year) if hint_year else []
         if not results:
             results = find(q, None)
@@ -385,7 +574,7 @@ def search(title: str, *, find: Callable[[str, int | None], list[dict[str, Any]]
                 r = dict(r, found_with=how, found_query=q)
                 pool[key] = r
         if pool:
-            ranked = rank(q, list(pool.values()), ceiling=ceiling, hint_year=hint_year,
+            ranked = rank(judge(q, how), list(pool.values()), ceiling=ceiling, hint_year=hint_year,
                           minutes=minutes, kids_hint=kids_hint)
             # Stop on a clear name match. A match found only after a spelling
             # fix must still look like the name as written.
@@ -397,7 +586,8 @@ def search(title: str, *, find: Callable[[str, int | None], list[dict[str, Any]]
     if not cands:
         return {"confidence": "none", "status": "no_candidates", "candidates": [], "tried": tried,
                 "found_with": None}
-    best_query = found_with and next(t["query"] for t in tried if t["how"] == found_with) or title
+    best_query = (found_with and judge(next(t["query"] for t in tried if t["how"] == found_with), found_with)
+                  or full or title)
     ranked = rank(best_query, cands, ceiling=ceiling, hint_year=hint_year, minutes=minutes, kids_hint=kids_hint)
     if details:
         for c in ranked[:4]:

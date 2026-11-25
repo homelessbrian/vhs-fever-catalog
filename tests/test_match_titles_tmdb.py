@@ -33,3 +33,58 @@ class TapeYearIsACeiling(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EarlierMissesAreSearchedAgain(unittest.TestCase):
+    """A title that found nothing with an older, dumber search is searched again;
+    a confident earlier match is kept; a camera file name isn't searched."""
+
+    def test_rerun(self):
+        import json, os, tempfile
+        import match_titles_tmdb as m
+
+        def title(tid, name):
+            return {"title_suggestion_id": tid, "display_title": name, "series": None, "show_dash_hint": None,
+                    "edition_suggestion_ids": [], "unassigned_recording_ids": [], "tmdb": {"search_title": name}}
+
+        def rec(tid, name, item):
+            return {"recording_id": "r-" + tid, "title_suggestion_id": tid, "display_name": name,
+                    "catalog_category": "manual_review", "duration_seconds": 3600,
+                    "archive_identifiers": [item], "interpretation": {}}
+
+        titles = [title("a", "02 Thomas' Sodor Celebration"), title("b", "Dumbo"), title("c", "20240102 222243")]
+        recs = [rec("a", "02 Thomas' Sodor Celebration.mp4", "p1"), rec("b", "Dumbo.mp4", "p2"),
+                rec("c", "20240102 222243.mp4", "p3")]
+        items = [{"archive_identifier": "p1", "archive_title": "Thomas Tape", "video_file_count": 6},
+                 {"archive_identifier": "p2", "archive_title": "Dumbo", "video_file_count": 1},
+                 {"archive_identifier": "p3", "archive_title": "News tapes", "video_file_count": 30}]
+        old = [dict(titles[0], tmdb={"status": "no_candidates", "candidates": []}),
+               dict(titles[1], tmdb={"status": "one_likely_candidate", "candidates": [{"title": "Dumbo"}]})]
+        calls = []
+
+        def fake_get(path, params, token):
+            calls.append(params.get("query"))
+            if path == "/search/movie" and params.get("query") == "Thomas' Sodor Celebration":
+                return {"results": [{"id": 1, "title": "Thomas' Sodor Celebration!", "release_date": "2004-01-01"}]}
+            return {"results": []} if path.startswith("/search") else {"runtime": 60}
+
+        with tempfile.TemporaryDirectory() as d:
+            for n, rows in (("titles", titles), ("recordings", recs), ("editions", []), ("archive-items", items)):
+                Path(d, n + ".jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+            Path(d, "old.jsonl").write_text("".join(json.dumps(r) + "\n" for r in old))
+            saved = (m._get, m.time.sleep, sys.argv, os.environ.get("TMDB_API_READ_ACCESS_TOKEN"))
+            m._get, m.time.sleep = fake_get, (lambda s: None)
+            sys.argv = ["x", "--model-dir", d, "--reuse", str(Path(d, "old.jsonl"))]
+            os.environ["TMDB_API_READ_ACCESS_TOKEN"] = "x"
+            try:
+                m.main()
+            finally:
+                m._get, m.time.sleep, sys.argv = saved[:3]
+                if saved[3] is None:
+                    os.environ.pop("TMDB_API_READ_ACCESS_TOKEN", None)
+            out = {r["title_suggestion_id"]: r["tmdb"] for r in map(json.loads, Path(d, "titles.jsonl").read_text().splitlines())}
+        self.assertEqual(out["a"]["candidates"][0]["title"], "Thomas' Sodor Celebration!")
+        self.assertEqual(out["a"]["matcher"], m.MATCHER_VERSION)
+        self.assertEqual(out["b"]["status"], "one_likely_candidate")       # kept, not searched again
+        self.assertNotIn("Dumbo", calls)
+        self.assertEqual(out["c"]["status"], "no_usable_name")

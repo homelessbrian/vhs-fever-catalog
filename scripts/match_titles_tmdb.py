@@ -19,6 +19,7 @@ import argparse
 import difflib
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -33,6 +34,16 @@ import title_search  # noqa: E402
 import tv_episodes  # noqa: E402
 
 API = "https://api.themoviedb.org/3"
+# Bumped whenever the search gets smarter. Titles that found nothing (or only
+# weak guesses) with an older version are searched again instead of being
+# copied forward; confident matches are kept.
+MATCHER_VERSION = 2
+KEEP_STATUSES = {"one_likely_candidate", "one_likely_episode", "skipped_tape_opening",
+                 "skipped_commercial_or_promo", "skipped_not_english"}
+# File names that are a piece of a tape, not the film itself: the Archive
+# page title is never used for these.
+TAPE_PART = re.compile(r"\b(?:opening|closing|intro|outro|trailers?|teasers?|promos?|previews?|sneak peek|credits|"
+                       r"bumpers?|logos?|commercials?|ads?|segments?|poster|menu|warning|fbi)\b", re.I)
 IMG = "https://image.tmdb.org/t/p/"
 
 
@@ -103,6 +114,8 @@ def main() -> None:
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--max-lookups", type=int, default=15000)
     ap.add_argument("--delay", type=float, default=0.05)
+    ap.add_argument("--retry-lookups", type=int, default=9000,
+                    help="stop re-searching old unmatched titles after this many lookups (the rest wait for the next run)")
     ap.add_argument("--reuse", nargs="*", default=[],
                     help="earlier titles.jsonl files: titles already looked up there are copied, not searched again")
     args = ap.parse_args()
@@ -110,6 +123,7 @@ def main() -> None:
     d = Path(args.model_dir)
     read = lambda n: [json.loads(x) for x in (d / f"{n}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
     titles, editions, recs = read("titles"), read("editions"), read("recordings")
+    items = {i["archive_identifier"]: i for i in (read("archive-items") if (d / "archive-items.jsonl").exists() else [])}
 
     cats: dict[str, set[str]] = {}
     hints: dict[str, set[str]] = {}
@@ -138,6 +152,50 @@ def main() -> None:
         if ry and str(ry).isdigit() and len(str(ry)) == 4 and tid not in first_release:
             first_release[tid] = int(ry)
 
+    # Which Archive pages each title's files come from.
+    pages_of: dict[str, list[dict[str, Any]]] = {}
+    for r in recs:
+        tid = r.get("title_suggestion_id")
+        for a in r.get("archive_identifiers") or []:
+            if tid and a in items and items[a] not in pages_of.setdefault(tid, []):
+                pages_of[tid].append(items[a])
+
+    # Shows the collection knows about: from page titles ("show" in the page
+    # context), "Show - Episode" names and season/episode names. Used to read
+    # "Barney Our Earth, Our Home" as show "Barney" + "Our Earth, Our Home".
+    show_count: dict[str, int] = {}
+    show_name: dict[str, str] = {}
+    def note_show(n: str | None) -> None:
+        k = title_search.plain(n or "")
+        if len(k) >= 4 and not k.isdigit():
+            show_count[k] = show_count.get(k, 0) + 1
+            show_name.setdefault(k, n.strip())
+    for i in items.values():
+        note_show((i.get("page_context") or {}).get("show"))
+    for t in titles:
+        note_show((t.get("series") or {}).get("series_title"))
+        note_show((t.get("show_dash_hint") or {}).get("show"))
+
+    def show_for(tid: str, title: str) -> str | None:
+        own = {title_search.plain((p.get("page_context") or {}).get("show") or "") for p in pages_of.get(tid, [])} - {""}
+        cands = sorted(own) if len(own) == 1 else []
+        cands += sorted((k for k, n in show_count.items() if n >= 3), key=len, reverse=True)
+        for k in cands:
+            if title_search.without_show(title, show_name.get(k, k)):
+                return show_name.get(k, k)
+        return None
+
+    def page_tries(tid: str, title: str) -> list[tuple[str, str]]:
+        """The Archive page title, when the page is about this one video."""
+        ps = pages_of.get(tid) or []
+        if len(ps) != 1 or TAPE_PART.search(title):
+            return []
+        p = ps[0]
+        pt = p.get("archive_title") or ""
+        if (p.get("video_file_count") or 0) > 4 or not pt or TAPE_PART.search(pt):
+            return []
+        return [(pt, "Archive page title")]
+
     def not_a_movie(tid: str, title: str) -> str | None:
         """Commercials, bumpers and promos aren't on TMDB, so they aren't searched."""
         ns = names.get(tid) or [title]
@@ -162,7 +220,8 @@ def main() -> None:
                 old = json.loads(line)
                 tm = old.get("tmdb") or {}
                 if tm.get("status") and tm["status"] not in {"lookup_error", "deferred_lookup_limit",
-                                                             "skipped_no_api_token", "not_searched"}:
+                                                             "skipped_no_api_token", "not_searched",
+                                                             "no_usable_name"}:
                     reused[old["title_suggestion_id"]] = tm
     tmdb_tv = tv_episodes.Tmdb(token, delay=args.delay) if token else None
     tvdb_key = os.environ.get("TVDB_API_KEY")
@@ -242,9 +301,10 @@ def main() -> None:
             detail_cache[key] = out
         return detail_cache[key]
 
-    def smart_search(query: str, tid: str, hint_year: int | None) -> dict[str, Any]:
+    def smart_search(query: str, tid: str, hint_year: int | None, extra: list[tuple[str, str]] | None = None,
+                     show: str | None = None) -> dict[str, Any]:
         common = dict(vocab=vocab, ceiling=first_release.get(tid), hint_year=hint_year,
-                      minutes=typical_minutes(tid), details=details)
+                      minutes=typical_minutes(tid), details=details, extra=extra, show=show)
         res = title_search.search(query, find=raw_find("movie"), **common)
         if res["confidence"] in {"none", "weak"}:
             # TV specials and video collections of shows live under TV on TMDB.
@@ -285,8 +345,10 @@ def main() -> None:
         series = t.get("series")
         dash = t.get("show_dash_hint")
         skip = None if series else not_a_movie(tid, t["display_title"])
-        if tid in reused:
-            t["tmdb"] = reused[tid]
+        old = reused.get(tid)
+        retry = bool(old) and old.get("status") not in KEEP_STATUSES and (old.get("matcher") or 1) < MATCHER_VERSION
+        if old and (not retry or lookups >= args.retry_lookups or not token):
+            t["tmdb"] = old
             counts["reused_from_earlier_run"] = counts.get("reused_from_earlier_run", 0) + 1
         elif c == {"vhs_opening_or_previews"}:
             t["tmdb"] = {"status": "skipped_tape_opening"}
@@ -318,11 +380,27 @@ def main() -> None:
                 "latest_allowed_year": first_release.get(tid), "candidates": r["candidates"],
                 "confirmed_tmdb_id": None, "note": "Suggestions only. A person must confirm the match.",
             }
+        elif title_search.looks_like_no_name(t["display_title"]) and not page_tries(tid, "x"):
+            # "20240102 222243", "VHS1984 VID 20261016 200948": a camera or
+            # capture name and an Archive page with many videos. Nothing to search.
+            t["tmdb"] = {"status": "no_usable_name", "search_title": None,
+                         "note": "The file name is a camera/capture name, so there is nothing to search for."}
         else:
             hint = sorted(hints.get(tid, []))
             hint_year = int(hint[0]) if len(hint) == 1 else None
-            query = t["tmdb"]["search_title"]
+            query = t["tmdb"].get("search_title") or t["display_title"]
+            extra = page_tries(tid, query)
+            if title_search.looks_like_no_name(t["display_title"]):
+                query = extra[0][0]
+                extra = []
+            show = show_for(tid, title_search.clean_name(query))
             ep_result = None
+            if not dash and show and not series:
+                rest = title_search.without_show(title_search.clean_name(query), show)
+                if rest and not TAPE_PART.search(rest):
+                    # "Absolutely Fabulous Jealous": maybe an episode of a show
+                    # the collection knows. Only kept if both are found.
+                    dash = {"show": show, "episode_title": rest, "from": "known show name"}
             if dash:
                 # "Show Name - Episode Name": an episode only if TMDB/TVDB has a
                 # show by that name AND an episode by that name. Otherwise it
@@ -337,7 +415,7 @@ def main() -> None:
                 r = ep_cache[key]
                 if r["status"] in {"one_likely_episode", "several_episode_candidates"}:
                     ep_result = r
-            found = smart_search(query, tid, hint_year)
+            found = smart_search(query, tid, hint_year, extra, show)
             movies = found["candidates"]
             if ep_result:
                 t["tmdb"] = {
@@ -357,6 +435,10 @@ def main() -> None:
                     "candidates": movies, "confirmed_tmdb_id": None,
                     "note": "Suggestions only. A person must confirm the match.",
                 }
+                if retry and old and found["status"] == "no_candidates" and old.get("candidates"):
+                    t["tmdb"] = dict(old)    # never lose earlier guesses to a worse search
+        if t["tmdb"] is not old:
+            t["tmdb"]["matcher"] = MATCHER_VERSION
         counts[t["tmdb"]["status"]] = counts.get(t["tmdb"]["status"], 0) + 1
         if t["tmdb"].get("confidence"):
             conf_counts[t["tmdb"]["confidence"]] = conf_counts.get(t["tmdb"]["confidence"], 0) + 1
