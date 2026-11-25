@@ -59,8 +59,17 @@ jobs:
             # Nothing named: pick the next one and save the list in the repo.
             curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/auto-sort-data/new-items.jsonl" -o new-items.jsonl
             size="$(python -c 'import json;print(json.load(open("data/batches/auto.json")).get("size",500))' 2>/dev/null || echo 500)"
-            python scripts/pick_batch.py --new-items new-items.jsonl --kind all --size "$size" --github-output pick.txt
+            curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/auto-sort-data/more-items.jsonl" -o more-items.jsonl || touch more-items.jsonl
+            # "from" in auto.json: vault (default), more (finds outside the Vault) or both.
+            # When the Vault has nothing left, batches carry on with the outside finds.
+            from="$(python -c 'import json;print(json.load(open("data/batches/auto.json")).get("from","vault"))' 2>/dev/null || echo vault)"
+            python scripts/pick_batch.py --new-items new-items.jsonl --more-items more-items.jsonl --from "$from" \
+              --kind all --size "$size" --github-output pick.txt
             b="$(sed -n 's/^batch=//p' pick.txt)"
+            if [ -z "$b" ] && [ "$from" = "vault" ]; then
+              python scripts/pick_batch.py --more-items more-items.jsonl --from more --kind all --size "$size" --github-output pick.txt
+              b="$(sed -n 's/^batch=//p' pick.txt)"
+            fi
             test -n "$b" || { echo "Nothing left to read."; exit 1; }
             git config user.name homelessbrian
             git config user.email 38150792+homelessbrian@users.noreply.github.com
@@ -119,7 +128,7 @@ jobs:
         run: |
           touch none.jsonl
           python scripts/check_audio.py --recordings out/recordings.jsonl --previous none.jsonl \
-            --output audio-${{ matrix.shard }}.jsonl --shard ${{ matrix.shard }} --shards 10 --workers 8
+            --output audio-${{ matrix.shard }}.jsonl --shard ${{ matrix.shard }} --shards 10 --workers 12
       - uses: actions/upload-artifact@v4
         with:
           name: batch-audio-${{ matrix.shard }}
@@ -203,13 +212,27 @@ jobs:
             cat comb/catalog-model.summary.json comb/auto-sort.summary.json
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      # GitHub refuses any file over 100 MB, and the full file list grows with
+      # every batch. Earlier batches are carried over, big lists are zipped
+      # (nothing reads them in the app), and the branch keeps one fresh commit
+      # so it doesn't pile up old copies.
+      - name: Pack for GitHub
+        run: |
+          for d in bd/batch-*; do
+            [ -d "$d" ] || continue
+            n="$(basename "$d")"; [ -d "site/$n" ] || cp -r "$d" "site/$n"
+          done
+          find site -name 'archive-files.jsonl' -exec gzip -9f {} \;
+          big="$(find site -type f -size +95M)"
+          if [ -n "$big" ]; then echo "Still too big for GitHub:"; echo "$big"; exit 1; fi
+          du -sh site; du -sh site/* | sort -h | tail -5
       - name: Publish to batch-data
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: batch-data
           publish_dir: ./site
-          keep_files: true
+          force_orphan: true
           enable_jekyll: false
           commit_message: "Batch ${{ needs.model.outputs.batch }} from ${{ github.sha }}"
       - name: Keep going with the next batch
