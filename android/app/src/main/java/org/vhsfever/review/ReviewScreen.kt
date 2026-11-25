@@ -109,6 +109,7 @@ fun ReviewScreen(m: AppModel, fileId: String) {
                     ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://archive.org/details/${f.archiveItem}")))
                 })
                 m.foreignReason(f)?.let { Text("Looks non-English: $it", color = C.warn, fontSize = 12.sp) }
+                m.splitReason(f)?.let { Text("Split video: $it", color = C.warn, fontSize = 12.sp) }
                 if (f.modelReasons.isNotEmpty()) Text("Why it’s flagged: " + f.modelReasons.joinToString(", "), color = C.muted, fontSize = 12.sp)
             }
             MovieCard(m, f) { saveNotes(); m.open(Screen.MovieEdit(f.id)) }

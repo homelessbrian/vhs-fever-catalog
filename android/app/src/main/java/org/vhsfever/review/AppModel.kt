@@ -63,6 +63,10 @@ class AppModel(private val ctx: Context) {
     var itemLanguages by mutableStateOf<Map<String, List<String>>>(emptyMap()); private set
     /** File id -> why it looks non-English. Files missing here look English. */
     var foreign by mutableStateOf<Map<String, String>>(emptyMap()); private set
+    /** Hide videos that are only one piece of a split video (on by default). */
+    var wholeOnly by mutableStateOf(prefs.getBoolean("whole_only", true)); private set
+    /** File id -> why it looks like one piece of a split video. */
+    var split by mutableStateOf<Map<String, String>>(emptyMap()); private set
     private val undo = ArrayDeque<Pair<String, FileDecision?>>()
     var lastUndoLabel by mutableStateOf<String?>(null)
 
@@ -117,6 +121,8 @@ class AppModel(private val ctx: Context) {
             files = list
             byId = list.associateBy { it.id }
         }
+        val s = withContext(Dispatchers.Default) { Split.find(list) }
+        withContext(Dispatchers.Main) { split = s }
         recomputeLanguage()
     }
 
@@ -126,6 +132,10 @@ class AppModel(private val ctx: Context) {
     fun changeEnglishOnly(on: Boolean) { englishOnly = on; prefs.edit().putBoolean("english_only", on).apply() }
 
     fun foreignReason(f: FileItem): String? = foreign[f.id]
+
+    fun changeWholeOnly(on: Boolean) { wholeOnly = on; prefs.edit().putBoolean("whole_only", on).apply() }
+
+    fun splitReason(f: FileItem): String? = split[f.id]
 
     private suspend fun recomputeLanguage() {
         val list = files
@@ -203,6 +213,7 @@ class AppModel(private val ctx: Context) {
     /** Copies are hidden unless their sound/picture check differs from the original's. */
     private fun visibleInQueue(f: FileItem): Boolean {
         if (englishOnly && f.id in foreign) return false
+        if (wholeOnly && f.id in split) return false
         if (!f.isCopy) return true
         val orig = f.originalId?.let { byId[it] } ?: return true
         val a = audio[f.id]?.verdict
