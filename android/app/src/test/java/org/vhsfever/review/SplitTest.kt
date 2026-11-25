@@ -20,6 +20,7 @@ class SplitTest {
 
     @Test fun strayPieces() {
         split(file("The Little Mermaid (1990 VHS) - 15of22.ia.mp4", 121.0))
+        split(file("The Jungle Book (1997 VHS) (Version 3) - 1of18.ia.mp4", 829.0))
         split(file("Some Movie Part 2 of 6.mp4", 900.0))
         split(file("Some Movie (2/12).mp4", null))
         split(file("Some Movie 1 of 2.mp4", 600.0))
