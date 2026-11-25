@@ -33,7 +33,7 @@ jobs:
           for i in 1 2 3 4; do
             gradle --no-daemon testDebugUnitTest assembleRelease > build.log 2>&1 && { cat build.log; exit 0; }
             cat build.log
-            grep -q "429\|Could not resolve\|Could not GET" build.log || exit 1
+            grep -q "Too Many Requests" build.log || exit 1
             echo "Download limit hit, retrying in 60s ($i)"; sleep 60
           done
           exit 1
@@ -68,6 +68,8 @@ jobs:
         run: |
           # Remake the release each time so its tag always sits on the build's own commit.
           notes="Proof-of-concept TV app for testing playback. Build ${{ github.run_number }} from ${{ github.ref_name }}."
+          # version.txt is how the app on the TV knows a newer build is here
+          echo "${{ github.run_number }}" > version.txt
           gh release delete tv-latest --cleanup-tag -y >/dev/null 2>&1 || true
-          gh release create tv-latest vhs-fever-tv.apk --prerelease --target "${{ github.sha }}" \
+          gh release create tv-latest vhs-fever-tv.apk version.txt --prerelease --target "${{ github.sha }}" \
             --title "VHS FEVER TV (latest test build)" --notes "$notes"

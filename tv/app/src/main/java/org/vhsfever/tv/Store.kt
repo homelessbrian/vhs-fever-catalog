@@ -145,6 +145,7 @@ object Hi {
 fun StoreScreen(
     catalog: Catalog, section: Section, status: String, watchlist: Set<String>, restoreKey: String?,
     onSection: (Section) -> Unit, onOpen: (Title) -> Unit, onRefresh: () -> Unit,
+    update: Updater.State = Updater.State.Idle, onCheckUpdate: () -> Unit = {},
 ) {
     val selectedFr = remember { FocusRequester() }
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.NavyTop, 0.6f to Ink.Navy))) {
@@ -158,7 +159,7 @@ fun StoreScreen(
                 catalog.titles.filter { it.key in watchlist }, restoreKey, onOpen,
                 empty = "Nothing saved yet. Press + WATCHLIST on a tape to keep it here.")
             Section.Search -> SearchContent(catalog, restoreKey, onOpen)
-            Section.Settings -> SettingsContent(catalog, status, onRefresh)
+            Section.Settings -> SettingsContent(catalog, status, onRefresh, update, onCheckUpdate)
         }
         LogoBadge(Modifier.offset(18.px, 16.px))
         // Coming back to the menu lands on the page you're on, not wherever the remote happens to point.
@@ -463,7 +464,7 @@ private fun SearchContent(catalog: Catalog, restoreKey: String?, onOpen: (Title)
 }
 
 @Composable
-private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> Unit) {
+private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> Unit, update: Updater.State, onCheckUpdate: () -> Unit) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     val tapes = catalog.titles.sumOf { it.tapes.size }
@@ -474,7 +475,15 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
                 "IN THE STORE" to "${catalog.titles.size} titles · $tapes tapes",
                 "WHERE THE TAPES COME FROM" to "Files marked good in the review app",
                 "BOX ART" to "TMDB posters for now · tape scans coming",
-                "VERSION" to BuildConfig.VERSION_NAME,
+                "APP VERSION" to "Build ${Updater.currentBuild}",
+                "UPDATES" to when (update) {
+                    Updater.State.Idle -> "Checked automatically when the app opens"
+                    Updater.State.Checking -> "Checking…"
+                    Updater.State.UpToDate -> "Up to date"
+                    is Updater.State.Downloading -> "Downloading build ${update.build}… ${update.percent}%"
+                    is Updater.State.Ready -> "Build ${update.build} ready to install"
+                    is Updater.State.Failed -> update.message
+                },
             )) {
                 Row(Modifier.fillMaxWidth().drawBehind {
                     drawLine(Color(0x4DCFD4FF), Offset(0f, size.height), Offset(size.width, size.height), 1f)
@@ -485,7 +494,10 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
                 }
             }
             Spacer(Modifier.height(26.px))
-            GoldButton("↻ CHECK FOR NEW TAPES", Modifier.focusRequester(first), onRefresh)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.px)) {
+                GoldButton("↻ CHECK FOR NEW TAPES", Modifier.focusRequester(first), onRefresh)
+                OutlineButton("⇩ CHECK FOR APP UPDATE", onClick = onCheckUpdate)
+            }
             if (status.isNotBlank()) Text(status, modifier = Modifier.padding(top = 12.px),
                 style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, color = Ink.Gold))
         }
@@ -518,6 +530,39 @@ fun StoreButton(text: String, modifier: Modifier, edge: Color, label: Color, onC
         Box(Modifier.padding(horizontal = 22.px, vertical = 8.px), contentAlignment = Alignment.Center) {
             Text(text, maxLines = 1, softWrap = false,
                 style = TextStyle(fontFamily = Type.Condensed, fontWeight = FontWeight.Bold, fontSize = size.fs, letterSpacing = (size * 0.08f).fs))
+        }
+    }
+}
+
+/** Small note in the corner while an update downloads. */
+@Composable
+fun UpdateBadge(text: String, modifier: Modifier = Modifier) {
+    Box(modifier.padding(24.px).background(Color(0xE6080B22), RoundedCornerShape(8.px))
+        .border(2.px, Ink.Gold, RoundedCornerShape(8.px)).padding(horizontal = 16.px, vertical = 10.px)) {
+        Text(text, style = TextStyle(fontFamily = Type.Mono, fontSize = 14.fs, color = Ink.Gold))
+    }
+}
+
+/** "A new version is ready" with Install / Later. Install may first open the TV's permission screen. */
+@Composable
+fun UpdateDialog(build: Int, onInstall: () -> Boolean, onLater: () -> Unit) {
+    val fr = remember { FocusRequester() }
+    var needsPermission by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+    androidx.activity.compose.BackHandler { onLater() }
+    Box(Modifier.fillMaxSize().background(Color(0xCC04051A)), contentAlignment = Alignment.Center) {
+        Column(Modifier.width(620.px).background(Brush.verticalGradient(listOf(Ink.NavyTop, Ink.Navy)), RoundedCornerShape(12.px))
+            .border(3.px, Ink.Gold, RoundedCornerShape(12.px)).padding(32.px)) {
+            Text("NEW VERSION READY", style = TextStyle(fontFamily = Type.Mono, fontSize = 14.fs, letterSpacing = 1.6f.fs, color = Ink.Gold))
+            Text("VHS FEVER build $build", style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 36.fs, color = Color.White))
+            Text(if (needsPermission) "Your TV opened its setting for installing apps. Turn it on for VHS FEVER, press Back, then press Install again."
+                else "It’s downloaded. Install it now? The app will restart on the new version.",
+                modifier = Modifier.padding(top = 10.px),
+                style = TextStyle(fontFamily = Type.Barlow, fontSize = 20.fs, lineHeight = 27.fs, color = Ink.Body))
+            Row(Modifier.padding(top = 24.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
+                GoldButton("INSTALL", Modifier.focusRequester(fr)) { if (!onInstall()) needsPermission = true }
+                OutlineButton("LATER", onClick = onLater)
+            }
         }
     }
 }

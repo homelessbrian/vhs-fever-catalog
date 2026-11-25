@@ -68,11 +68,12 @@ abstract class ScreensBase(private val tag: String) {
     }
 
     /** The highlighted thing on screen (the smallest focused node, so a box rather than the row it sits in). */
-    private fun focusedBounds(): Rect {
+    /** Which thing is highlighted (its id) and where it is on screen. */
+    private fun focused(): Pair<Int, Rect> {
         val nodes = rule.onAllNodes(isFocused()).fetchSemanticsNodes()
         assertTrue("nothing is highlighted", nodes.isNotEmpty())
-        val r = nodes.minBy { it.boundsInRoot.width * it.boundsInRoot.height }.boundsInRoot
-        return r
+        val n = nodes.minBy { it.boundsInRoot.width * it.boundsInRoot.height }
+        return n.id to n.boundsInRoot
     }
 
     @Test fun home() {
@@ -94,20 +95,20 @@ abstract class ScreensBase(private val tag: String) {
         clickable[box].performSemanticsAction(SemanticsActions.RequestFocus)
         rule.mainClock.advanceTimeBy(1000)
         shot("1-home-start")
-        val before = focusedBounds()
+        val (b0, before) = focused()
         rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         rule.mainClock.advanceTimeBy(1000)
         shot("1-home-down")
-        val after = focusedBounds()
-        // a straight move down: a different box in the same column (the shelf scrolls up, so screen height can match)
-        assertTrue("Down moved focus sideways, from $before to $after",
-            kotlin.math.abs(after.left - before.left) < before.width / 2 && after != before)
+        val (b1, after) = focused()
+        // a straight move down: a different box, same column (the shelf slides up, so it can land in the same spot)
+        assertTrue("Down didn't move", b1 != b0)
+        assertTrue("Down moved sideways, from $before to $after", kotlin.math.abs(after.left - before.left) < before.width / 2)
         rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         rule.mainClock.advanceTimeBy(1000)
         shot("1-home-down2")
-        val third = focusedBounds()
-        assertTrue("second Down moved focus sideways, from $after to $third",
-            kotlin.math.abs(third.left - after.left) < after.width / 2 && third != after)
+        val (b2, third) = focused()
+        assertTrue("second Down didn't move", b2 != b1 && b2 != b0)
+        assertTrue("second Down moved sideways, from $after to $third", kotlin.math.abs(third.left - after.left) < after.width / 2)
     }
 
     @Test fun genres() {

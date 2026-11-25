@@ -30,7 +30,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -69,6 +71,12 @@ fun App(repo: Repo, artRepo: ArtRepo, prefs: android.content.SharedPreferences) 
     var restoreKey by remember { mutableStateOf<String?>(null) }
     var watchlist by remember { mutableStateOf(prefs.getStringSet("watchlist", emptySet())!!.toSet()) }
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    // app updates: checked a few seconds after opening, and from Settings
+    var update by remember { mutableStateOf<Updater.State>(Updater.State.Idle) }
+    var updateDismissed by remember { mutableStateOf(false) }
+    fun checkUpdate() { scope.launch { updateDismissed = false; Updater.check(ctx) { update = it } } }
+    LaunchedEffect(Unit) { delay(4000); checkUpdate() }
 
     fun reload() {
         scope.launch {
@@ -110,10 +118,16 @@ fun App(repo: Repo, artRepo: ArtRepo, prefs: android.content.SharedPreferences) 
                 StoreScreen(c, section, status, watchlist, restoreKey,
                     onSection = { restoreKey = null; section = it },
                     onOpen = { restoreKey = it.key; openKey = it.key },
-                    onRefresh = { reload() })
+                    onRefresh = { reload() },
+                    update = update, onCheckUpdate = { checkUpdate() })
             }
             else -> Text(status, modifier = Modifier.align(Alignment.Center).padding(48.px),
                 style = TextStyle(fontFamily = Type.Barlow, fontSize = 26.fs, color = Ink.Cream, textAlign = TextAlign.Center))
         }
+        val u = update
+        if (u is Updater.State.Downloading) UpdateBadge("Downloading update… ${u.percent}%", Modifier.align(Alignment.BottomEnd))
+        if (u is Updater.State.Ready && !updateDismissed) UpdateDialog(u.build,
+            onInstall = { (ctx as? android.app.Activity)?.let { Updater.install(it, u.file) } ?: true },
+            onLater = { updateDismissed = true })
     }
 }
