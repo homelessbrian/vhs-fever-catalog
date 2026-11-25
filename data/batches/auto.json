@@ -1,1 +1,1 @@
-{"keep_going": true, "size": 500, "note": "Set keep_going to false to pause the batches after the current one."}
+{"keep_going": true, "size": 500, "note": "Set keep_going to false to pause the batches after the current one. from: vault = VHS Vault pages, more = finds outside the Vault, both = everything; when the Vault runs out, batches carry on with the outside finds.", "from": "vault"}

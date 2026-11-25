@@ -238,7 +238,7 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
             COMMERCIAL.search(name) and not WITH_ADS.search(name) and (dur or 0) <= 240):
         kind = "tv_recording"
         why.append("taped off live TV")
-    elif COMMERCIAL.search(name) or "vhscommercials" in cols:
+    elif COMMERCIAL.search(name) or cols & {"vhscommercials", "classic_tv_commercials", "classic_tv_commercials_emperor"}:
         if dur is not None and dur <= 240:
             kind = "commercial"
             why.append("commercial, short enough to be one ad")

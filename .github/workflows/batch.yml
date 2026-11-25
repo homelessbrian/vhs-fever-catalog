@@ -59,8 +59,17 @@ jobs:
             # Nothing named: pick the next one and save the list in the repo.
             curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/auto-sort-data/new-items.jsonl" -o new-items.jsonl
             size="$(python -c 'import json;print(json.load(open("data/batches/auto.json")).get("size",500))' 2>/dev/null || echo 500)"
-            python scripts/pick_batch.py --new-items new-items.jsonl --kind all --size "$size" --github-output pick.txt
+            curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/auto-sort-data/more-items.jsonl" -o more-items.jsonl || touch more-items.jsonl
+            # "from" in auto.json: vault (default), more (finds outside the Vault) or both.
+            # When the Vault has nothing left, batches carry on with the outside finds.
+            from="$(python -c 'import json;print(json.load(open("data/batches/auto.json")).get("from","vault"))' 2>/dev/null || echo vault)"
+            python scripts/pick_batch.py --new-items new-items.jsonl --more-items more-items.jsonl --from "$from" \
+              --kind all --size "$size" --github-output pick.txt
             b="$(sed -n 's/^batch=//p' pick.txt)"
+            if [ -z "$b" ] && [ "$from" = "vault" ]; then
+              python scripts/pick_batch.py --more-items more-items.jsonl --from more --kind all --size "$size" --github-output pick.txt
+              b="$(sed -n 's/^batch=//p' pick.txt)"
+            fi
             test -n "$b" || { echo "Nothing left to read."; exit 1; }
             git config user.name homelessbrian
             git config user.email 38150792+homelessbrian@users.noreply.github.com
