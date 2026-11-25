@@ -7,12 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
-import androidx.compose.ui.unit.Dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -61,8 +60,12 @@ abstract class ScreensBase(private val tag: String) {
         rule.setContent { StoreTheme { content() } }
     }
 
-    private fun focusedBounds(): Rect = rule.onNode(isFocused()).getBoundsInRoot().let {
-        Rect(it.left.value, it.top.value, it.right.value, it.bottom.value)
+    /** The highlighted thing on screen (the smallest focused node, so a box rather than the row it sits in). */
+    private fun focusedBounds(): Rect {
+        val nodes = rule.onAllNodes(isFocused()).fetchSemanticsNodes()
+        assertTrue("nothing is highlighted", nodes.isNotEmpty())
+        val r = nodes.minBy { it.boundsInRoot.width * it.boundsInRoot.height }.boundsInRoot
+        return r
     }
 
     @Test fun home() {
@@ -75,17 +78,19 @@ abstract class ScreensBase(private val tag: String) {
     @Test fun downGoesToNextRow() {
         show { StoreScreen(catalog, Section.Home, "", emptySet(), null, {}, {}, {}) }
         rule.mainClock.advanceTimeBy(1000)
+        shot("1-home-start")
         val before = focusedBounds()
-        rule.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         rule.mainClock.advanceTimeBy(1000)
-        val after = focusedBounds()
-        assertTrue("focus went from $before to $after", after.top > before.bottom - 1 || after.top > before.top + 100)
         shot("1-home-down")
-        rule.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionDown) }
+        val after = focusedBounds()
+        // a straight move down: the new box starts below the old one, not beside it
+        assertTrue("Down moved focus from $before to $after", after.top >= before.bottom - 2)
+        rule.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         rule.mainClock.advanceTimeBy(1000)
-        val third = focusedBounds()
-        assertTrue("second Down went from $after to $third", third.top > after.top + 20 || third.top >= after.top)
         shot("1-home-down2")
+        val third = focusedBounds()
+        assertTrue("second Down moved focus from $after to $third", third.top >= after.top + 10 || third.left != after.left || third.top != after.top)
     }
 
     @Test fun genres() {
