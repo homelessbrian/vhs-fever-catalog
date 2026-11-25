@@ -1,10 +1,9 @@
 package org.vhsfever.tv
 
 import android.graphics.Bitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
+import android.graphics.Canvas
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
@@ -23,20 +22,26 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w960dp-h540dp-land-xhdpi")
 class ScreensTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun res(name: String) = javaClass.classLoader!!.getResource(name)!!.readText()
     private val genres = listOf("Animation", "Family", "Comedy", "Adventure", "Music", "Fantasy", "Horror", "Sci-Fi", "Drama")
     private val catalog = Catalog.build(res("feed-sample.json"), res("decisions-sample.json")).let { c ->
         Catalog(c.titles.mapIndexed { i, t ->
-            t.withArt(Art(null, null, t.overview ?: "A tape from the VHS FEVER shelves.", t.year ?: "1990",
+            t.copy(poster = null).withArt(Art(null, null, t.overview ?: "A tape from the VHS FEVER shelves.", t.year ?: "1990",
                 listOf(genres[i % genres.size], genres[(i + 3) % genres.size])))
         })
     }
 
     private fun shot(name: String) {
+        // The CRT and focus animations never stop, so draw the window directly instead of waiting for idle.
         rule.mainClock.advanceTimeBy(1500)
-        val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
+        lateinit var bmp: Bitmap
+        rule.runOnUiThread {
+            val v = rule.activity.window.decorView
+            bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+            v.draw(Canvas(bmp))
+        }
         val dir = File("build/screens").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
