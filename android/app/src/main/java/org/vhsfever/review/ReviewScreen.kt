@@ -152,7 +152,8 @@ fun ReviewScreen(m: AppModel, fileId: String) {
                 val (i, n) = remember(f.id, m.files) { m.siblingsCount(f) }
                 Text("File $i of $n in this movie", color = C.muted, fontSize = 12.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 if (m.lastUndoLabel != null) TextButton(onClick = { m.undoLast()?.let { id -> m.replaceTop(Screen.Review(id)) } }) { Text("Undo", color = C.gold) }
-                TextButton(onClick = { goNext(onlyUnreviewed = false) }) { Text("Skip ›", color = C.muted) }
+                // In "To review", Skip goes to the next file that still needs a decision, never back to reviewed ones.
+                TextButton(onClick = { goNext(onlyUnreviewed = m.mode == QueueMode.REVIEW) }) { Text("Skip ›", color = C.muted) }
             }
         }
     }
