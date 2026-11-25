@@ -75,6 +75,81 @@ class KindAndVerdict(unittest.TestCase):
         self.assertEqual((r["format"], r["format_confidence"]), ("DVD", "high"))
 
 
+def page(title, n=2, cols=("vhsvault",)):
+    return {"archive_identifier": "item1", "archive_title": title, "collection": list(cols),
+            "video_file_count": n, "note": "Container only."}
+
+
+MPEG2 = dict(OK, video_codec="mpeg2video", audio_codec="ac3")
+
+
+class PatternsFromRealPages(unittest.TestCase):
+    def two(self, name, dur, orig_probe, copy_probe, item=None):
+        """An uploaded file plus the Archive's MP4 copy of it, in one recording."""
+        it = interpret_filename(name)
+        srcs = [{"source_id": "o", "original_name": name, "archive_identifier": "item1", "duration_seconds": dur,
+                 "role": "original", "format": "MPEG2", "browser_playable": False},
+                {"source_id": "c", "original_name": name.rsplit(".", 1)[0] + ".ia.mp4", "archive_identifier": "item1",
+                 "duration_seconds": dur, "role": "archive_derivative", "format": "h.264", "browser_playable": True}]
+        r = {"recording_id": "r", "interpretation": it, "part_count": 1, "flags": [], "title_suggestion_id": None,
+             "segments": [{"duration_seconds": dur, "sources": srcs}], "catalog_category": "vhs_release"}
+        rows = a.sort_all([r], [item or page("x", 50)], [], [], {"o": orig_probe, "c": copy_probe})
+        return {x["file_id"]: x for x in rows}
+
+    def test_odd_file_type_is_fine_when_the_archive_copy_plays(self):
+        rows = self.two("Burke's Backyard NWS-9, 28-10-95.mpg", 3900, MPEG2, OK,
+                        page("Burke's Backyard (NWS-9, 28/10/95)", 2, ["flemishdog", "vhsvault"]))
+        self.assertEqual(rows["o"]["verdict"], "good")
+        self.assertIn("Archive's MP4 copy", " ".join(rows["o"]["verdict_why"]))
+        self.assertEqual((rows["o"]["kind"], rows["o"]["air_date"], rows["o"]["channel"]),
+                         ("tv_recording", "1995-10-28", "NWS-9"))
+        # without a working copy the worry stays
+        rows = self.two("Movie (1990 VHS).mpg", 5000, MPEG2, dict(OK, verdict="could_not_open"))
+        self.assertEqual(rows["o"]["verdict"], "review")
+
+    def test_australian_commercial_breaks(self):
+        r = sort_one("Break HSV-7, 13-05-86.mpg", 156, item=page("Channel Seven Commercial Break (HSV-7, 13/05/86)"))
+        self.assertEqual((r["kind"], r["verdict"], r["air_date"]), ("commercial_compilation", "good", "1986-05-13"))
+        r = sort_one("Commercials ATV-10, 02-08-90.mpg", 1500, item=page("Network TEN Commercials (ATV-10, 02/08/90)"))
+        self.assertEqual(r["kind"], "commercial_compilation")
+
+    def test_opening_page_pieces_are_the_opening(self):
+        item = page("Opening to Lethal Weapon 4 1998 VHS", 5, ["vhsopenings", "vhsvault"])
+        r = sort_one("videoplayback (4).mp4", 174, item=item)
+        self.assertEqual((r["kind"], r["shelf"], r["verdict"]), ("tape_opening", "vhs_opening_or_previews", "good"))
+        r = sort_one("20261015_201323.mp4", 18, item=page("Closing Logos Crystal Lake (DVS)"))
+        self.assertEqual(r["kind"], "tape_opening")
+
+    def test_camera_named_pieces_of_one_recording_are_clips(self):
+        recs = [rec(f"VHS1984_VID_20261018_12{i:02d}11.mp4", 160, probe_id=f"f{i}") for i in range(10)]
+        item = page("All About the Benjamins (2002) Starz InBlack (April 1st, 2011) Full Movie", 46,
+                    ["vhsmovies", "vhsvault"])
+        rows = a.sort_all(recs, [item], [], [], {f"f{i}": OK for i in range(10)})
+        self.assertEqual({(r["kind"], r["verdict"], r["reason"]) for r in rows}, {("clip", "bad", "Clip")})
+        # screen recordings on a page are not pieces of one capture
+        recs = [rec(f"bandicam 2026 05 2{i} 11 10 53 991.mp4", 300, probe_id=f"f{i}") for i in range(5)]
+        rows = a.sort_all(recs, [page("Pingu Barrel Of Fun ( 1991 UK VHS)", 12)], [], [], {f"f{i}": OK for i in range(5)})
+        self.assertNotIn("bad", {r["verdict"] for r in rows})
+
+    def test_new_buckets(self):
+        self.assertEqual(sort_one("Callanetics.mov", 3560, item=page("Callanetics", 2, ["vhsinstructionals"]))["kind"],
+                         "instructional")
+        self.assertEqual(sort_one("Soccer's Hard Men (1992 UK VHS).mp4", 4600)["kind"], "sports")
+        self.assertEqual(sort_one("CBS 2 10PM News 21 Nov 2001.mp4", 1200,
+                                  item=page("WBBM Channel 2 CBS News at 10", 2, ["vhsnews"]))["kind"], "news")
+        r = sort_one("1990 Found VHS • Balloon Stampede Dance (5-12-90).mp4", 850,
+                     item=page("1990 Found VHS • Balloon Stampede Dance (5-12-90)", 1))
+        self.assertEqual((r["kind"], r["shelf"]), ("home_video", "home_video"))
+        r = sort_one("BBC One Continuity (2011-11-23) November 23rd 2011.mp4", 250)
+        self.assertEqual(r["kind"], "promo_or_bump")
+        r = sort_one("elvis_on_ice._hevc_nvenc.mkv", 22200, item=page("Found VHS Tape - 1990s - Elvis Stojko on Ice"))
+        self.assertEqual(r["kind"], "tv_recording")
+
+    def test_one_collection_as_plain_text(self):
+        r = sort_one("Bambi (1989 VHS).mp4", 4200, item=dict(page("Bambi"), collection="vhsvault"))
+        self.assertEqual(r["verdict"], "good")
+
+
 class Evaluation(unittest.TestCase):
     def test_counts_agreement_and_lists_misses(self):
         rows = [{"file_id": "a", "verdict": "good", "reason": None, "verdict_why": [], "name": "A", "shelf": None,

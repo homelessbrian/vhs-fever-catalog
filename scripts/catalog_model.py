@@ -1098,54 +1098,82 @@ def summarize(model: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
 
 
 def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
-                delay: float = 0.5, max_age_days: float = 14) -> list[dict[str, Any]]:
+                delay: float = 0.2, max_age_days: float = 14, workers: int = 6) -> list[dict[str, Any]]:
     """Read-only Archive /metadata fetch (keeps md5 checksums). Cached on disk.
 
     A saved copy is reused until it is ``max_age_days`` old, so a nightly
-    rebuild doesn't download every page again; pages rarely change."""
+    rebuild doesn't download every page again; pages rarely change. Pages that
+    need downloading are read a few at a time (``workers``), politely spaced."""
+    import sys
+    import threading
     import time
     import urllib.request
+    from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path
-    items = []
-    fetched_now: list[str] = []
+    idents = list(identifiers)
     cache = Path(cache_dir) if cache_dir else None
     if cache:
         cache.mkdir(parents=True, exist_ok=True)
-    for ident in identifiers:
-        path = cache / (ident.replace("/", "_") + ".json") if cache else None
-        data = None
+
+    def cache_path(ident: str):
+        return cache / (ident.replace("/", "_") + ".json") if cache else None
+
+    def saved(ident: str):
+        path = cache_path(ident)
         if path and path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
             fetched = data.get("_vhsfever_fetched_at") or path.stat().st_mtime
-            if time.time() - float(fetched) > max_age_days * 86400:
-                data = None
-        if data is None:
-            url = "https://archive.org/metadata/" + urllib.parse.quote(ident, safe="")
-            req = urllib.request.Request(url, headers={"User-Agent": "VHS-FEVER-Catalog/0.3 (metadata only)"})
-            for attempt in range(3):
-                try:
-                    with urllib.request.urlopen(req, timeout=60) as resp:
-                        data = json.load(resp)
-                    break
-                except Exception:  # noqa: BLE001 - retry transient network errors
-                    if attempt == 2:
-                        raise
-                    time.sleep(2 * (attempt + 1))
-            data["_vhsfever_fetched_at"] = time.time()
-            if path:
-                path.write_text(json.dumps(data), encoding="utf-8")
-            fetched_now.append(ident)
-            time.sleep(delay)
+            if time.time() - float(fetched) <= max_age_days * 86400:
+                return data
+        return None
+
+    lock = threading.Lock()
+    last_start = [0.0]
+
+    def download(ident: str):
+        # Space out the starts a little so the Archive isn't hit all at once.
+        with lock:
+            wait = last_start[0] + delay - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            last_start[0] = time.time()
+        url = "https://archive.org/metadata/" + urllib.parse.quote(ident, safe="")
+        req = urllib.request.Request(url, headers={"User-Agent": "VHS-FEVER-Catalog/0.3 (metadata only)"})
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    data = json.load(resp)
+                break
+            except Exception:  # noqa: BLE001 - retry transient network errors
+                if attempt == 3:
+                    raise
+                time.sleep(3 * (attempt + 1))
+        data["_vhsfever_fetched_at"] = time.time()
+        path = cache_path(ident)
+        if path:
+            path.write_text(json.dumps(data), encoding="utf-8")
+        return data
+
+    pages = {i: saved(i) for i in idents}
+    todo = [i for i, d in pages.items() if d is None]
+    if todo:
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            for ident, data in zip(todo, pool.map(download, todo)):
+                pages[ident] = data
+    items = []
+    for ident in idents:
+        data = pages[ident]
         md = data.get("metadata") or {}
+        col = md.get("collection")
         items.append({
             "identifier": ident, "title": md.get("title"),
-            "collection": md.get("collection"),
+            # One collection comes back as a plain string, several as a list.
+            "collection": [col] if isinstance(col, str) else col,
             "subject": md.get("subject"), "description": md.get("description"), "date": md.get("date"),
             "access_restricted": bool(data.get("is_dark")) or str(md.get("access-restricted-item", "")).lower() == "true",
             "files": data.get("files") or [],
         })
-    import sys
-    print(f"Archive pages: {len(fetched_now)} downloaded, {len(items) - len(fetched_now)} reused from the saved copy",
+    print(f"Archive pages: {len(todo)} downloaded, {len(items) - len(todo)} reused from the saved copy",
           file=sys.stderr)
     return items
 

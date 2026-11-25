@@ -29,7 +29,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-VERSION = 1
+sys_path = str(Path(__file__).resolve().parent)
+import sys  # noqa: E402
+if sys_path not in sys.path:
+    sys.path.insert(0, sys_path)
+from title_search import looks_like_no_name  # noqa: E402
+
+VERSION = 2
 
 # --------------------------------------------------------------------------
 # Words in names
@@ -74,7 +80,7 @@ AIR_DATE_WORDS = re.compile(
 CHANNEL = re.compile(r"\b(?:[KW][A-Z]{2,3}(?:[- ]?TV)?|ABC|NBC|CBS|FOX|PBS|UPN|WB|HBO|MTV|VH1|TBS|TNT|USA Network|"
                      r"Nickelodeon|Nick Jr\.?|Nick at Nite|Cartoon Network|Disney Channel|Toon Disney|ABC Family|"
                      r"Fox Kids|Kids' WB|Showtime|Cinemax|Sci[- ]?Fi Channel|Comedy Central|Channel \d{1,2})\b")
-PROMO = re.compile(r"\b(?:bumpers?|bumps?|idents?|station id|promos?|promotional|interstitials?|"
+PROMO = re.compile(r"\b(?:bumpers?|bumps?|idents?|station id|promos?|promotional|interstitials?|continuity|"
                    r"sign[\s._-]*(?:on|off)|test pattern|coming up next|feature presentation)\b", I)
 SCREENER = re.compile(r"\b(?:promo(?:tional)? (?:copy|tape|screener)|screener)\b", I)
 TRAILER = re.compile(r"\b(?:trailers?|teasers?|previews?|sneak peeks?|tv spots?)\b", I)
@@ -85,6 +91,27 @@ EXTRA = re.compile(r"\b(?:behind the scenes|making of|featurette|deleted scenes?
                    r"animatics?|work[\s._-]*in[\s._-]*progress|workprint|storyboards?|bonus|extras?|"
                    r"interview|commentary|screen ?test|rough cut|pilot presentation)\b", I)
 NOT_WHOLE = re.compile(r"\b(?:clip|clips|excerpts?|scenes?|segment|snippet|sample|test)\b", I)
+# A page about a tape's opening or closing: every short file on it is a piece
+# of that opening (previews, logos, warnings), whatever the file is called.
+OPENING_PAGE = re.compile(r"^\s*(?:opening|closing|openings|closings)\s+(?:to|of|and closing to)\b|"
+                          r"^\s*closing logos?\b|\bopening (?:and|&) closing\b", I)
+COMMERCIAL_BREAK = re.compile(r"\bcommercial breaks?\b|\bad breaks?\b", I)
+# Australian off-air tapes: "Burke's Backyard (NWS-9, 28/10/95)", "HSV-7, 13-05-86".
+AU_AIRING = re.compile(r"\b(?P<ch>[A-Z]{2,4}-\d{1,2}),\s*(?P<d>\d{1,2})[/-](?P<m>\d{1,2})[/-](?P<y>\d{2}|\d{4})\b")
+INSTRUCTIONAL = re.compile(r"\b(?:instructional|how to|learn(?:ing)? to|lessons?|tutorial|training|workouts?|aerobics|"
+                           r"exercises?|fitness|yoga|cooking|cook-?up|recipes?|guide to|tips|self[- ]help|"
+                           r"safety (?:video|film)|educational|for beginners|step by step|course)\b", I)
+SPORTS = re.compile(r"\b(?:football|soccer|baseball|basketball|hockey|golf|wrestling|wwf|wcw|wwe|boxing|nfl|nba|nhl|"
+                    r"mlb|world cup|super bowl|olympics?|grand prix|nascar|cricket|rugby|tennis|skating|on ice|"
+                    r"best (?:goals|tries)|greatest (?:goals|plays)|season review|highlights)\b", I)
+NEWS = re.compile(r"\b(?:news(?:cast)?|bulletins?|news coverage|evening report|current affairs)\b", I)
+HOME_VIDEO = re.compile(r"\bhome (?:movies?|videos? of)\b|\bfamily (?:videos?|movies?|footage|vacation)\b|"
+                        r"\bcamcorder\b|\bwedding (?:video|reception|ceremony)\b|\bbirthday party\b", I)
+# "Found VHS Tape - 1990s - Show + Show + Show": a home-recorded tape of TV.
+FOUND_TAPE = re.compile(r"\bfound (?:vhs|video|home video|tapes?|footage)\b", I)
+# Names a capture device or phone gives: a date and a time ("VHS1984_VID_20261018_124511",
+# "20240108_123358", "vhs_sp_20261107_151756"). Screen recorders and editors don't count.
+CAPTURE_STAMP = re.compile(r"(?:^|[_\s-])(?:19|20)\d{6}[_\s-]\d{6}(?:\D|$)")
 
 # A short version of the review app's language check (Language.kt).
 LANGS = (r"spanish|espa[nñ]ol|castellano|latino|french|fran[cç]ais|qu[eé]b[eé]cois|german|deutsch|italian|italiano|"
@@ -127,6 +154,40 @@ def item_describes_video(item: dict[str, Any]) -> bool:
 
 def norm_words(text: str) -> str:
     return re.sub(r"[_.]+", " ", text or "")
+
+
+def collections_of(item: dict[str, Any]) -> set[str]:
+    """The page's collections. One collection can come as a plain string."""
+    c = item.get("collection") or []
+    return {c} if isinstance(c, str) else {str(x) for x in c}
+
+
+def name_says_nothing(name: str) -> bool:
+    """'videoplayback (2).mp4', 'VHS1984_VID_20261018_124511.mp4', '20240108_123358.mp4'."""
+    stem = re.sub(r"\.(?:ia\.)?[a-z0-9]{2,4}$", "", name or "", flags=I)
+    return looks_like_no_name(stem)
+
+
+def page_text(item: dict[str, Any], name: str) -> str:
+    """The page title, when it tells us about this file: the page is about one
+    video, or the file itself has only a camera or download-tool name."""
+    if item_describes_video(item) or name_says_nothing(name):
+        return norm_words(item.get("archive_title") or "")
+    return ""
+
+
+def au_airing(text: str) -> dict[str, Any] | None:
+    m = AU_AIRING.search(text or "")
+    if not m:
+        return None
+    y = int(m.group("y"))
+    y = y + (1900 if y >= 40 else 2000) if y < 100 else y
+    try:
+        from datetime import date
+        day = date(y, int(m.group("m")), int(m.group("d"))).isoformat()
+    except ValueError:
+        return None
+    return {"channel": m.group("ch"), "air_date": day}
 
 
 # --------------------------------------------------------------------------
@@ -174,7 +235,7 @@ def detect_format(rec: dict[str, Any], src: dict[str, Any], probe: dict[str, Any
             score[fmt] += 1
             clues.append(f"Archive page title mentions {fmt}")
             break
-    cols = set(item.get("collection") or [])
+    cols = collections_of(item)
     if cols & {"vhsvault", "vhsmovies", "vhskids", "vhstvshows", "vhsmisc", "vhscommercials", "vhstrailers"}:
         score["VHS"] += 0.5   # a weak hint only: VHS Vault also holds DVDs and downloads
 
@@ -220,12 +281,16 @@ def detect_format(rec: dict[str, Any], src: dict[str, Any], probe: dict[str, Any
 # --------------------------------------------------------------------------
 def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], dur: float | None) -> dict[str, Any]:
     it = rec["interpretation"]
-    name = norm_words(src.get("original_name") or "")
-    text = name + " | " + (norm_words(item.get("archive_title") or "") if item_describes_video(item) else "")
-    cols = set(item.get("collection") or [])
+    raw_name = src.get("original_name") or ""
+    name = norm_words(raw_name)
+    page = page_text(item, raw_name)
+    title = norm_words(item.get("archive_title") or "")   # the page title, whatever the page holds
+    text = name + " | " + page
+    cols = collections_of(item)
     why: list[str] = []
     kind = None
     commercials = "unknown"
+    extra: dict[str, Any] = {}
 
     tv = it.get("tv_tape")
     if it.get("content_hint") == "off_air_tv_tape" and tv:
@@ -240,28 +305,51 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
             why.append(f"piece {tv['piece']} of {tv['pieces']} of one tape; play them in order")
         why.append("taped off TV, so ads are probably in it")
         return {"kind": kind, "builtin_commercials": commercials, "why": why}
+    airing = au_airing(raw_name) or au_airing(item.get("archive_title") or "")
+    if airing:
+        extra = {"air_date": airing["air_date"], "channel": airing["channel"]}
+    has_ad_words = COMMERCIAL.search(text) and not WITH_ADS.search(text)
     if (it.get("part_total") or 0) > 1 or rec.get("part_count", 1) > 1:
         kind = "clip"
         why.append(f"piece {it.get('part_index') or '?'} of {it.get('part_total') or rec.get('part_count')} of a split video")
-    elif it.get("content_hint") == "tape_opening_or_previews" or OPENING.search(name):
+    elif (item.get("_camera_pieces") and name_says_nothing(raw_name) and CAPTURE_STAMP.search(raw_name)
+          and (dur or 0) < 15 * 60 and not OPENING_PAGE.search(title)):
+        kind = "clip"
+        extra["pieces"] = item["_camera_pieces"]
+        why.append(f"one of {item['_camera_pieces']} short camera files on one page: pieces of one recording")
+    elif (it.get("content_hint") == "tape_opening_or_previews" or OPENING.search(name)
+          or (OPENING_PAGE.search(title) and (dur is None or dur < 20 * 60))):
         kind = "tape_opening"
-        why.append("opening or closing of a tape")
-    elif (OFF_AIR.search(text) or WITH_ADS.search(name) or AIR_DATE_WORDS.search(name)
-          or (it.get("air_date") and not it.get("episode"))) and not (
-            COMMERCIAL.search(name) and not WITH_ADS.search(name) and (dur or 0) <= 240):
+        why.append("opening or closing of a tape" if not OPENING_PAGE.search(title) or OPENING.search(name)
+                   else "piece of a tape's opening or closing (the Archive page says so)")
+    elif (dur or 0) >= 150 * 60 and FOUND_TAPE.search(title):
         kind = "tv_recording"
-        why.append("taped off live TV")
-    elif COMMERCIAL.search(name) or cols & {"vhscommercials", "classic_tv_commercials", "classic_tv_commercials_emperor"}:
-        if dur is not None and dur <= 240:
+        why.append("a found tape, longer than any movie: recorded off TV")
+    elif (dur or 0) >= 60 and FOUND_TAPE.search(title) and not has_ad_words:
+        kind = "home_video"
+        why.append("found home footage (the Archive page says so)")
+    elif PROMO.search(text if name_says_nothing(raw_name) else name) and (dur is None or dur <= 15 * 60) \
+            and not SCREENER.search(name) and not COMMERCIAL_BREAK.search(text):
+        kind = "promo_or_bump"
+        why.append("station ID, bumper, continuity or promo")
+    elif (has_ad_words or cols & {"vhscommercials", "classic_tv_commercials", "classic_tv_commercials_emperor"}) \
+            and (dur or 0) <= 90 * 60:
+        if COMMERCIAL_BREAK.search(text) or (airing and (dur or 0) > 60 and has_ad_words):
+            kind = "commercial_compilation"
+            why.append("a commercial break taped off TV")
+        elif dur is not None and dur <= 240:
             kind = "commercial"
             why.append("commercial, short enough to be one ad")
         else:
             kind = "commercial_compilation"
             why.append("several commercials in one file" if dur else "commercials")
         commercials = "true"
-    elif PROMO.search(name) and (dur is None or dur <= 600) and not SCREENER.search(name):
-        kind = "promo_or_bump"
-        why.append("station ID, bumper or promo")
+    elif (OFF_AIR.search(text) or WITH_ADS.search(name) or AIR_DATE_WORDS.search(name) or airing
+          or ((dur or 0) >= 150 * 60 and FOUND_TAPE.search(title))
+          or (page and AIR_DATE_WORDS.search(page))
+          or (it.get("air_date") and not it.get("episode"))):
+        kind = "tv_recording"
+        why.append("taped off live TV" + (f" ({airing['channel']}, {airing['air_date']})" if airing else ""))
     elif TRAILER.search(name) or ("vhstrailers" in cols and (dur or 0) < 600):
         kind = "trailer"
         why.append("trailer or preview")
@@ -274,6 +362,18 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
     elif MUSIC.search(text) or "vhsconcerts_music" in cols:
         kind = "music"
         why.append("concert or music video")
+    elif (dur or 0) >= 60 and (HOME_VIDEO.search(text) or FOUND_TAPE.search(title)):
+        kind = "home_video"
+        why.append("home movie or found family footage")
+    elif (dur or 0) >= 3 * 60 and ("vhsinstructionals" in cols or INSTRUCTIONAL.search(text)):
+        kind = "instructional"
+        why.append("how-to, exercise or educational tape")
+    elif (dur or 0) >= 3 * 60 and ("vhssports" in cols or SPORTS.search(text)):
+        kind = "sports"
+        why.append("sports tape")
+    elif (dur or 0) >= 60 and ("vhsnews" in cols or NEWS.search(text)):
+        kind = "news"
+        why.append("news broadcast")
     elif dur is not None and dur >= 40 * 60:
         kind = "movie"
         why.append("feature length")
@@ -312,20 +412,31 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
                 commercials = "false"
         if CHANNEL.search(norm_words(src.get("original_name") or "")):
             why.append("channel name in file name")
-    return {"kind": kind, "builtin_commercials": commercials, "why": why}
+    return {"kind": kind, "builtin_commercials": commercials, "why": why, **extra}
 
 
 # --------------------------------------------------------------------------
 # Good / bad / review
 # --------------------------------------------------------------------------
 MIN_LEN = {"movie": 15 * 60, "short": 3 * 60, "tv_episode": 4 * 60, "tv_recording": 10 * 60, "music": 2 * 60,
-           "commercial": 10, "commercial_compilation": 60}
+           "commercial": 10, "commercial_compilation": 60,
+           # Kept for the ad list and the retro TV guide, so a working one is good as what it is.
+           "promo_or_bump": 3, "trailer": 20, "tape_opening": 20,
+           "instructional": 3 * 60, "sports": 3 * 60, "news": 60, "home_video": 60}
 GOOD_KINDS = set(MIN_LEN)
+CODEC_WORRY = re.compile(r"may not play on TV|can't stream this file type")
+
+
+def plays_fine(probe: dict[str, Any] | None) -> bool:
+    """Sound and picture check passed and both play everywhere (H.264 + AAC)."""
+    p = probe or {}
+    return (p.get("verdict") == "ok" and p.get("video_codec") in GOOD_VIDEO and p.get("audio_codec") in GOOD_AUDIO
+            and not all(x is not None and x >= -0.05 for x in (p.get("sample_max_db") or [None])))
 TV_SOURCED = {"tv_recording", "commercial", "commercial_compilation", "promo_or_bump"}
 
 
 def decide(kind: dict[str, Any], src: dict[str, Any], probe: dict[str, Any], dur: float | None,
-           name: str) -> dict[str, Any]:
+           name: str, copy_probe: dict[str, Any] | None = None) -> dict[str, Any]:
     v = probe.get("verdict")
     k = kind["kind"]
     # Hard "bad": the file itself is broken, or it is a piece of a split video.
@@ -336,7 +447,7 @@ def decide(kind: dict[str, Any], src: dict[str, Any], probe: dict[str, Any], dur
         return {"verdict": "bad", "reason": "No video", "confidence": "high", "why": ["no picture in the file"]}
     if v == "no_audio_track":
         return {"verdict": "bad", "reason": "No audio", "confidence": "high", "why": ["no sound track"]}
-    if k == "clip" and (src.get("_part_total") or 0) > 1:
+    if k == "clip" and ((src.get("_part_total") or 0) > 1 or (kind.get("pieces") or 0) > 1):
         return {"verdict": "bad", "reason": "Clip", "confidence": "high",
                 "why": ["piece of a video split into parts"]}
 
@@ -365,15 +476,33 @@ def decide(kind: dict[str, Any], src: dict[str, Any], probe: dict[str, Any], dur
         worries.append(f"{k.replace('_', ' ')}, not a full program")
     elif dur is None or dur < MIN_LEN[k]:
         worries.append("shorter than expected")
+    # The app and TV play the Archive's MP4 copy when the uploaded file is an
+    # odd type, so the uploaded file's own codec doesn't matter then.
+    via_copy = src.get("role") != "archive_derivative" and plays_fine(copy_probe)
+    if via_copy and any(CODEC_WORRY.search(w) for w in worries):
+        worries = [w for w in worries if not CODEC_WORRY.search(w)]
+        if probe and probe.get("verdict") == "silent_audio" and copy_probe.get("verdict") == "ok":
+            worries = [w for w in worries if not w.startswith("sound was silent")]
+        note = ["plays through the Archive's MP4 copy (H.264 + AAC)"]
+    else:
+        note = []
     if k == "clip":
         return {"verdict": "review", "reason": "Clip", "confidence": "medium", "why": kind["why"] + worries}
     if worries:
-        return {"verdict": "review", "reason": None, "confidence": "low", "why": worries}
-    return {"verdict": "good", "reason": None, "confidence": "high",
-            "why": ["plays, has sound and picture, full length, English name"]}
+        return {"verdict": "review", "reason": None, "confidence": "low", "why": worries + note}
+    what = {"commercial": "goes on the ad list", "commercial_compilation": "goes on the ad list",
+            "promo_or_bump": "goes on the ad list", "trailer": "goes on the ad list",
+            "tape_opening": "kept with the tape openings"}.get(k)
+    return {"verdict": "good", "reason": None, "confidence": "high" if not note else "medium",
+            "why": ["plays, has sound and picture, full length, English name"
+                    if not what else f"plays, has sound and picture, English name; {what}"] + note}
 
 
 def shelf_for(fmt: dict[str, Any], kind: str) -> tuple[str | None, str]:
+    if kind == "tape_opening":
+        return "vhs_opening_or_previews", "tape opening or previews"
+    if kind == "home_video":
+        return "home_video", "home movie"
     if kind in {"commercial", "commercial_compilation", "promo_or_bump", "trailer", "clip", "extra"}:
         return "not_catalog", "not a full program"
     if fmt["format"] in TAPE_FORMATS:
@@ -436,19 +565,40 @@ def tv_summary(tv: dict[str, Any]) -> dict[str, Any]:
             "transcript": tv.get("transcript")}
 
 
+def mark_camera_pieces(recs, item_by_id) -> None:
+    """A page with several short files that only have camera or capture names
+    ("VHS1984_VID_20261018_124511.mp4") is one recording cut into pieces."""
+    per_page: dict[str, list[float]] = {}
+    for rec in recs:
+        for seg in rec["segments"]:
+            for src in seg["sources"]:
+                n = src.get("original_name") or ""
+                if src.get("role") == "archive_derivative" or not (name_says_nothing(n) and CAPTURE_STAMP.search(n)):
+                    continue
+                per_page.setdefault(src.get("archive_identifier"), []).append(
+                    src.get("duration_seconds") or seg.get("duration_seconds") or 0)
+    for ident, durs in per_page.items():
+        durs.sort()
+        if len(durs) >= 3 and durs[len(durs) // 2] < 8 * 60 and sum(durs) >= 15 * 60 and ident in item_by_id:
+            item_by_id[ident]["_camera_pieces"] = len(durs)
+
+
 def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
-    item_by_id = {i["archive_identifier"]: i for i in items}
+    item_by_id = {i["archive_identifier"]: dict(i) for i in items}
     art_by_rec: dict[str, list[dict[str, Any]]] = {}
     for a in art:
         if a.get("recording_id"):
             art_by_rec.setdefault(a["recording_id"], []).append(a)
     title_by_id = {t["title_suggestion_id"]: t for t in titles}
+    mark_camera_pieces(recs, item_by_id)
     out = []
     for rec in recs:
         it = rec["interpretation"]
         title = title_by_id.get(rec.get("title_suggestion_id"))
         art_pick = pick_art(rec, art_by_rec, title)
         for seg in rec["segments"]:
+            copy_ids = [x["source_id"] for x in seg["sources"] if x.get("role") == "archive_derivative"]
+            copy_probe = next((probes[c] for c in copy_ids if plays_fine(probes.get(c))), None)
             for src in seg["sources"]:
                 fid = src["source_id"]
                 probe = probes.get(fid, {})
@@ -460,13 +610,15 @@ def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
                 if kind["kind"] in TV_SOURCED and (fmt["scores"].get(fmt["format"], 0) < 4):
                     fmt = dict(fmt, format="TV", confidence="medium",
                                clues=fmt["clues"] + ["recorded from TV, no disc or tape named"])
-                d = decide(kind, src, probe, dur, src.get("original_name") or "")
+                d = decide(kind, src, probe, dur, src.get("original_name") or "", copy_probe)
                 shelf, shelf_why = shelf_for(fmt, kind["kind"])
                 out.append({
                     "file_id": fid, "recording_id": rec["recording_id"],
                     "name": src.get("original_name"), "archive_identifier": src.get("archive_identifier"),
                     "playback_url": src.get("playback_url"), "role": src.get("role"),
-                    "air_date": it.get("air_date"), "years_in_name": years_in(src.get("original_name") or ""),
+                    "air_date": it.get("air_date") or kind.get("air_date"),
+                    **({"channel": kind["channel"]} if kind.get("channel") else {}),
+                    "years_in_name": years_in(src.get("original_name") or ""),
                     "duration_seconds": dur, "kind": kind["kind"], "kind_why": kind["why"],
                     "builtin_commercials": kind["builtin_commercials"],
                     "format": fmt["format"], "format_confidence": fmt["confidence"],
@@ -536,7 +688,7 @@ def build_ad_list(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "duration_seconds": r["duration_seconds"],
             "year": year, "decade": f"{year // 10 * 10}s" if year else None, "air_date": r.get("air_date"),
             "holidays": [k for k, rx in HOLIDAY_RX.items() if rx.search(text)],
-            "channel": ((r.get("tv") or {}).get("channels") or [None])[0]
+            "channel": ((r.get("tv") or {}).get("channels") or [None])[0] or r.get("channel")
                        or (CHANNEL.search(text).group(0) if CHANNEL.search(text) else None),
             **({"shows": r["tv"]["shows"], "tape_number": r["tv"]["tape_number"],
                 "tape_piece": r["tv"]["piece"], "tape_pieces": r["tv"]["pieces"],
