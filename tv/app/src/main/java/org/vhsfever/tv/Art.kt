@@ -14,10 +14,11 @@ import java.net.URL
 import java.net.URLEncoder
 
 /** Poster, background and blurb from TMDB. Stand-in art until real VHS box scans are wired up. */
-data class Art(val poster: String?, val backdrop: String?, val overview: String?, val year: String?)
+data class Art(val poster: String?, val backdrop: String?, val overview: String?, val year: String?,
+    val genres: List<String> = emptyList())
 
 class ArtRepo(ctx: Context) {
-    private val cacheFile = File(ctx.filesDir, "tmdb-art.json")
+    private val cacheFile = File(ctx.filesDir, "tmdb-art-v2.json")
     private val cache = HashMap<String, Art>()
     val available get() = BuildConfig.TMDB_TOKEN.isNotBlank()
 
@@ -25,7 +26,9 @@ class ArtRepo(ctx: Context) {
         runCatching {
             val o = JSONObject(cacheFile.readText())
             for (k in o.keys()) o.optJSONObject(k)?.let {
-                cache[k] = Art(it.s("poster"), it.s("backdrop"), it.s("overview"), it.s("year"))
+                val g = it.optJSONArray("genres")
+                cache[k] = Art(it.s("poster"), it.s("backdrop"), it.s("overview"), it.s("year"),
+                    if (g == null) emptyList() else (0 until g.length()).map { i -> g.optString(i) })
             }
         }
     }
@@ -63,6 +66,7 @@ class ArtRepo(ctx: Context) {
             backdrop = o.s("backdrop_path")?.let { "$IMG/w1280$it" },
             overview = o.s("overview"),
             year = (o.s("release_date") ?: o.s("first_air_date"))?.take(4),
+            genres = genresOf(o),
         )
     }
 
@@ -77,7 +81,7 @@ class ArtRepo(ctx: Context) {
         val o = JSONObject()
         synchronized(cache) {
             for ((k, a) in cache) o.put(k, JSONObject().put("poster", a.poster).put("backdrop", a.backdrop)
-                .put("overview", a.overview).put("year", a.year))
+                .put("overview", a.overview).put("year", a.year).put("genres", org.json.JSONArray(a.genres)))
         }
         runCatching { cacheFile.writeText(o.toString()) }
     }
@@ -91,7 +95,27 @@ class ArtRepo(ctx: Context) {
         return c.inputStream.bufferedReader().use { it.readText() }
     }
 
+    private fun genresOf(o: JSONObject): List<String> {
+        o.optJSONArray("genres")?.let { a -> return (0 until a.length()).mapNotNull { a.optJSONObject(it)?.s("name") }.map(::shortGenre) }
+        val ids = o.optJSONArray("genre_ids") ?: return emptyList()
+        return (0 until ids.length()).mapNotNull { GENRES[ids.optInt(it)] }.map(::shortGenre)
+    }
+
     companion object {
+        /** TMDB genre ids (movies and TV) to names. */
+        private val GENRES = mapOf(
+            28 to "Action", 12 to "Adventure", 16 to "Animation", 35 to "Comedy", 80 to "Crime", 99 to "Documentary",
+            18 to "Drama", 10751 to "Family", 14 to "Fantasy", 36 to "History", 27 to "Horror", 10402 to "Music",
+            9648 to "Mystery", 10749 to "Romance", 878 to "Science Fiction", 10770 to "TV Movie", 53 to "Thriller",
+            10752 to "War", 37 to "Western", 10759 to "Action & Adventure", 10762 to "Kids", 10765 to "Sci-Fi & Fantasy",
+            10764 to "Reality", 10767 to "Talk", 10763 to "News", 10766 to "Soap", 10768 to "War & Politics",
+        )
+        fun shortGenre(g: String) = when (g) {
+            "Science Fiction", "Sci-Fi & Fantasy" -> "Sci-Fi"
+            "Action & Adventure" -> "Action"
+            else -> g
+        }
+
         private const val API = "https://api.themoviedb.org/3"
         private const val IMG = "https://image.tmdb.org/t/p"
     }

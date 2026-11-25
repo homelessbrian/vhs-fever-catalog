@@ -20,6 +20,9 @@ data class Tape(
     val archiveItem: String,
     val minutes: Int?,
     val sources: List<Source>,  // the marked file first, then backups to try if it won't play
+    val media: String? = null,
+    val releaseYear: String? = null,
+    val addedAt: String = "",   // when it was marked good
 )
 
 /** One box on the shelf: a movie or show, with every good tape of it. */
@@ -38,6 +41,8 @@ data class Title(
     val searchYear: String? = null,
     val confirmed: Boolean = false,  // Brian picked the TMDB match in the review app
     val backdrop: String? = null,
+    val genres: List<String> = emptyList(),
+    val addedAt: String = "",        // when the newest tape of it was marked good
 ) {
     /** Fills in TMDB art and blurb; the poster counts as confirmed only when the TMDB match is. */
     fun withArt(a: Art?): Title = if (a == null) this else copy(
@@ -46,10 +51,20 @@ data class Title(
         overview = overview ?: a.overview,
         year = year ?: a.year,
         backdrop = a.backdrop,
+        genres = a.genres,
     )
 }
 
 data class Catalog(val titles: List<Title>) {
+    /** Newest tapes marked good first. */
+    val newArrivals: List<Title> get() = titles.sortedByDescending { it.addedAt }
+
+    /** Each genre with its titles, biggest shelf first. */
+    val genreShelves: List<Pair<String, List<Title>>>
+        get() = titles.flatMap { it.genres }.distinct()
+            .map { g -> g to titles.filter { g in it.genres } }
+            .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first })
+
     val shelves: List<Pair<String, List<Title>>>
         get() = SHELF_ORDER.mapNotNull { s -> titles.filter { it.shelf == s }.takeIf { it.isNotEmpty() }?.let { s to it } } +
             titles.filter { it.shelf !in SHELF_ORDER }.groupBy { it.shelf }.toList()
@@ -102,6 +117,9 @@ data class Catalog(val titles: List<Title>) {
                                 archiveItem = src.optString("item"),
                                 minutes = src.optDouble("dur").takeIf { !it.isNaN() && it > 0 }?.let { Math.round(it / 60).toInt() },
                                 sources = orderSources(id, srcs),
+                                media = media?.takeIf { it != "TAPE_UNSPECIFIED" },
+                                releaseYear = year,
+                                addedAt = d.optString("updated_at"),
                             )
                             val meta = if (movie != null && movie.optString("title").isNotBlank()) Meta(
                                 key = "tmdb:" + movie.optInt("tmdb_id"), name = movie.optString("title"),
@@ -143,6 +161,7 @@ data class Catalog(val titles: List<Title>) {
                     tmdbId = (metas.firstOrNull { !it.suggested && it.tmdbId != null } ?: metas.firstOrNull { it.tmdbId != null })?.tmdbId,
                     tmdbType = (metas.firstOrNull { !it.suggested && it.tmdbId != null } ?: metas.firstOrNull { it.tmdbId != null })?.tmdbType ?: "movie",
                     confirmed = metas.any { !it.suggested },
+                    addedAt = list.maxOf { it.first.addedAt },
                     searchName = searchQuery(metas.firstNotNullOfOrNull { it.feedName } ?: best.name).first,
                     // Tape years are release years of the tape, not the film, so they are not used here.
                     searchYear = searchQuery(metas.firstNotNullOfOrNull { it.feedName } ?: best.name).second,

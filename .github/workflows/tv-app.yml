@@ -2,7 +2,7 @@ name: Build TV app (Android TV)
 
 on:
   push:
-    branches: [main, rebuild/data-model]
+    branches: [main, rebuild/data-model, 'tv-preview/**']
     paths:
       - 'tv/**'
       - '.github/workflows/tv-app.yml'
@@ -29,6 +29,17 @@ jobs:
         env:
           TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
         run: gradle --no-daemon testDebugUnitTest assembleRelease
+      # Pictures of each screen drawn on the build machine, to compare with the mockups.
+      - name: Publish screen pictures
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls tv/app/build/screens/*.png >/dev/null 2>&1 || exit 0
+          gh release view tv-screens >/dev/null 2>&1 || \
+            gh release create tv-screens --prerelease --target "${{ github.sha }}" \
+              --title "VHS FEVER TV screen pictures" --notes "Screens rendered by the TV app build."
+          gh release upload tv-screens tv/app/build/screens/*.png --clobber
       - name: Name the app file
         run: cp tv/app/build/outputs/apk/release/app-release.apk vhs-fever-tv.apk
       - uses: actions/upload-artifact@v4
@@ -39,6 +50,7 @@ jobs:
       # A fixed download link for the TV (e.g. in the Downloader app):
       # https://github.com/homelessbrian/vhs-fever-catalog/releases/download/tv-latest/vhs-fever-tv.apk
       - name: Publish to the tv-latest release
+        if: github.ref_name == 'rebuild/data-model' || github.ref_name == 'main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
