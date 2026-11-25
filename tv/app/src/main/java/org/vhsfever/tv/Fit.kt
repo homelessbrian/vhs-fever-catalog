@@ -11,7 +11,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
 /**
@@ -49,6 +48,7 @@ fun FitText(
 
 private fun scaled(st: TextStyle, s: Float): TextStyle {
     if (s == 1f) return st
-    fun TextUnit.times(k: Float) = if (isSpecified) (value * k).sp else this
-    return st.copy(fontSize = st.fontSize.times(s), lineHeight = st.lineHeight.times(s), letterSpacing = st.letterSpacing.times(s))
+    // TextUnit has its own times() that throws on "unspecified", so scale by hand
+    fun TextUnit.scaleBy(k: Float): TextUnit = if (isSpecified) TextUnit(value * k, type) else this
+    return st.copy(fontSize = st.fontSize.scaleBy(s), lineHeight = st.lineHeight.scaleBy(s), letterSpacing = st.letterSpacing.scaleBy(s))
 }
