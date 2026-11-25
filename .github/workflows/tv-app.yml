@@ -28,7 +28,15 @@ jobs:
         working-directory: tv
         env:
           TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
-        run: gradle --no-daemon testDebugUnitTest assembleRelease
+        # Maven Central sometimes turns builds away for a minute ("Too Many Requests"): wait and try again.
+        run: |
+          for i in 1 2 3 4; do
+            gradle --no-daemon testDebugUnitTest assembleRelease > build.log 2>&1 && { cat build.log; exit 0; }
+            cat build.log
+            grep -q "429\|Could not resolve\|Could not GET" build.log || exit 1
+            echo "Download limit hit, retrying in 60s ($i)"; sleep 60
+          done
+          exit 1
       # Pictures of each screen drawn on the build machine, to compare with the mockups.
       - name: Publish screen pictures
         if: always()
