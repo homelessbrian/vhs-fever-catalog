@@ -61,6 +61,10 @@ MEDIA_RE = "|".join(sorted((re.escape(k) for k in MEDIA_WORDS), key=len, reverse
 RELEASE_GROUP = re.compile(rf"^\s*(?P<year>\d{{3,4}})\s*(?P<media>{MEDIA_RE})\s*$", re.I)
 # "(VHS 1992)"
 RELEASE_GROUP_REV = re.compile(rf"^\s*(?P<media>{MEDIA_RE})\s*(?P<year>\d{{3,4}})\s*$", re.I)
+# "(2002 Australian VHS)", "(1999 UK VHS)": a country between year and format.
+REGION_WORDS = re.compile(r"\b(?:US|USA|U\.S\.A?\.?|UK|U\.K\.|British|English|American|Australian|Australia|AUS|"
+                          r"Canadian|Canada|CAN|NZ|New Zealand|Irish|PAL|NTSC|Original|Rental|Retail)\b", re.I)
+CAPTURE_NUMBER = re.compile(r"\s+-\s+0\d{2,3}\s*$")
 VERSION_GROUP = re.compile(r"^\s*(?:version|ver\.?|v)\s*#?\s*(?P<n>\d+)\s*$", re.I)
 YEAR_GROUP = re.compile(r"^\s*(?P<year>(?:18|19|20)\d{2})(?P<letter>[a-z])?\s*$", re.I)
 PART_SUFFIX = re.compile(r"\s*[-_]?\s*(?:part\s*)?(?P<i>\d{1,3})\s*of\s*(?P<n>\d{1,3})\s*$", re.I)
@@ -286,6 +290,10 @@ def interpret_filename(name: str) -> dict[str, Any]:
             work_year = m["year"]
             text = text[m.end():]
 
+    cm = CAPTURE_NUMBER.search(text)
+    if cm:   # "Once Upon a Time 1999 VHS - 0002": the uploader's capture counter
+        text = text[: cm.start()]
+        flags.append("capture_number_removed")
     base, groups, gflags = _split_groups(text)
     flags += gflags
 
@@ -304,6 +312,11 @@ def interpret_filename(name: str) -> dict[str, Any]:
     for raw, _pos in groups:
         g = raw.strip()
         rm = RELEASE_GROUP.match(g) or RELEASE_GROUP_REV.match(g)
+        if not rm and REGION_WORDS.search(g):
+            region = " ".join(REGION_WORDS.findall(g))
+            rm = RELEASE_GROUP.match(REGION_WORDS.sub(" ", g)) or RELEASE_GROUP_REV.match(REGION_WORDS.sub(" ", g))
+            if rm:
+                edition_notes.append(region)
         if rm and not release_seen:
             release_seen = True
             media_raw = rm["media"]
@@ -498,6 +511,29 @@ def _artwork_role(name: str) -> str | None:
 # Model build
 # ---------------------------------------------------------------------------
 
+def _fill_from_page_title(it: dict[str, Any], page: dict[str, Any]) -> None:
+    """A page holding a single video: its title often says what the file name
+    doesn't ("Barney & Friends: Carnival of Numbers (1992 VHS)" for
+    "Carnival of Numbers - 0001.mp4"). Fill gaps only; never overwrite."""
+    used = False
+    if not it.get("media_format") and page.get("media_format"):
+        it["media_format"] = page["media_format"]
+        it["media_label_raw"] = page.get("media_label_raw")
+        it["release_year"] = it.get("release_year") or page.get("release_year")
+        it["edition_notes"] = list(dict.fromkeys((it.get("edition_notes") or []) + (page.get("edition_notes") or [])))
+        used = True
+    ft, pt = title_key(it.get("title") or ""), title_key(page.get("title") or "")
+    if pt and ft and ft != pt and ft in pt and it.get("episode") is None:
+        it["title"] = page["title"]   # adds the show or series name the file left out
+        used = True
+    if not it.get("work_year") and page.get("work_year"):
+        it["work_year"] = page["work_year"]
+        used = True
+    if used:
+        flags = [f for f in it.get("flags") or [] if f != "no_media_format_in_filename" or not it.get("media_format")]
+        it["flags"] = flags + ["filled_from_archive_page_title"]
+
+
 def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     archive_items: list[dict[str, Any]] = []
     archive_files: list[dict[str, Any]] = []
@@ -506,6 +542,7 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
 
     # piece_key -> piece dict (one original file's bytes, plus its encodes)
     pieces: dict[str, dict[str, Any]] = {}
+    page_by_item: dict[str, dict[str, Any]] = {}
 
     for item in items:
         ident = item["identifier"]
@@ -523,6 +560,10 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             "note": "Container only. Its title does not identify the videos inside it.",
         })
         video_stems: dict[str, str] = {}
+        originals = [f for f in files if _is_video(f) and str(f.get("source") or "").lower() != "derivative"]
+        page = interpret_filename(str(item.get("title") or "") + ".mp4") if len(originals) == 1 and item.get("title") else None
+        if page:
+            page_by_item[ident] = page
         for f in files:
             name = f["name"]
             fid = archive_file_id(ident, name)
@@ -546,6 +587,8 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             }
             if is_video:
                 record["interpretation"] = interpret_filename(name)
+                if page:
+                    _fill_from_page_title(record["interpretation"], page)
                 legacy_map.append({"legacy_program_id": fid, "file_id": fid})
             archive_files.append(record)
 
@@ -601,6 +644,9 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     for p in pieces.values():
         first = p["original_files"][0] if p["original_files"] else p["sources"][0]
         p["interpretation"] = interpret_filename(first["original_name"])
+        page = page_by_item.get(first.get("archive_identifier"))
+        if page:
+            _fill_from_page_title(p["interpretation"], page)
         p["also_named"] = sorted({o["original_name"] for o in p["original_files"]})
         p["archive_identifiers"] = sorted({s["archive_identifier"] for s in p["sources"]})
         durs = [s["duration_seconds"] for s in p["sources"] if s["duration_seconds"]]
@@ -938,6 +984,7 @@ def main() -> None:
     src.add_argument("--archive-json", help="JSON file: {items:[{identifier,title,files:[...]}]}")
     src.add_argument("--feed-from", help="existing model dir: write reviewer-feed.json there")
     src.add_argument("--fetch-from-inventory", help="latest.jsonl; re-read those items live from the Archive (with checksums)")
+    src.add_argument("--identifiers", help="text file, one Archive identifier per line (# for notes); read live")
     ap.add_argument("--cache-dir", help="where to cache Archive metadata responses")
     ap.add_argument("--output-dir")
     args = ap.parse_args()
@@ -952,6 +999,10 @@ def main() -> None:
         ap.error("--output-dir is required")
     if args.inventory:
         items = items_from_inventory(_read_jsonl(args.inventory))
+    elif args.identifiers:
+        with open(args.identifiers, encoding="utf-8") as fh:
+            idents = [x.strip() for x in fh if x.strip() and not x.lstrip().startswith("#")]
+        items = fetch_items(idents, args.cache_dir)
     elif args.fetch_from_inventory:
         idents = [i["identifier"] for i in items_from_inventory(_read_jsonl(args.fetch_from_inventory))]
         items = fetch_items(idents, args.cache_dir)

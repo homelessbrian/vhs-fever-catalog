@@ -121,7 +121,8 @@ def foreign_reason(name: str) -> str | None:
 
 
 def item_describes_video(item: dict[str, Any]) -> bool:
-    return (item.get("video_file_count") or 0) <= 2 and "Container only" not in (item.get("note") or "")
+    # (Every page carries the same "Container only" note, so the count decides.)
+    return 0 < (item.get("video_file_count") or 0) <= 2
 
 
 def norm_words(text: str) -> str:
@@ -430,6 +431,8 @@ def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
                 out.append({
                     "file_id": fid, "recording_id": rec["recording_id"],
                     "name": src.get("original_name"), "archive_identifier": src.get("archive_identifier"),
+                    "playback_url": src.get("playback_url"), "role": src.get("role"),
+                    "air_date": it.get("air_date"), "years_in_name": years_in(src.get("original_name") or ""),
                     "duration_seconds": dur, "kind": kind["kind"], "kind_why": kind["why"],
                     "builtin_commercials": kind["builtin_commercials"],
                     "format": fmt["format"], "format_confidence": fmt["confidence"],
@@ -440,6 +443,71 @@ def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
                     "title_suggestion_id": rec.get("title_suggestion_id"),
                     "artwork": art_pick, "version": VERSION,
                 })
+    return out
+
+
+# --------------------------------------------------------------------------
+# Ad list (for the retro TV guide)
+# --------------------------------------------------------------------------
+AD_KINDS = {"commercial": "single ad", "commercial_compilation": "ad compilation",
+            "promo_or_bump": "promo or bump", "trailer": "trailer"}
+HOLIDAYS = {
+    "christmas": r"christmas|xmas|holiday|santa|noel|winter",
+    "halloween": r"halloween|spooky|trick or treat",
+    "thanksgiving": r"thanksgiving|turkey day",
+    "easter": r"easter",
+    "valentines": r"valentine",
+    "summer": r"summer",
+    "back_to_school": r"back to school|first day of school",
+    "new_year": r"new year",
+}
+HOLIDAY_RX = {k: re.compile(rf"\b(?:{v})", I) for k, v in HOLIDAYS.items()}
+YEAR_RX = re.compile(r"(?<!\d)((?:19[4-9]|20[0-2])\d)(?!\d)")
+BREAK_RX = re.compile(r"\bcommercial breaks?\b|\bad breaks?\b", I)
+
+
+def years_in(name: str) -> list[int]:
+    return sorted({int(y) for y in YEAR_RX.findall(name)})
+
+
+def build_ad_list(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per ad, promo, bump or trailer recording, plus TV recordings
+    that still have their ads in them (listed whole until the breaks inside
+    can be found). Archive-made copies are folded into the original."""
+    by_rec: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        ad_kind = AD_KINDS.get(r["kind"])
+        if ad_kind is None and not (r["kind"] in {"tv_recording", "tv_episode"}
+                                    and r["builtin_commercials"] in {"true", "likely"}):
+            continue
+        by_rec.setdefault(r["recording_id"], []).append(r)
+    out = []
+    for rid, group in by_rec.items():
+        group.sort(key=lambda r: (r.get("role") != "original", r["verdict"] != "good"))
+        r = group[0]
+        name = r["name"] or ""
+        text = norm_words(name)
+        years = r["years_in_name"]
+        year = int(r["air_date"][:4]) if r.get("air_date") else (years[0] if len(years) == 1 else None)
+        kind = AD_KINDS.get(r["kind"])
+        if kind is None:
+            kind = "TV recording with ads in it"
+        elif kind == "ad compilation" and BREAK_RX.search(text):
+            kind = "commercial break"
+        out.append({
+            "ad_id": rid, "kind": kind, "name": name, "title": r.get("title"),
+            "duration_seconds": r["duration_seconds"],
+            "year": year, "decade": f"{year // 10 * 10}s" if year else None, "air_date": r.get("air_date"),
+            "holidays": [k for k, rx in HOLIDAY_RX.items() if rx.search(text)],
+            "channel": (CHANNEL.search(text).group(0) if CHANNEL.search(text) else None),
+            "ads_inside": r["builtin_commercials"] if r["kind"] in {"tv_recording", "tv_episode"} else None,
+            "play_url": next((g["playback_url"] for g in group if g.get("playback_url") and g["verdict"] != "bad"),
+                             r.get("playback_url")),
+            "archive_page": f"https://archive.org/details/{r['archive_identifier']}",
+            "verdict": r["verdict"], "verdict_why": r["verdict_why"],
+            "copies": len(group), "file_ids": [g["file_id"] for g in group],
+        })
+    out.sort(key=lambda a: (a["kind"], a["year"] or 9999, a["name"].casefold()))
     return out
 
 
@@ -480,7 +548,15 @@ def main() -> None:
     with (out / "auto-sort.jsonl").open("w", encoding="utf-8") as fh:
         for r in rows:
             fh.write(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n")
+    ads = build_ad_list(rows)
+    with (out / "ads.jsonl").open("w", encoding="utf-8") as fh:
+        for a_ in ads:
+            fh.write(json.dumps(a_, ensure_ascii=False, sort_keys=True) + "\n")
     s = summarize(rows)
+    s["ad_list"] = {"entries": len(ads), "by_kind": dict(Counter(x["kind"] for x in ads)),
+                    "playable": sum(1 for x in ads if x["verdict"] != "bad"),
+                    "by_decade": dict(sorted(Counter(x["decade"] or "unknown" for x in ads).items())),
+                    "holiday": dict(Counter(h for x in ads for h in x["holidays"]))}
     (out / "auto-sort.summary.json").write_text(json.dumps(s, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps(s, indent=2, ensure_ascii=False))
 
