@@ -47,7 +47,19 @@ import kotlin.math.sin
 
 fun coverText(t: Title) = t.name
 fun yearText(t: Title) = t.year ?: t.tapes.firstNotNullOfOrNull { it.releaseYear } ?: ""
-fun mediaTag(t: Title) = t.tapes.firstNotNullOfOrNull { it.media } ?: "VHS"
+/** VHS or DVD: whichever most of this title's good tapes are. */
+fun mediaTag(t: Title): String {
+    val m = t.tapes.mapNotNull { it.media }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+    return if (m == "DVD") "DVD" else "VHS"
+}
+fun isDvd(t: Title) = mediaTag(t) == "DVD"
+
+/**
+ * Real boxes: a VHS sleeve is about 7.5 × 4.2 in and fat; a DVD case is 7.5 × 5.3 in and thin.
+ * Same height on the shelf, DVDs about a quarter wider.
+ */
+const val DVD_WIDER = 1.25f
+fun boxWidth(t: Title, vhsWidth: Int): Int = if (isDvd(t)) Math.round(vhsWidth * DVD_WIDER) else vhsWidth
 
 private val coverShadow = Shadow(Color(0xD9000000), Offset(0f, 3f), 5f)
 
@@ -57,7 +69,7 @@ private val coverShadow = Shadow(Color(0xD9000000), Offset(0f, 3f), 5f)
  * [scale] is 1 for the 86×152 shelf box and grows with bigger boxes.
  */
 @Composable
-fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier) {
+fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier, dvd: Boolean = isDvd(t)) {
     val c = colorsFor(t.key)
     Box(modifier.background(Brush.verticalGradient(listOf(c.c1, c.c2)))) {
         Box(Modifier.fillMaxSize().drawBehind {
@@ -73,7 +85,7 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.SpaceBetween) {
             val st = TextStyle(fontFamily = Type.Mono, fontSize = (7 * scale).fs, letterSpacing = (0.6f * scale).fs,
                 color = Color.White.alpha(0.85f), shadow = Shadow(Color.Black, Offset(0f, 1f), 3f))
-            Text(mediaTag(t).uppercase(), style = st)
+            Text(if (dvd) "DVD" else "VHS", style = st)
             Text(yearText(t), style = st)
         }
         if (t.poster == null) {
@@ -82,6 +94,12 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier) {
                 style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = (15 * scale).fs,
                     lineHeight = (15 * scale).fs, color = Ink.CoverCream, shadow = coverShadow),
                 maxLines = 5, overflow = TextOverflow.Ellipsis)
+        }
+        if (dvd) {
+            // the plastic keep-case: dark rim and the hinge down the left side
+            Box(Modifier.fillMaxSize().border((3 * scale).px, Color(0xFF0B1030), RoundedCornerShape((4 * scale).px)))
+            Box(Modifier.fillMaxHeight().width((5 * scale).px).background(
+                Brush.horizontalGradient(listOf(Color(0xFF0B1030), Color(0x660B1030), Color.Transparent))))
         }
         Sheen()
     }
@@ -103,13 +121,13 @@ fun Modifier.sideways(): Modifier = this
     .graphicsLayer { rotationZ = 90f }
 
 @Composable
-fun BoxSpine(t: Title, w: Dp, h: Dp, titleSize: Int = 22, modifier: Modifier = Modifier) {
+fun BoxSpine(t: Title, w: Dp, h: Dp, titleSize: Int = 22, modifier: Modifier = Modifier, dvd: Boolean = isDvd(t)) {
     val c = colorsFor(t.key)
     Column(modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c1, c.c2))),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height(28.px).background(c.c3), contentAlignment = Alignment.Center) {
-            Text(mediaTag(t).uppercase(), style = TextStyle(fontFamily = Type.Mono, fontWeight = FontWeight.Medium,
-                fontSize = 11.fs, letterSpacing = 1.1f.fs, color = Color(0xFF111111)))
+            Text(if (dvd) "DVD" else "VHS", style = TextStyle(fontFamily = Type.Mono, fontWeight = FontWeight.Medium,
+                fontSize = (if (dvd) 9 else 11).fs, letterSpacing = 1.1f.fs, color = Color(0xFF111111)))
         }
         Spacer(Modifier.height(14.px))
         Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
@@ -117,7 +135,7 @@ fun BoxSpine(t: Title, w: Dp, h: Dp, titleSize: Int = 22, modifier: Modifier = M
                 style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = titleSize.fs,
                     letterSpacing = 0.9f.fs, color = Ink.CoverCream, shadow = Shadow(Color(0xCC000000), Offset(0f, 2f), 3f)))
         }
-        Barcode(Modifier.padding(vertical = 14.px).size(28.px, 54.px), vertical = true)
+        Barcode(Modifier.padding(vertical = 14.px).size(if (dvd) 16.px else 28.px, 54.px), vertical = true)
     }
 }
 
@@ -164,9 +182,9 @@ fun BoxBack(t: Title, tapeText: String, modifier: Modifier = Modifier) {
  * so the edges meet. This draws the same on every TV, unlike real 3D layers.
  */
 @Composable
-fun Box3D(t: Title, angle: Float, tapeText: String, modifier: Modifier = Modifier) {
+fun Box3D(t: Title, angle: Float, tapeText: String, dvd: Boolean, modifier: Modifier = Modifier) {
     val a by animateFloatAsState(angle, tween(700, easing = CubicBezierEasing(.3f, .7f, .2f, 1f)), label = "turn")
-    val w = 190f; val d = 46f; val h = 336f
+    val w = if (dvd) 238f else 190f; val d = if (dvd) 26f else 46f; val h = 336f
     val density = LocalDensity.current.density
     val rad = Math.toRadians(a.toDouble())
     val toPx = 0.75f * density
@@ -189,10 +207,10 @@ fun Box3D(t: Title, angle: Float, tapeText: String, modifier: Modifier = Modifie
             }) {
                 when (name) {
                     "front" -> Box(Modifier.fillMaxSize()) {
-                        BoxFront(t, scale = 190f / 86f * 0.62f, modifier = Modifier.fillMaxSize())
+                        BoxFront(t, scale = 1.36f, modifier = Modifier.fillMaxSize(), dvd = dvd)
                         Box(Modifier.fillMaxSize().border(1.dp, Color.White.alpha(0.12f)))
                     }
-                    "spine" -> BoxSpine(t, d.px, h.px)
+                    "spine" -> BoxSpine(t, d.px, h.px, titleSize = if (dvd) 14 else 22, dvd = dvd)
                     "back" -> BoxBack(t, tapeText, Modifier.fillMaxSize())
                     else -> Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xFF16161A), Color(0xFF0B0B0D)))))
                 }
@@ -203,11 +221,13 @@ fun Box3D(t: Title, angle: Float, tapeText: String, modifier: Modifier = Modifie
     }
 }
 
-/** The little upright spine used in "Also in the store". */
+fun miniSpineWidth(t: Title) = if (isDvd(t)) 28 else 44
+
+/** The little upright spine used in "Also in the store" (DVDs thinner, like the real thing). */
 @Composable
 fun MiniSpine(t: Title, modifier: Modifier = Modifier) {
     val c = colorsFor(t.key)
-    Box(modifier.size(44.px, 112.px).clip(RoundedCornerShape(2.px))
+    Box(modifier.size(miniSpineWidth(t).px, 112.px).clip(RoundedCornerShape(2.px))
         .background(Brush.horizontalGradient(listOf(c.c1, c.c2))), contentAlignment = Alignment.Center) {
         Box(Modifier.fillMaxHeight().width(3.px).align(Alignment.CenterStart).background(c.c3))
         Text(coverText(t).uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis,
