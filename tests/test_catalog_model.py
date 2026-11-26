@@ -297,6 +297,39 @@ class PageContextTests(unittest.TestCase):
         self.assertIn("Canada", story["edition_notes"])
         self.assertEqual(recs["02 BCArts&Crafts.mpg"]["title"], "Blue's Clues Arts & Crafts")
 
+    def test_episode_code_with_show_from_page(self):
+        # rickys-room-little-ones-vhs: "#205" is season 2, episode 5 of the
+        # show the page is about; the file name never says "Ricky's Room".
+        model = self._item("Ricky's Room: \"Little Ones\" - 2001 VHS",
+                           ["#205. Little Ones [2000].mp4", "#209. My Far Away Friend [2000].mp4"],
+                           ["Ricky's Room", "kids"])
+        recs = {r["display_name"]: r["interpretation"] for r in model["recordings"]}
+        little = recs["#205. Little Ones [2000].mp4"]
+        self.assertEqual((little["series_title"], little["season"], little["episode"], little["episode_title"]),
+                         ("Ricky's Room", 2, 5, "Little Ones"))
+        self.assertEqual(little["content_hint"], "tv_episode")
+        self.assertEqual(little["work_year"], "2000")
+        self.assertEqual(little["media_format"], "VHS")
+        self.assertEqual(recs["#209. My Far Away Friend [2000].mp4"]["episode"], 9)
+        titles = {t["display_title"] for t in model["titles"]}
+        self.assertIn("Ricky's Room S02E05 Little Ones", titles)
+
+    def test_unnumbered_file_on_episode_page_gets_episode_hint(self):
+        # Only once another file on the page is a numbered episode of the show.
+        model = self._item("Ricky's Room: \"Little Ones\" - 2001 VHS", ["Little Ones.mp4", "#209. Other One.mp4"],
+                           ["Ricky's Room"])
+        it = next(r["interpretation"] for r in model["recordings"] if r["display_name"] == "Little Ones.mp4")
+        self.assertIsNone(it["episode"])
+        self.assertEqual(it["show_dash_hint"], {"show": "Ricky's Room", "episode_title": "Little Ones",
+                                                "from": "Archive page show"})
+        model = self._item("Ricky's Room: \"Little Ones\" - 2001 VHS", ["Little Ones.mp4", "Other One.mp4"],
+                           ["Ricky's Room"])
+        self.assertTrue(all(not r["interpretation"].get("show_dash_hint") for r in model["recordings"]))
+
+    def test_episode_code_needs_a_show_page(self):
+        model = self._item("Random uploads", ["#205. Little Ones [2000].mp4", "101 Dalmatians.mp4"])
+        self.assertTrue(all(r["interpretation"]["episode"] is None for r in model["recordings"]))
+
     def test_page_naming_two_formats_settles_nothing(self):
         model = self._item("All Animated VHS and DVD Capture", ["Some Movie.mp4", "Other Movie.mp4"])
         self.assertTrue(all(r["interpretation"]["media_format"] is None for r in model["recordings"]))

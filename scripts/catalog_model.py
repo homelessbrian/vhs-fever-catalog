@@ -594,14 +594,56 @@ def _split_glued(text: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
+def _episode_code(title: str, show: str) -> tuple[int, int, str, str | None] | None:
+    """"#205. Little Ones [2000]" on a page about one show -> season 2, episode 5,
+    "Little Ones", year 2000. The show name may come first ("Ricky's Room #205 -
+    Little Ones"). Three digits are season + episode; four digits need a "#"
+    and can't look like a year."""
+    t = title.strip()
+    words = [re.escape(w) for w in re.findall(r"[A-Za-z0-9']+", show)]
+    if words:
+        m = re.match(r"^\W*" + r"\W+".join(words) + r"\W*", t, re.I)
+        if m and m.end() < len(t):
+            t = t[m.end():]
+    m = re.match(r"^#\s*(?P<code>\d{3,4})\b[\s.):_-]*(?P<rest>\S.*)$", t) \
+        or re.match(r"^(?P<code>\d{3})\s*(?:[.)]|\s-)\s*(?P<rest>\S.*)$", t)
+    if not m:
+        return None
+    code = m["code"]
+    if len(code) == 4 and re.fullmatch(r"(?:18|19|20)\d\d", code):
+        return None
+    season, episode = int(code[:-2]), int(code[-2:])
+    if season < 1 or episode < 1:
+        return None
+    rest, year = m["rest"], None
+    ym = re.search(r"\s*[\[(]\s*((?:19|20)\d\d)\s*[\])]\s*$", rest)
+    if ym:
+        year, rest = ym.group(1), rest[: ym.start()]
+    rest = re.sub(r"\s+", " ", rest).strip(" -_.,:\"'")
+    if len(re.sub(r"[^a-z0-9]", "", rest.casefold())) < 2:
+        return None
+    return season, episode, rest, year
+
+
 def _apply_page_context(it: dict[str, Any], ctx: dict[str, Any]) -> None:
     """Fill in what the file name leaves out, from the page. Never overwrites."""
     flags = list(it.get("flags") or [])
     title = it.get("title") or ""
     show = ctx.get("show")
     initials = ctx.get("show_initials")
+    if show and title and it.get("episode") is None and it.get("content_hint") is None:
+        code = _episode_code(title, show)
+        if code:
+            # The page is about one show, so a numbered file on it is an episode.
+            season, episode, ep_title, year = code
+            it.update({"title": show, "series_title": show, "season": season, "episode": episode,
+                       "episode_title": ep_title, "content_hint": "tv_episode", "show_dash_hint": None})
+            if year and not it.get("work_year"):
+                it["work_year"] = year
+            flags.append("episode_code_read_with_show_from_page")
+            title = show
     # "BCStoryTimeCANADA" -> "Blue's Clues Story Time", note "Canada"
-    if initials and title:
+    if initials and title and "episode_code_read_with_show_from_page" not in flags:
         m = re.match(rf"^(?:\d+\s+)?{re.escape(initials)}(?=[A-Z][a-z]|[\s_-])", title)
         if m:
             rest = _split_glued(title[m.end():])
@@ -826,6 +868,27 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         p["duration_seconds"] = max(durs) if durs else None
         if len(p["also_named"]) > 1:
             p.setdefault("flags", []).append("identical_bytes_under_different_names")
+
+    # A page about one show that holds numbered episodes of it: its other
+    # files are probably episodes too. Only a hint; TMDB/TVDB decides (it
+    # must find an episode of that show by the file's name).
+    show_pages: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for p in pieces.values():
+        first = p["original_files"][0] if p["original_files"] else p["sources"][0]
+        show_pages[first.get("archive_identifier")].append(p["interpretation"])
+    for ident, its in show_pages.items():
+        show = (ctx_by_item.get(ident) or {}).get("show")
+        if not show or not any(it.get("episode") is not None and title_key(it.get("series_title") or "") == title_key(show)
+                               for it in its):
+            continue
+        for it in its:
+            title = it.get("title") or ""
+            if it.get("episode") is not None or it.get("content_hint") or it.get("show_dash_hint") \
+                    or it.get("part_index") is not None or title_key(show) in title_key(title):
+                continue
+            rest = re.sub(r"\s*[\[(]\s*(?:19|20)\d\d\s*[\])]\s*$", "", title).strip(" -_.,")
+            if len(re.sub(r"[^a-z0-9]", "", rest.casefold())) >= 2:
+                it["show_dash_hint"] = {"show": show, "episode_title": rest, "from": "Archive page show"}
 
     # "Pocahontas part 01" ... "part 17": pieces of one split video. Without
     # "of N" this looks like a sequel ("Bambi Part 2"), so it only counts when

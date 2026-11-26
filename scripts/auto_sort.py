@@ -667,7 +667,14 @@ def sort_all(recs, items, art, titles, probes) -> list[dict[str, Any]]:
                 dur = src.get("duration_seconds") or seg.get("duration_seconds")
                 src = dict(src, _part_total=max(it.get("part_total") or 0, rec.get("part_count") or 1))
                 kind = detect_kind(rec, src, item, dur)
-                fmt = detect_format(rec, src, probe, item)
+                tm = (title or {}).get("tmdb") or {}
+                if kind["kind"] in {"movie", "short", "unknown"} and tm.get("search_kind") == "tv_episode" \
+                        and tm.get("status") == "one_likely_episode":
+                    # No episode number in the name, but the show (from the
+                    # name or the Archive page) has an episode by this name.
+                    kind = dict(kind, kind="tv_episode",
+                                why=[f"an episode of {tm.get('search_title') or 'a TV show'} (found by its name)"])
+                fmt =detect_format(rec, src, probe, item)
                 if kind["kind"] in TV_SOURCED and (fmt["scores"].get(fmt["format"], 0) < 4):
                     fmt = dict(fmt, format="TV", confidence="medium",
                                clues=fmt["clues"] + ["recorded from TV, no disc or tape named"])

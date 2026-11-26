@@ -347,6 +347,10 @@ def main() -> None:
         skip = None if series else not_a_movie(tid, t["display_title"])
         old = reused.get(tid)
         retry = bool(old) and old.get("status") not in KEEP_STATUSES and (old.get("matcher") or 1) < MATCHER_VERSION
+        if old and dash and dash.get("from") == "Archive page show" and not old.get("page_show_tried"):
+            # The Archive page names a show this title was never tried
+            # against: look again, even over a confident movie match.
+            retry = True
         if old and (not retry or lookups >= args.retry_lookups or not token):
             t["tmdb"] = old
             counts["reused_from_earlier_run"] = counts.get("reused_from_earlier_run", 0) + 1
@@ -437,6 +441,8 @@ def main() -> None:
                 }
                 if retry and old and found["status"] == "no_candidates" and old.get("candidates"):
                     t["tmdb"] = dict(old)    # never lose earlier guesses to a worse search
+        if dash and dash.get("from") == "Archive page show" and t["tmdb"] is not old:
+            t["tmdb"]["page_show_tried"] = True
         if t["tmdb"] is not old:
             t["tmdb"]["matcher"] = MATCHER_VERSION
         counts[t["tmdb"]["status"]] = counts.get(t["tmdb"]["status"], 0) + 1

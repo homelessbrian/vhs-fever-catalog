@@ -53,6 +53,17 @@ class KindAndVerdict(unittest.TestCase):
         r = sort_one("1990 Michael Jordan Coca Cola Commercial.mp4", 30)
         self.assertEqual((r["verdict"], r["confidence"]), ("good", "medium"))
 
+    def test_episode_found_by_name_is_an_episode_not_a_movie(self):
+        # A half-hour file with no episode number: the show's episode list
+        # had it by name, so it is an episode.
+        ep = {"tmdb": {"status": "one_likely_episode", "search_kind": "tv_episode", "search_title": "Ricky's Room",
+                       "candidates": [{"title": "Ricky's Room"}]}}
+        r = sort_one("Little Ones (2000 VHS).mp4", 1379, title=ep)
+        self.assertEqual(r["kind"], "tv_episode")
+        self.assertIn("Ricky's Room", r["kind_why"][0])
+        r = sort_one("Little Ones (2000 VHS).mp4", 1379, title=MATCHED)
+        self.assertEqual(r["kind"], "movie")
+
     def test_split_piece_is_bad_clip(self):
         r = sort_one("Bambi (1989 VHS) - 13of23.mp4", 111, parts=23)
         self.assertEqual((r["kind"], r["verdict"], r["reason"]), ("clip", "bad", "Clip"))
