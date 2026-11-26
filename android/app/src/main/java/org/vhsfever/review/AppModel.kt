@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,54 +96,106 @@ class AppModel(private val ctx: Context) {
 
     init {
         loadLocalDecisions()
-        scope.launch { loadCatalog() }
+        loadJob = scope.launch { loadCatalog() }
         if (token.isNotBlank()) scope.launch { sync(); checkForUpdate(quiet = true) } else firstSyncDone = true
     }
 
     // ------------------------------------------------------------------ loading
-    private suspend fun loadCatalog() {
+    /** Which list is on screen: "Batch 5 · built Nov 25, 7:02 PM". */
+    var listInfo by mutableStateOf<String?>(null); private set
+    /** Set while a newer list is being downloaded. What's on screen may be old until it's done. */
+    var updating by mutableStateOf<String?>(null); private set
+    /** Why the newest list couldn't be loaded, shown until it works. */
+    var updateError by mutableStateOf<String?>(null); private set
+    private var lastCheck = 0L
+    private var loadJob: Job? = null
+
+    private fun stampLabel(batch: String?, builtAt: String?): String? {
+        val b = batch?.removePrefix("batch-")?.trimStart('0')?.let { "Batch $it" }
+        val t = builtAt?.let { runCatching {
+            java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a")
+                .format(Instant.parse(it).atZone(java.time.ZoneId.systemDefault()))
+        }.getOrNull() }
+        return listOfNotNull(b, t?.let { "built $it" }).joinToString(" · ").ifEmpty { null }
+    }
+
+    private suspend fun loadCatalog(force: Boolean = false) {
         val prefix = if (source == "main") "" else "latest-"
         val feedCache = File(ctx.filesDir, "${prefix}reviewer-feed.json")
         val audioCache = File(ctx.filesDir, "${prefix}audio-checks.jsonl")
         val robotCache = File(ctx.filesDir, "${prefix}auto-sort.jsonl")
-        withContext(Dispatchers.IO) {
+        val stampKey = "${prefix}built_at"
+        lastCheck = System.currentTimeMillis()
+        // 1. Show what's saved on the phone right away.
+        if (files.isEmpty()) withContext(Dispatchers.IO) {
             if (feedCache.exists()) runCatching { publish(parseFeed(feedCache.readText())) }
-            if (audioCache.exists()) runCatching { val a = parseAudio(audioCache.readText()); withContext(Dispatchers.Main) { audio = a } }
-            if (robotCache.exists()) runCatching { val r = parseRobot(robotCache.readText()); withContext(Dispatchers.Main) { robot = r } }
+            if (audioCache.exists()) runCatching { val a = parseAudioFile(audioCache); withContext(Dispatchers.Main) { audio = a } }
+            if (robotCache.exists()) runCatching { val r = parseRobotFile(robotCache); withContext(Dispatchers.Main) { robot = r } }
         }
-        loadStatus = if (files.isEmpty()) "Downloading catalog…" else "Checking for catalog updates…"
-        withContext(Dispatchers.IO) {
-            try {
-                val text = Http.request(feedRaw, timeoutMs = 90000)
-                feedCache.writeText(text)
-                publish(parseFeed(text))
-                withContext(Dispatchers.Main) { loadStatus = "" }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    loadStatus = if (files.isEmpty()) "Couldn’t download the catalog: ${e.message}" else ""
+        if (listInfo == null) listInfo = prefs.getString("${prefix}list_info", null)
+        loadStatus = if (files.isEmpty()) "Downloading catalog…" else ""
+        // 2. Is there a newer list on GitHub? (The batch list says when it was built.)
+        var batch: String? = null
+        var builtAt: String? = null
+        var batches = 0
+        if (source != "main") runCatching {
+            val info = JSONObject(withContext(Dispatchers.IO) { Http.request("$batchInfoRaw?t=${System.currentTimeMillis() / 60000}", timeoutMs = 20000) })
+            batch = info.optStringOrNull("batch"); builtAt = info.optStringOrNull("built_at")
+            batches = info.optJSONArray("batches")?.length() ?: 0
+        }
+        if (!force && builtAt != null && builtAt == prefs.getString(stampKey, null) && files.isNotEmpty() && robot.isNotEmpty()) {
+            updateError = null
+            return   // already showing the newest list
+        }
+        // 3. Download all three files side by side, check they read correctly, then switch over at once.
+        updating = "Getting the newest list" + (stampLabel(batch, null)?.let { " ($it)" } ?: "") + "…"
+        try {
+            val result = withContext(Dispatchers.IO) {
+                // The minute stamp makes GitHub hand over the fresh copy, not one it saved a few minutes ago.
+                val fresh = "?t=" + (System.currentTimeMillis() / 60000)
+                val jobs = listOf(feedRaw to feedCache, robotRaw to robotCache, audioRaw to audioCache).map { (u, dest) ->
+                    val url = u + fresh
+                    async {
+                        val part = File(dest.path + ".part")
+                        runCatching { Http.download(url, emptyMap(), part); part }
+                    }
                 }
+                val (feedPart, robotPart, audioPart) = jobs.map { it.await() }
+                val newFiles = parseFeed(feedPart.getOrThrow().readText())
+                val newRobot = robotPart.map { parseRobotFile(it) }.getOrElse { if (source == "main") emptyMap() else throw it }
+                val newAudio = audioPart.map { parseAudioFile(it) }.getOrNull()
+                feedPart.getOrNull()?.renameTo(feedCache); robotPart.getOrNull()?.renameTo(robotCache); audioPart.getOrNull()?.renameTo(audioCache)
+                Triple(newFiles, newRobot, newAudio)
             }
-            try {
-                val text = Http.request(audioRaw, timeoutMs = 90000)
-                audioCache.writeText(text)
-                val a = parseAudio(text)
-                withContext(Dispatchers.Main) { audio = a }
-            } catch (_: Exception) { /* audio check may not have run yet */ }
-            try {
-                val text = Http.request(robotRaw, timeoutMs = 90000)
-                robotCache.writeText(text)
-                val r = parseRobot(text)
-                withContext(Dispatchers.Main) { robot = r }
-            } catch (_: Exception) { /* auto-sort may not have run yet */ }
-            if (source != "main") runCatching {
-                val info = JSONObject(Http.request(batchInfoRaw, timeoutMs = 20000))
-                val n = info.optJSONArray("batches")?.length() ?: 0
-                val label = if (n > 0) "$n batch${if (n == 1) "" else "es"} · ${info.optInt("pages")} pages"
-                    else info.optString("batch")
-                withContext(Dispatchers.Main) { batchName = label.ifEmpty { null } }
+            publish(result.first)
+            robot = result.second
+            result.third?.let { audio = it }
+            val label = stampLabel(batch, builtAt)?.let { if (batches > 1) "$it · $batches batches" else it }
+            listInfo = label
+            prefs.edit().putString(stampKey, builtAt).putString("${prefix}list_info", label).apply()
+            batchName = if (batches > 0) "$batches batch${if (batches == 1) "" else "es"}" else batch
+            updateError = null
+            loadItemLanguages()
+        } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            val why = when (e) {
+                is OutOfMemoryError -> "the phone ran out of memory reading it"
+                is java.net.SocketTimeoutException -> "the download timed out"
+                is java.net.UnknownHostException -> "no internet connection"
+                else -> e.message?.take(80) ?: e.javaClass.simpleName
             }
+            updateError = "Couldn’t get the newest list: $why"
+            if (files.isEmpty()) loadStatus = "Couldn’t download the catalog: $why"
+        } finally {
+            updating = null
+            if (files.isNotEmpty()) loadStatus = ""
         }
-        if (files.isNotEmpty()) loadItemLanguages()
+    }
+
+    /** Check for a newer list when the app comes back to the front (at most once a minute). */
+    fun refreshIfStale() {
+        if (loadJob?.isActive == true || System.currentTimeMillis() - lastCheck < 60_000) return
+        loadJob = scope.launch { loadCatalog() }
     }
 
     private suspend fun publish(list: List<FileItem>) {
@@ -213,16 +266,20 @@ class AppModel(private val ctx: Context) {
         }
     }
 
-    fun reloadCatalog() { scope.launch { loadCatalog() } }
+    fun reloadCatalog() {
+        if (loadJob?.isActive == true) return
+        loadJob = scope.launch { loadCatalog(force = true) }
+    }
 
     /** Switch between the newest batch and the current catalog. Reviews are kept either way. */
     fun changeSource(s: String) {
         if (s == source) return
         source = s; prefs.edit().putString("source", s).apply()
         files = emptyList(); byId = emptyMap(); audio = emptyMap(); robot = emptyMap(); split = emptyMap(); batchName = null
-        robotFilter = null; shelfFilter = null; tagFilter = null; kindFilter = null
+        robotFilter = null; shelfFilter = null; tagFilter = null; kindFilter = null; listInfo = null; updateError = null
         loadStatus = "Loading…"
-        scope.launch { loadCatalog() }
+        loadJob?.cancel()
+        loadJob = scope.launch { loadCatalog(force = true) }
     }
 
     fun robotFor(f: FileItem): RobotGuess? = robot[f.id] ?: f.originalId?.let { robot[it] }

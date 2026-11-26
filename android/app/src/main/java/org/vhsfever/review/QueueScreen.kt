@@ -77,12 +77,28 @@ fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = C.panel, unfocusedContainerColor = C.panel, cursorColor = C.gold,
     focusedLabelColor = C.gold, unfocusedLabelColor = C.muted, focusedPlaceholderColor = C.muted, unfocusedPlaceholderColor = C.muted)
 
+/** "Getting the newest list…" or "Couldn't get the newest list: … · Retry". Nothing when all is current. */
+@Composable
+fun ListStatusBar(m: AppModel) {
+    val updating = m.updating
+    val err = m.updateError
+    if (updating == null && err == null) return
+    Row(Modifier.fillMaxWidth().background(if (updating != null) C.blueBg else C.warnBg).padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(updating?.let { "⟳ $it Robot calls shown may be old until it’s done." } ?: err!!, color = if (updating != null) C.blue else C.warn,
+            fontSize = 12.sp, modifier = Modifier.weight(1f))
+        if (updating == null) Text("Retry", color = C.gold, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+            modifier = Modifier.clickable { m.reloadCatalog() }.padding(start = 10.dp))
+    }
+}
+
 @Composable
 fun QueueScreen(m: AppModel) {
     val list = remember(m.files, m.decisions, m.audio, m.mode, m.shelfFilter, m.tagFilter, m.soundOnly, m.search, m.englishOnly, m.foreign, m.wholeOnly, m.split, m.robot, m.robotFilter, m.kindFilter) { m.queue() }
     var confirmAll by remember { mutableStateOf(false) }
     val (good, bad, total) = remember(m.files, m.decisions, m.audio, m.englishOnly, m.foreign, m.wholeOnly, m.split) { m.progress() }
     Column(Modifier.fillMaxSize()) {
+        ListStatusBar(m)
         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("VHS", color = Color(0xFF1A1206), fontWeight = FontWeight.Bold, fontSize = 13.sp,
@@ -90,7 +106,7 @@ fun QueueScreen(m: AppModel) {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Review", color = C.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(if (m.source == "main") "Main catalog" else "New pages" + (m.batchName?.let { " · $it" } ?: ""),
+                    Text(if (m.source == "main") "Main catalog" else "New pages" + (m.listInfo?.let { " · $it" } ?: m.batchName?.let { " · $it" } ?: ""),
                         color = C.muted, fontSize = 12.sp)
                 }
                 IconButton(onClick = { m.open(Screen.Settings) }) { Icon(Icons.Filled.Settings, "Settings", tint = C.text) }

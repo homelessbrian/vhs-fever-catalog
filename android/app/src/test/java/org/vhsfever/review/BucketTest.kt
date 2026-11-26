@@ -20,13 +20,14 @@ class BucketTest {
         assertEquals("not_catalog", shelfForBucket("commercial", "TV"))
         assertEquals("home_video", shelfForBucket("home_video", null))
         assertEquals("manual_review", shelfForBucket("instructional", null))
+        assertEquals("vhs_release", shelfForBucket("educational", "VHS"))
     }
 
     @Test fun everyShelfABucketPointsToExists() {
         val ids = BUILT_IN_SHELVES.map { it.id }.toSet()
         for (b in BUCKETS) for (fmt in FORMATS.map { it.first } + listOf<String?>(null))
             assertTrue("${b.id}/$fmt", shelfForBucket(b.id, fmt) in ids)
-        assertEquals(16, BUCKETS.size)
+        assertEquals(18, BUCKETS.size)
         assertEquals("Ad reel", bucketLabel("commercial_compilation"))
     }
 }

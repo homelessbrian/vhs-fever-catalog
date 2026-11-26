@@ -159,7 +159,8 @@ data class Bucket(val id: String, val label: String)
 
 val BUCKETS = listOf(
     Bucket("movie", "Movie"), Bucket("tv_episode", "TV episode"), Bucket("tv_recording", "Off-air TV"),
-    Bucket("short", "Short / cartoon"), Bucket("music", "Music"), Bucket("instructional", "How-to"),
+    Bucket("short", "Short / cartoon"), Bucket("documentary", "Documentary"), Bucket("music", "Music"),
+    Bucket("instructional", "How-to"), Bucket("educational", "Educational / industrial"),
     Bucket("sports", "Sports"), Bucket("news", "News"), Bucket("home_video", "Home video"),
     Bucket("extra", "Bonus / extra"), Bucket("tape_opening", "Tape opening"), Bucket("trailer", "Trailer"),
     Bucket("commercial", "Commercial"), Bucket("commercial_compilation", "Ad reel"), Bucket("promo_or_bump", "Promo / bump"),
@@ -203,9 +204,16 @@ data class RobotGuess(
     val kindLabel get() = bucketLabel(kind)
 }
 
-fun parseRobot(text: String): Map<String, RobotGuess> {
+fun parseRobot(text: String): Map<String, RobotGuess> = parseRobotLines(text.lineSequence())
+
+/** Reads the file line by line, so a big list never has to sit in memory as one piece of text. */
+fun parseRobotFile(f: java.io.File): Map<String, RobotGuess> = f.bufferedReader().useLines { parseRobotLines(it) }
+
+fun parseAudioFile(f: java.io.File): Map<String, AudioCheck> = f.bufferedReader().useLines { parseAudioLines(it) }
+
+private fun parseRobotLines(lines: Sequence<String>): Map<String, RobotGuess> {
     val m = HashMap<String, RobotGuess>()
-    text.lineSequence().filter { it.isNotBlank() }.forEach { line ->
+    lines.filter { it.isNotBlank() }.forEach { line ->
         val o = JSONObject(line)
         m[o.optString("file_id")] = RobotGuess(
             o.optString("verdict"), o.optStringOrNull("reason"), o.optString("confidence"),
@@ -315,9 +323,11 @@ fun parseFeed(text: String): List<FileItem> {
     return out
 }
 
-fun parseAudio(text: String): Map<String, AudioCheck> {
+fun parseAudio(text: String): Map<String, AudioCheck> = parseAudioLines(text.lineSequence())
+
+private fun parseAudioLines(lines: Sequence<String>): Map<String, AudioCheck> {
     val m = HashMap<String, AudioCheck>()
-    text.lineSequence().filter { it.isNotBlank() }.forEach { line ->
+    lines.filter { it.isNotBlank() }.forEach { line ->
         val o = JSONObject(line)
         val key = o.optString("file_id")
         m[key] = AudioCheck(o.optString("verdict"), if (o.has("has_audio_track")) o.optBoolean("has_audio_track") else null,

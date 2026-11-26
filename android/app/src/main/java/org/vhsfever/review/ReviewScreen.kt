@@ -92,9 +92,11 @@ fun ReviewScreen(m: AppModel, fileId: String) {
         Box { VideoPlayer(m, f); IconButton(onClick = { m.back() }, modifier = Modifier.padding(2.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = C.text,
                 modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0x88000000)).padding(5.dp)) } }
+        ListStatusBar(m)
         Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             FileLine(m, f)
-            m.robotFor(f)?.let { g -> RobotLine(g, d?.status, d?.robot) { m.agreeWithRobot(f.id); goNext() } }
+            // While a newer list is coming in, the robot's call here may be out of date: don't offer it.
+            if (m.updating == null) m.robotFor(f)?.let { g -> RobotLine(g, d?.status, d?.robot) { m.agreeWithRobot(f.id); goNext() } }
             MovieLine(m, f) { m.open(Screen.MovieEdit(f.id)) }
             // The grid takes what's left; on a very small phone it can scroll on its own.
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {

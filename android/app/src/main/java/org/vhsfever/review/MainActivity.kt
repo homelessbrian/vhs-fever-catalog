@@ -49,6 +49,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        model?.refreshIfStale()
+    }
+
     override fun onPause() {
         super.onPause()
         model?.let { if (it.dirty) it.syncNow() }

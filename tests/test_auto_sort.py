@@ -166,6 +166,18 @@ class PatternsFromRealPages(unittest.TestCase):
         r = sort_one("elvis_on_ice._hevc_nvenc.mkv", 22200, item=page("Found VHS Tape - 1990s - Elvis Stojko on Ice"))
         self.assertEqual(r["kind"], "tv_recording")
 
+    def test_educational_how_to_and_documentary(self):
+        k = lambda n, d=1800: sort_one(n, d, item=page(n, 1, ["the-vista-group-video"]))["kind"]
+        self.assertEqual(k("1986 VHS • Seatbelts and the Family, Shattering Some Myths 60 FPS.mp4", 900), "educational")
+        self.assertEqual(k("2001 VHS • Using the ProNeb Ultra Nebulizer System 60 FPS.mp4"), "educational")
+        self.assertEqual(k("1997 VHS • Introducing the New Bernina Line Sewing Machines 60 FPS.mp4"), "educational")
+        self.assertEqual(k("1994 VHS • Plumbing Preparation and Installation How-To Video Guide 60 FPS.mp4"), "instructional")
+        self.assertEqual(k("2000 VHS • How To Use Your Cuisinart Food Processor 60 FPS.mp4"), "instructional")
+        self.assertEqual(k("1996 VHS • Over Canada, An Aerial Adventure 60 FPS.mp4"), "documentary")
+        self.assertEqual(k("TV Commercials from May-June 2006, on KIRO 7 (CBS) in Seattle, WA • VHS 60 FPS.mp4", 7200),
+                         "commercial_compilation")
+        self.assertEqual(k("TV Programming from March 2003 on ABC • VHS 60 FPS.mp4", 7200), "tv_recording")
+
     def test_one_collection_as_plain_text(self):
         r = sort_one("Bambi (1989 VHS).mp4", 4200, item=dict(page("Bambi"), collection="vhsvault"), title=MATCHED)
         self.assertEqual(r["verdict"], "good")

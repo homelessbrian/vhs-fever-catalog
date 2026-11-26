@@ -69,7 +69,8 @@ NO_ADS = re.compile(r"\b(?:no|without|w/o|commercial[\s._-]*free|ads? removed|co
 OFF_AIR = re.compile(r"\b(?:taped|recorded|tape[sd]?) (?:off|from) (?:of )?(?:tv|television|cable|the air|air|hbo|"
                      r"showtime|nick(?:elodeon)?|cartoon network|disney channel|fox|abc|nbc|cbs|pbs)\b|"
                      r"\boff[\s._-]*air\b|\btv[\s._-]*recording\b|\bbroadcast recording\b|\bas[\s._-]*aired\b|"
-                     r"\boriginal (?:tv )?broadcast\b|\blive (?:tv )?feed\b|\bairing\b", I)
+                     r"\boriginal (?:tv )?broadcast\b|\blive (?:tv )?feed\b|\bairing\b|"
+                     r"\btv (?:programming|broadcast)\b", I)
 MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
 # "FRI 2001 MAR 09", "March 9, 2001", "2001-03-09 broadcast": an air date.
 AIR_DATE_WORDS = re.compile(
@@ -98,12 +99,27 @@ OPENING_PAGE = re.compile(r"^\s*(?:opening|closing|openings|closings)\s+(?:to|of
 COMMERCIAL_BREAK = re.compile(r"\bcommercial breaks?\b|\bad breaks?\b", I)
 # Australian off-air tapes: "Burke's Backyard (NWS-9, 28/10/95)", "HSV-7, 13-05-86".
 AU_AIRING = re.compile(r"\b(?P<ch>[A-Z]{2,4}-\d{1,2}),\s*(?P<d>\d{1,2})[/-](?P<m>\d{1,2})[/-](?P<y>\d{2}|\d{4})\b")
-INSTRUCTIONAL = re.compile(r"\b(?:instructional|how to|learn(?:ing)? to|lessons?|tutorial|training|workouts?|aerobics|"
+INSTRUCTIONAL = re.compile(r"\b(?:instructional|how[\s-]to|reupholster\w*|repairs?|installation|do[\s-]it[\s-]yourself|diy|"
+                           r"self[\s-]defen[cs]e|learn(?:ing)? to|lessons?|tutorial|training|workouts?|aerobics|"
                            r"exercises?|fitness|yoga|cooking|cook-?up|recipes?|guide to|tips|self[- ]help|"
-                           r"safety (?:video|film)|educational|for beginners|step by step|course)\b", I)
+                           r"for beginners|step by step|course|technique)\b", I)
 SPORTS = re.compile(r"\b(?:football|soccer|baseball|basketball|hockey|golf|wrestling|wwf|wcw|wwe|boxing|nfl|nba|nhl|"
                     r"mlb|world cup|super bowl|olympics?|grand prix|nascar|cricket|rugby|tennis|skating|on ice|"
                     r"best (?:goals|tries)|greatest (?:goals|plays)|season review|highlights)\b", I)
+# Made for a business, school, hospital or agency, not for a store shelf:
+# training, safety, health, product and sales tapes ("industrial" / "ephemeral" films).
+EDUCATIONAL = re.compile(r"\b(?:training (?:video|film|tape|program)|employees?|orientation|safety|seat ?belts?|first aid|cpr|"
+                         r"patients?|nurs(?:e|es|ing)|hospital|medical|m\.?d\.|clinic(?:al)?|breast ?(?:feed\w*|pump)|"
+                         r"pregnan\w*|childbirth|prenatal|nebuli[sz]er|inhaler|diabetes|anxiety|drug (?:abuse|education)|"
+                         r"substance abuse|alcohol (?:awareness|education)|prevention|awareness|school of|classroom|"
+                         r"teachers?(?:'s)? guide|curriculum|sales (?:meeting|training|presentation|tape)|dealers?|"
+                         r"introducing the new|product (?:demo\w*|video|training)|corporate|industrial|demo tape|"
+                         r"seminar|forklift|osha|hazard\w*|recruit(?:ing|ment)|public service|psa)\b", I)
+DOCUMENTARY = re.compile(r"\b(?:documentar\w*|reporting|history of|the story of|a brief history|nature|wildlife|"
+                         r"national geographic|nova|aerial|planets?|ufos?|travel(?:s|ogue)?|cruises?|biography|"
+                         r"special report|expedition|explor\w+|frontline|natives?|tribes?|civilizations?|"
+                         r"the (?:real|true) story|inside the|the world of|secrets of)\b", I)
+COMMERCIAL_REEL = re.compile(r"^\s*(?:tv |television )?(?:commercials?|ads|adverts)\b(?: from)?", I)
 NEWS = re.compile(r"\b(?:news(?:cast)?|bulletins?|news coverage|evening report|current affairs)\b", I)
 HOME_VIDEO = re.compile(r"\bhome (?:movies?|videos? of)\b|\bfamily (?:videos?|movies?|footage|vacation)\b|"
                         r"\bcamcorder\b|\bwedding (?:video|reception|ceremony)\b|\bbirthday party\b", I)
@@ -333,7 +349,7 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
         kind = "promo_or_bump"
         why.append("station ID, bumper, continuity or promo")
     elif (has_ad_words or cols & {"vhscommercials", "classic_tv_commercials", "classic_tv_commercials_emperor"}) \
-            and (dur or 0) <= 90 * 60:
+            and ((dur or 0) <= 90 * 60 or COMMERCIAL_REEL.search(name) or COMMERCIAL_REEL.search(page)):
         if COMMERCIAL_BREAK.search(text) or (airing and (dur or 0) > 60 and has_ad_words):
             kind = "commercial_compilation"
             why.append("a commercial break taped off TV")
@@ -365,6 +381,9 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
     elif (dur or 0) >= 60 and (HOME_VIDEO.search(text) or FOUND_TAPE.search(title)):
         kind = "home_video"
         why.append("home movie or found family footage")
+    elif (dur or 0) >= 3 * 60 and EDUCATIONAL.search(text):
+        kind = "educational"
+        why.append("made for a business, school or hospital (training, safety, health or product tape)")
     elif (dur or 0) >= 3 * 60 and ("vhsinstructionals" in cols or INSTRUCTIONAL.search(text)):
         kind = "instructional"
         why.append("how-to, exercise or educational tape")
@@ -374,6 +393,9 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
     elif (dur or 0) >= 60 and ("vhsnews" in cols or NEWS.search(text)):
         kind = "news"
         why.append("news broadcast")
+    elif (dur or 0) >= 15 * 60 and DOCUMENTARY.search(text):
+        kind = "documentary"
+        why.append("documentary or travel film")
     elif dur is not None and dur >= 40 * 60:
         kind = "movie"
         why.append("feature length")
@@ -422,7 +444,8 @@ MIN_LEN = {"movie": 15 * 60, "short": 3 * 60, "tv_episode": 4 * 60, "tv_recordin
            "commercial": 10, "commercial_compilation": 60,
            # Kept for the ad list and the retro TV guide, so a working one is good as what it is.
            "promo_or_bump": 3, "trailer": 20, "tape_opening": 20,
-           "instructional": 3 * 60, "sports": 3 * 60, "news": 60, "home_video": 60}
+           "instructional": 3 * 60, "sports": 3 * 60, "news": 60, "home_video": 60,
+           "educational": 3 * 60, "documentary": 15 * 60}
 GOOD_KINDS = set(MIN_LEN)
 CODEC_WORRY = re.compile(r"may not play on TV|can't stream this file type")
 
