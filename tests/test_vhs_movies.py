@@ -113,3 +113,33 @@ class PickPages(unittest.TestCase):
         self.assertFalse(pb.wanted(dict(page, size_bytes=50_000_000), "vhs_movies"))
         self.assertFalse(pb.wanted(dict(page, found_by=["keyword vhsrip"], found_by_uploader=False, format_guess="unknown"),
                                    "vhs_movies"))
+
+
+class StoreLabelsAreNotTV(unittest.TestCase):
+    """A VHS label named after a TV company (CBS/FOX, HBO Video) was sold in stores."""
+
+    def test_video_labels_kept(self):
+        for name in ("Star Wars CBS FOX 1984.mp4", "WARGAMES1984 CBS FOX VIDEO VHS RIP.mp4",
+                     "DOOMSDAY GUN 1994 HBO HOME VIDEO VHS RIP.mp4", "Play School (1984, BBC Video - VHSrip).mp4"):
+            self.assertIsNone(vm.why_not_kept(row(name=name), None), name)
+
+    def test_real_tv_recordings_still_left_out(self):
+        for name in ("1955 Youre Never Too Young (1989 AMC).mp4", "CBS Late Movie - Parts The Clonus Horror.mp4",
+                     "1993-1994 Fox Kids.mp4"):
+            self.assertEqual(vm.why_not_kept(row(name=name), None), "taped off TV or a TV episode", name)
+
+
+class KindWordsInMovieTitles(unittest.TestCase):
+    def test_movie_titles_not_mistaken_for_other_kinds(self):
+        import auto_sort as a
+        self.assertFalse(a.EDUCATIONAL.search("A Hazard of Hearts (1987)"))
+        self.assertFalse(a.RELIGIOUS.search("THE CROW SALVATION 2000 VHS RIP"))
+        self.assertFalse(a.RELIGIOUS.search("Revival of Evil"))
+        self.assertFalse(a.TRAVEL.search("Gulliver's Travels"))
+        self.assertFalse(a.DOCUMENTARY.search("Puss in Boots Travels Around the World"))
+        self.assertTrue(a.EDUCATIONAL.search("Hazardous Materials Training"))
+        self.assertTrue(a.TRAVEL.search("Caribbean Cruise Ship Tour"))
+
+    def test_tape_era_label_counts_as_vhs(self):
+        import auto_sort as a
+        self.assertTrue(any(f == "VHS" and rx.search("Star Wars CBS FOX 1984") for rx, f, _s in a.RIP_TAGS))

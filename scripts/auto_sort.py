@@ -51,6 +51,9 @@ RIP_TAGS = [  # (pattern, format, strength)
     (re.compile(r"\bbetamax\b|\bbeta[\s._-]*rip\b", I), "BETAMAX", 3),
     (re.compile(r"\blaser[\s._-]*disc\b", I), "LASERDISC", 2),
     (re.compile(r"\bvhs(?![a-z])", I), "VHS", 2),   # also "VHS1984_VID_..."
+    # Home-video labels from the tape era only ("CBS FOX 1984", "Vestron Video").
+    (re.compile(r"\bcbs[\s._/-]*fox\b|\bvestron\b|\bthorn[\s._-]*emi\b|\bmagnetic video\b|\bwizard video\b|"
+                r"\bmedia home entertainment\b|\bprism entertainment\b|\blightning video\b", I), "VHS", 2),
     (re.compile(r"\bdvd\b|\bvideo_ts\b", I), "DVD", 2),
     (re.compile(r"\bvcd\b", I), "VCD", 2),
     (re.compile(r"\bupscaled?\b|\bai[\s._-]*enhanced\b", I), "UPSCALED", 1),
@@ -114,9 +117,9 @@ EDUCATIONAL = re.compile(r"\b(?:training (?:video|film|tape|program)|employees?|
                          r"substance abuse|alcohol (?:awareness|education)|prevention|awareness|school of|classroom|"
                          r"teachers?(?:'s)? guide|curriculum|sales (?:meeting|training|presentation|tape)|dealers?|"
                          r"introducing the new|product (?:demo\w*|video|training)|corporate|industrial|demo tape|"
-                         r"seminar|forklift|osha|hazard\w*|recruit(?:ing|ment)|public service|psa)\b", I)
+                         r"seminar|forklift|osha|hazardous|hazmat|hazard communication|recruit(?:ing|ment)|public service|psa)\b", I)
 DOCUMENTARY = re.compile(r"\b(?:documentar\w*|reporting|history of|the story of|a brief history|nature|wildlife|"
-                         r"national geographic|nova|aerial|planets?|ufos?|travel(?:s|ogue)?|cruises?|biography|"
+                         r"national geographic|nova|aerial|planets?|ufos?|travelogue|cruise (?:ship|line)s?|biography|"
                          r"special report|expedition|explor\w+|frontline|natives?|tribes?|civilizations?|"
                          r"the (?:real|true) story|inside the|the world of|secrets of)\b", I)
 # Kinds you'd see on a thrift-store shelf. Each is checked before the broader kind it overlaps.
@@ -134,7 +137,7 @@ KIDS_SHOW = re.compile(r"\b(?:sesame street|barney|teletubbies|power rangers|mis
 STANDUP = re.compile(r"\b(?:stand[\s-]?up|comedy (?:special|concert|jam|club|hour|central presents)|comedians?|"
                      r"def comedy jam|live comedy|comic relief)\b", I)
 RELIGIOUS = re.compile(r"\b(?:sermons?|church|bible|gospel|jesus|christ|christian|ministr(?:y|ies)|veggie ?tales|worship|"
-                       r"evangel\w*|revival|crusade|pastor|prayer|praise|salvation|god'?s|torah|scripture)\b", I)
+                       r"evangel\w*|tent revival|revival (?:meeting|service)s?|crusade|pastor|prayer|praise|salvation army|god'?s|torah|scripture)\b", I)
 BLOOPER_WORDS = re.compile(r"\b(?:bloopers?|follies|outtakes?|funn(?:y|iest)|crazy|wild(?:est)?|wrecks?|crashes|"
                            r"greatest (?:hits|plays|moments)|best of|highlights)\b", I)
 FUNNY_VIDEOS = re.compile(r"\b(?:funniest|blooper (?:tape|reel|collection|show)|(?:tv|television|commercial) bloopers|"
@@ -150,7 +153,7 @@ HOBBY = re.compile(r"\b(?:(?:golf|tennis|bowling|guitar|piano|drum|banjo|fishing
                    r"knitting|crochet|woodworking|woodcarving|magic|card|dance|dancing|ballroom) (?:lessons?|instruction|tips|"
                    r"techniques?|made easy|basics|secrets|tricks|for beginners)|learn (?:to|how to) play|bob ross|"
                    r"joy of painting|magic tricks|card tricks)\b", I)
-TRAVEL = re.compile(r"\b(?:travel(?:s|ogue)?|vacation guide|tour of|scenic|scenery|destinations?|cruises?|fireplace|"
+TRAVEL = re.compile(r"\b(?:travelogue|travel (?:guide|video|tape)s?|vacation guide|tour of|scenic|scenery|destinations?|cruise (?:ship|line)s?|fireplace|"
                     r"aquariums?|yule log|relaxation|nature sounds|ambien(?:ce|t))\b", I)
 TV_MOVIE = re.compile(r"\b(?:made[\s-]for[\s-](?:tv|television)|tv movie|movie of the week|telefilm)\b", I)
 COMMERCIAL_REEL = re.compile(r"^\s*(?:tv |television )?(?:commercials?|ads|adverts)\b(?: from)?", I)

@@ -168,10 +168,19 @@ TAPED_OFF_TV = re.compile(
     r"pbs|cbs|nbc|wgn|mtv|vh1|comedy central|amc|tcm)\b|\b(?:abc|ch\.?|channel) ?\d{1,2}\b|\bnight movie\b", re.I)
 
 
+# Home-video labels named after a TV company ("CBS/FOX Video", "HBO Home Video"):
+# the tape was sold in stores, not taped off TV.
+VIDEO_LABEL = re.compile(r"\bcbs\s*[/_-]?\s*fox\b(?:\s+video)?|\b(?:hbo|fox|cbs|abc|nbc|pbs|bbc)\s+(?:home\s+)?video\b", re.I)
+
+
+def taped_off_tv(text: str) -> bool:
+    return bool(TAPED_OFF_TV.search(VIDEO_LABEL.sub(" ", text or "")))
+
+
 def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None) -> str | None:
     if ((title or {}).get("tmdb") or {}).get("status") == "skipped_not_english":
         return "not in English"
-    if TAPED_OFF_TV.search(row.get("name") or "") or TAPED_OFF_TV.search((title or {}).get("display_title") or ""):
+    if taped_off_tv(row.get("name") or "") or taped_off_tv((title or {}).get("display_title") or ""):
         return "taped off TV or a TV episode"
     if row["kind"] != "movie":
         return "not a movie (" + row["kind"] + ")"
