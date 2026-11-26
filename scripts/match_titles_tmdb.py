@@ -37,7 +37,7 @@ API = "https://api.themoviedb.org/3"
 # Bumped whenever the search gets smarter. Titles that found nothing (or only
 # weak guesses) with an older version are searched again instead of being
 # copied forward; confident matches are kept.
-MATCHER_VERSION = 3
+MATCHER_VERSION = 4
 KEEP_STATUSES = {"one_likely_candidate", "one_likely_episode", "skipped_tape_opening",
                  "skipped_commercial_or_promo", "skipped_not_english", "skipped_adult"}
 # File names that are a piece of a tape, not the film itself: the Archive

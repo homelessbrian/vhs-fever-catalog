@@ -337,6 +337,7 @@ GENERIC = re.compile(r"^(?:the )?(?:movie|film|special|series|show|episode|part|
                      r"christmas special|holiday special|trailer|opening|intro)(?: \d+)?$")
 LABEL_ONLY = re.compile(r"^(?:[\d ]+|(?:tape|disc|disk|part|vol|volume|chapter|no) ?\d+|"
                         r"(?:19|20)\d\d(?: \d\d? \d\d?)?|.*\b(?:vhs|dvd|tape|recording|capture)s?)$")
+LEADING_YEAR = re.compile(r"^\s*(?:19|20)\d\d\s*[-–—:.,)\]]?\s+(?P<rest>\S+(?:\s+\S+)+)$")
 SPLIT_DASH = re.compile(r"\s+[-–—:]\s+|\s*:\s+")
 
 
@@ -416,6 +417,13 @@ def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[t
         add(clean_name(before_year[1]), "name before the year")
     cleaned = clean_name(title)
     add(cleaned, "name cleaned up")
+    # "1975 It's a Bird, It's a Plane, It's Superman": a year written in front
+    # of the name. The name with the year is still tried first, so films
+    # named after a year ("2001 A Space Odyssey") still match.
+    front = LEADING_YEAR.match(cleaned)
+    if front:
+        add(front["rest"], "without the year in front")
+        cleaned = front["rest"]
     current = cleaned
     for how, rx in STRIP_PATTERNS:
         stripped = rx.sub(" ", current)
@@ -469,6 +477,10 @@ def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[t
             add(clean_name(by[1]), how + ", name before the year")
         c = clean_name(q)
         add(c, how + ", cleaned up")
+        front = LEADING_YEAR.match(c)
+        if front:
+            c = front["rest"]
+            add(c, how + ", without the year in front")
         for _how, rx in STRIP_PATTERNS:
             c2 = rx.sub(" ", c)
             if plain(c2) != plain(c):
