@@ -1,0 +1,19 @@
+name: Remove old data branches (one time)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the old lists and data branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for b in audio-data auto-sort-data batch-data catalog-data catalog-model-data gh-pages rebuild/data-model; do
+            if gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$b" >/dev/null; then echo "deleted $b"; else echo "could not delete $b"; fi
+          done
