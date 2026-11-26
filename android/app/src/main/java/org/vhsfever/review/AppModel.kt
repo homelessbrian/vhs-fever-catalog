@@ -47,6 +47,14 @@ class AppModel(private val ctx: Context) {
     /** Name of the batch being reviewed, when reviewing the latest batch. */
     var batchName by mutableStateOf<String?>(null); private set
     var loadStatus by mutableStateOf("Loading catalog…"); private set
+    /** Which list is on screen: "Batch 5 · built Nov 25, 7:02 PM". */
+    var listInfo by mutableStateOf<String?>(null); private set
+    /** Set while a newer list is being downloaded. What's on screen may be old until it's done. */
+    var updating by mutableStateOf<String?>(null); private set
+    /** Why the newest list couldn't be loaded, shown until it works. */
+    var updateError by mutableStateOf<String?>(null); private set
+    private var lastCheck = 0L
+    private var loadJob: Job? = null
 
     // ---- decisions (local copy is the source of truth on the phone)
     var decisions by mutableStateOf<Map<String, FileDecision>>(emptyMap()); private set
@@ -101,14 +109,6 @@ class AppModel(private val ctx: Context) {
     }
 
     // ------------------------------------------------------------------ loading
-    /** Which list is on screen: "Batch 5 · built Nov 25, 7:02 PM". */
-    var listInfo by mutableStateOf<String?>(null); private set
-    /** Set while a newer list is being downloaded. What's on screen may be old until it's done. */
-    var updating by mutableStateOf<String?>(null); private set
-    /** Why the newest list couldn't be loaded, shown until it works. */
-    var updateError by mutableStateOf<String?>(null); private set
-    private var lastCheck = 0L
-    private var loadJob: Job? = null
 
     private fun stampLabel(batch: String?, builtAt: String?): String? {
         val b = batch?.removePrefix("batch-")?.trimStart('0')?.let { "Batch $it" }
