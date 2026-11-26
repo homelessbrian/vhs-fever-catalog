@@ -99,3 +99,17 @@ class CleanNames(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PickPages(unittest.TestCase):
+    def test_page_with_several_titles_and_what_gets_picked(self):
+        import pick_batch as pb
+        page = {"identifier": "x", "kind_guess": "movie_or_unknown", "size_bytes": 900_000_000, "collections": ["vhsvault"],
+                "format_guess": "VHS", "title": ["Bambi", "Bambi (1989 VHS)"]}
+        self.assertTrue(pb.wanted(page, "vhs_movies"))
+        self.assertFalse(pb.wanted(dict(page, title="Opening to Bambi 1989 VHS"), "vhs_movies"))
+        self.assertFalse(pb.wanted(dict(page, kind_guess="commercials"), "vhs_movies"))
+        self.assertFalse(pb.wanted(dict(page, format_guess="DVD"), "vhs_movies"))
+        self.assertFalse(pb.wanted(dict(page, size_bytes=50_000_000), "vhs_movies"))
+        self.assertFalse(pb.wanted(dict(page, found_by=["keyword vhsrip"], found_by_uploader=False, format_guess="unknown"),
+                                   "vhs_movies"))

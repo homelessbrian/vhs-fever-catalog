@@ -47,6 +47,8 @@ def wanted(r: dict, kind: str) -> bool:
         return False
     cols = set(r.get("collections") or [])
     title = r.get("title") or ""
+    if isinstance(title, list):        # a few Archive pages have more than one title
+        title = " ".join(str(x) for x in title)
     gb = int(r.get("size_bytes") or 0) / 1e9
     if kind == "vhs_movies":
         if r.get("kind_guess") != "movie_or_unknown" or cols & NOT_MOVIE_COLLECTIONS:
