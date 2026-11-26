@@ -270,3 +270,20 @@ class RealNameTests(unittest.TestCase):
         res = ts.search("Alphabet Soup With Barney", find=find, show="Barney")
         self.assertNotEqual(res["confidence"], "weak")
         self.assertFalse(res["candidates"][0].get("not_the_show"))
+
+
+def test_one_word_name_with_year_in_front():
+    for name, word, year in [("1998 Paulie", "Paulie", 1998), ("2000 Unbreakable", "Unbreakable", 2000),
+                             ("1999 Entrapment", "Entrapment", 1999)]:
+        tries = [q for q, _ in ts.search_tries(name, None)]
+        assert tries[0] == name and word in tries
+        assert ts.leading_year(name) == year
+
+
+def test_year_in_front_and_trailers_make_a_sure_match():
+    cands = [dict(title="The Sixth Sense", release_date="1999-08-06", runtime=107, popularity=20.8, tmdb_id=745),
+             dict(title="The Sixth Sense", release_date="2003-01-01", popularity=0.3, tmdb_id=1),
+             dict(title="The Sixth Sense", release_date="1935-01-01", runtime=100, popularity=0.2, tmdb_id=2)]
+    ranked = ts.rank("The Sixth Sense", cands, ceiling=None, hint_year=1999, minutes=123)
+    assert ranked[0]["tmdb_id"] == 745
+    assert ts.confidence(ranked) == "sure"

@@ -337,7 +337,14 @@ GENERIC = re.compile(r"^(?:the )?(?:movie|film|special|series|show|episode|part|
                      r"christmas special|holiday special|trailer|opening|intro)(?: \d+)?$")
 LABEL_ONLY = re.compile(r"^(?:[\d ]+|(?:tape|disc|disk|part|vol|volume|chapter|no) ?\d+|"
                         r"(?:19|20)\d\d(?: \d\d? \d\d?)?|.*\b(?:vhs|dvd|tape|recording|capture)s?)$")
-LEADING_YEAR = re.compile(r"^\s*(?:19|20)\d\d\s*[-–—:.,)\]]?\s+(?P<rest>\S+(?:\s+\S+)+)$")
+# One word is enough after the year: "1998 Paulie", "2000 Unbreakable".
+LEADING_YEAR = re.compile(r"^\s*(?P<year>(?:19|20)\d\d)\s*[-–—:.,)\]]?\s+(?P<rest>[^\W\d_]\S*(?:\s+\S+)+|[^\W\d_][\w'’.&!-]{2,})$")
+
+
+def leading_year(text: str) -> int | None:
+    """'1999 The Sixth Sense' -> 1999. Only a year written in front of a name."""
+    m = LEADING_YEAR.match(clean_name(text or ""))
+    return int(m["year"]) if m else None
 SPLIT_DASH = re.compile(r"\s+[-–—:]\s+|\s*:\s+")
 
 
@@ -405,7 +412,8 @@ def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[t
             return
         q = " ".join(q.replace("_", " ").split()).strip(" -.,:")
         k = plain(q)
-        if GENERIC.match(k) or (len(k.split()) < 2 and len(k) < 6 and tries and "spelling" not in how):
+        if GENERIC.match(k) or (len(k.split()) < 2 and len(k) < 6 and tries and "spelling" not in how
+                                and "year in front" not in how):
             return   # "The Movie", "Part 2": would match anything
         if len(k) >= 2 and k not in seen and not k.isdigit():
             seen.add(k)
@@ -542,7 +550,15 @@ def rank(query: str, cands: list[dict[str, Any]], *, ceiling: int | None, hint_y
         if rt and minutes:
             diff = abs(rt - minutes) / max(rt, 1)
             c["runtime_match"] = diff <= 0.12
-            if diff <= 0.06:
+            extra_min = minutes - rt
+            if diff > 0.12 and 0 < extra_min <= 20 and ok is True:
+                # Same name and year, and the tape runs a bit longer than the
+                # film: trailers and previews before it ("The Sixth Sense"
+                # 107 min, tape 123 min).
+                c["runtime_match"] = True
+                score += 8
+                why.append(f"runs {rt} min, tape runs {round(minutes)} (trailers before the film)")
+            elif diff <= 0.06:
                 score += 15
                 why.append(f"runs {rt} min, file runs {round(minutes)}")
             elif diff <= 0.12:
