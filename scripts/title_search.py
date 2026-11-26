@@ -221,7 +221,7 @@ YOUTUBE_TAIL = re.compile(r"(?:\.\w{2,4})?-[A-Za-z0-9_-]{11}(?:-\d{3,4}p+)?(?:-\
 YEAR_LABEL = re.compile(r"^\s*(?:(?:19|20)\d\d\s+)?(?:found\s+)?(?:vhs|dvd|tape)\s*[•|·:-]\s*", re.I)
 NOISE = re.compile(
     r"\b(?:\d{2,3}\s?fps|\d{3,4}p+|\d{3,4}i|prores(?:\s+\d{3,4}[ip])?|hevc|nvenc|x26[45]|h\.?26[45]|xvid|divx|"
-    r"deinterlaced|lagarith|"
+    r"deinterlaced|lagarith|original\s+theatrical\s+audio|screener|"
     r"(?:full\s+)?(?:hd\s+|hq\s+|lq\s+)?(?:vhs|dvd|tv)\s*(?:rip|capture|transfer|recording)(?:\s+version)?|"
     r"full\s+vhs(?:\s+tape)?|vhs\s+tape|full\s+tape|"
     r"screener(?:\s+vhs)?|fan\s?made|home\s?made|custom|bootleg|"
@@ -237,7 +237,7 @@ NOISE = re.compile(
 TV_TAPE_NOTES = re.compile(
     r"\b(?:partial|incomplete|missing\s+start|woc)\b|\b[A-Z]{3}-\d{1,2}\b|\b[A-Z]{3}-[A-Z]{3}\b|"
     r"\b\d{1,2}[-./]\d{1,2}[-./](?:19|20)?\d\d\b|\(\s*(?:kcb\s+)?(?:tape|hb)\s*\d+\s*\)", re.I)
-LEAD_LABELS = re.compile(r"^\s*(?:(?:walt\s+)?disney\s+presents|pbs(?:\s+kids)?|nick\s+jr\.?|pixar\s*-)\s+(?=\S)", re.I)
+LEAD_LABELS = re.compile(r"^\s*(?:(?:walt\s+)?disney\s+presents|(?:walt\s+)?disney'?s|pbs(?:\s+kids)?|nick\s+jr\.?|pixar\s*-)\s+(?=\S)", re.I)
 # TV airings of films: "VH1 movie 8 mile", "ABC 13 Saturday Night Movie The Big
 # Country", "NBC Network Movie Premiere The Natural", "CBS TV Movie
 # Presentation of Northern Exposure".
@@ -341,10 +341,57 @@ LABEL_ONLY = re.compile(r"^(?:[\d ]+|(?:tape|disc|disk|part|vol|volume|chapter|n
 LEADING_YEAR = re.compile(r"^\s*(?P<year>(?:19|20)\d\d)\s*[-–—:.,)\]]?\s+(?P<rest>[^\W\d_]\S*(?:\s+\S+)+|[^\W\d_][\w'’.&!-]{2,})$")
 
 
+# "2004. When Will I Be Loved, by James Toback - Neve Campbell as Vera Barrie",
+# "1989 2. Under the Boardwalk, by Fritz Kiersch - as Donna": one collector's
+# naming, film year (and a number for that year) in front, director after ", by".
+BY_DIRECTOR = re.compile(
+    r"^\s*(?P<year>(?:19|20)\d\d)(?:\s+\d{1,2})?\.\s+(?P<name>.+?)\s*(?:\(\s*)?,\s*by\s+\S", re.I)
+
+
+# Same naming without the year: "Courtesy Film - Attack of the Killer Tomatoes, by John DeBello".
+BY_DIRECTOR_NO_YEAR = re.compile(r"^\s*(?P<name>.+?)\s*(?:\(\s*)?,\s*by\s+[A-Z]")
+
+
+def by_director_name(text: str) -> str | None:
+    """'2004. When Will I Be Loved, by James Toback - ...' -> 'When Will I Be Loved'."""
+    m = BY_DIRECTOR.match(text or "") or BY_DIRECTOR_NO_YEAR.match(text or "")
+    if not m:
+        return None
+    name = clean_name(m["name"])
+    if not m.groupdict().get("year"):
+        parts = SPLIT_DASH.split(name)
+        if len(parts) > 1 and LABEL_ONLY.match(plain(parts[0])) is None and len(parts[0].split()) <= 2:
+            name = parts[-1]          # "Courtesy Film - Attack of the Killer Tomatoes"
+        if len(plain(name).split()) < 2:
+            return None               # "Love, by Chance" is a title, not a director
+    name = re.sub(r"\s+1\.?$", "", name).rstrip(" .")       # "Scream 1." -> "Scream"
+    return name or None
+
+
+# "CARRIE 1976 MAGNETIC VIDEO", "CHRISTINE 1983 RCA": name, film year, then
+# the tape label. Only the part before the year is the film's name.
+MID_YEAR = re.compile(r"^\s*(?P<name>\D*?[^\W\d_]\S*)\s+(?P<year>(?:19|20)\d\d)\s+(?P<rest>\S.*)$")
+
+
+def name_before_mid_year(text: str) -> tuple[str, int] | None:
+    m = MID_YEAR.match(clean_name(text or ""))
+    if not m or LEADING_YEAR.match(clean_name(text or "")):
+        return None
+    name = m["name"].strip(" -.,:")
+    words = plain(name).split()
+    if not words or words[-1] in {"the", "a", "an", "of", "in", "on", "to", "and", "for", "from", "since", "summer",
+                                  "class", "space", "year", "after", "before", "until", "circa"}:
+        return None   # "Summer of 1942", "Space 1999", "Class of 1984": the year is part of the name
+    return name, int(m["year"])
+
+
 def leading_year(text: str) -> int | None:
-    """'1999 The Sixth Sense' -> 1999. Only a year written in front of a name."""
-    m = LEADING_YEAR.match(clean_name(text or ""))
-    return int(m["year"]) if m else None
+    """'1999 The Sixth Sense' -> 1999, 'CARRIE 1976 MAGNETIC VIDEO' -> 1976."""
+    m = BY_DIRECTOR.match(text or "") or LEADING_YEAR.match(clean_name(text or ""))
+    if m:
+        return int(m["year"])
+    mid = name_before_mid_year(text)
+    return mid[1] if mid else None
 SPLIT_DASH = re.compile(r"\s+[-–—:]\s+|\s*:\s+")
 
 
@@ -413,18 +460,23 @@ def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[t
         q = " ".join(q.replace("_", " ").split()).strip(" -.,:")
         k = plain(q)
         if GENERIC.match(k) or (len(k.split()) < 2 and len(k) < 6 and tries and "spelling" not in how
-                                and "year in front" not in how):
+                                and "year in front" not in how and ", by'" not in how
+                                and how not in {"name cleaned up", "name before the year in the middle"}):
             return   # "The Movie", "Part 2": would match anything
         if len(k) >= 2 and k not in seen and not k.isdigit():
             seen.add(k)
             tries.append((q, how))
 
     add(title, "name as written")
+    add(by_director_name(title), "name before ', by' (director)")
     before_year = re.match(r"^\s*(.{3,}?)\s*[(\[]\s*(?:19|20)\d\d\s*[)\]]", title or "")
     if before_year and len(plain(before_year[1]).split()) >= 1:
         add(clean_name(before_year[1]), "name before the year")
     cleaned = clean_name(title)
     add(cleaned, "name cleaned up")
+    mid = name_before_mid_year(title)
+    if mid:
+        add(mid[0], "name before the year in the middle")
     # "1975 It's a Bird, It's a Plane, It's Superman": a year written in front
     # of the name. The name with the year is still tried first, so films
     # named after a year ("2001 A Space Odyssey") still match.
@@ -480,6 +532,7 @@ def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[t
         add(rest, "without the show name")
     for q, how in extra or []:
         add(q, how)
+        add(by_director_name(q), how + ", name before ', by'")
         by = re.match(r"^\s*(.{3,}?)\s*[(\[]\s*(?:19|20)\d\d\s*[)\]]", q)
         if by:
             add(clean_name(by[1]), how + ", name before the year")

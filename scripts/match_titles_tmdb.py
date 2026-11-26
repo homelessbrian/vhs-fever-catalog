@@ -37,7 +37,7 @@ API = "https://api.themoviedb.org/3"
 # Bumped whenever the search gets smarter. Titles that found nothing (or only
 # weak guesses) with an older version are searched again instead of being
 # copied forward; confident matches are kept.
-MATCHER_VERSION = 5
+MATCHER_VERSION = 6
 KEEP_STATUSES = {"one_likely_candidate", "one_likely_episode", "skipped_tape_opening",
                  "skipped_commercial_or_promo", "skipped_not_english", "skipped_adult"}
 # File names that are a piece of a tape, not the film itself: the Archive
@@ -361,7 +361,7 @@ def main() -> None:
             # Matches found by cutting words off the name ("Alphabet Soup With
             # Barney" -> "Alphabet Soup") are checked again against the show.
             retry = True
-        if (old and (old.get("matcher") or 1) < 5 and old.get("confidence") != "sure"
+        if (old and (old.get("matcher") or 1) < 6 and old.get("confidence") != "sure"
                 and title_search.leading_year(old.get("search_title") or t["display_title"])):
             # Matcher 5: names with a year in front ("1998 Paulie") are searched
             # without it even when one word is left, and the year is used.

@@ -287,3 +287,26 @@ def test_year_in_front_and_trailers_make_a_sure_match():
     ranked = ts.rank("The Sixth Sense", cands, ceiling=None, hint_year=1999, minutes=123)
     assert ranked[0]["tmdb_id"] == 745
     assert ts.confidence(ranked) == "sure"
+
+
+def test_year_dot_title_by_director_names():
+    cases = {
+        "2004. When Will I Be Loved, by James Toback - Neve Campbell as Vera Barrie - Ductch subtitles":
+            ("When Will I Be Loved", 2004),
+        "1989 2. Under the Boardwalk, by Fritz Kiersch - as Donna": ("Under the Boardwalk", 1989),
+        "1983. Zelig, by Woody Allen, with Mia Farrow - Elizabeth Kaitan as German Girl": ("Zelig", 1983),
+        "1996 2. Scream 1., by Wes Craven - Neve Campbell as Sidney Prescott": ("Scream", 1996),
+    }
+    for name, (want, year) in cases.items():
+        assert want in [q for q, _ in ts.search_tries(name, None)]
+        assert ts.leading_year(name) == year
+    assert ts.by_director_name("Love, by Chance") is None
+
+
+def test_name_then_year_then_tape_label():
+    assert "CARRIE" in [q for q, _ in ts.search_tries("CARRIE 1976 MAGNETIC VIDEO VHS RIP", None)]
+    assert ts.leading_year("CHRISTINE 1983 RCA VHS RIP") == 1983
+    assert "KUFFS" in [q for q, _ in ts.search_tries("KUFFS 1991 VHS RIP", None)]
+    assert "Iron Will" in [q for q, _ in ts.search_tries("Disney's Iron Will VHS", None)]
+    for name in ("Summer of 1942 Warner", "Space 1999 Breakaway", "Class of 1984 Vestron"):
+        assert ts.name_before_mid_year(name) is None
