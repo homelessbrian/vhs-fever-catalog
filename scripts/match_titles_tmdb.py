@@ -37,7 +37,7 @@ API = "https://api.themoviedb.org/3"
 # Bumped whenever the search gets smarter. Titles that found nothing (or only
 # weak guesses) with an older version are searched again instead of being
 # copied forward; confident matches are kept.
-MATCHER_VERSION = 2
+MATCHER_VERSION = 3
 KEEP_STATUSES = {"one_likely_candidate", "one_likely_episode", "skipped_tape_opening",
                  "skipped_commercial_or_promo", "skipped_not_english"}
 # File names that are a piece of a tape, not the film itself: the Archive
@@ -179,6 +179,12 @@ def main() -> None:
     def show_for(tid: str, title: str) -> str | None:
         own = {title_search.plain((p.get("page_context") or {}).get("show") or "") for p in pages_of.get(tid, [])} - {""}
         cands = sorted(own) if len(own) == 1 else []
+        # Well-known kids' shows ("Alphabet Soup With Barney") count even when
+        # the collection has few of them yet.
+        kid = auto_sort.KIDS_SHOW.search(title or "")
+        if kid and not re.search(r"kids'? show", kid.group(0), re.I):
+            show_name.setdefault(title_search.plain(kid.group(0)), kid.group(0).strip().title())
+            cands.append(title_search.plain(kid.group(0)))
         cands += sorted((k for k, n in show_count.items() if n >= 3), key=len, reverse=True)
         for k in cands:
             if title_search.without_show(title, show_name.get(k, k)):
@@ -347,6 +353,11 @@ def main() -> None:
         skip = None if series else not_a_movie(tid, t["display_title"])
         old = reused.get(tid)
         retry = bool(old) and old.get("status") not in KEEP_STATUSES and (old.get("matcher") or 1) < MATCHER_VERSION
+        if old and (old.get("matcher") or 1) < 3 and re.search(r"dropped|without the show name",
+                                                               old.get("found_with") or ""):
+            # Matches found by cutting words off the name ("Alphabet Soup With
+            # Barney" -> "Alphabet Soup") are checked again against the show.
+            retry = True
         if old and dash and dash.get("from") == "Archive page show" and not old.get("page_show_tried"):
             # The Archive page names a show this title was never tried
             # against: look again, even over a confident movie match.

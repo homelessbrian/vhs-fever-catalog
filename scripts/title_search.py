@@ -357,7 +357,35 @@ def without_show(title: str, show: str | None) -> str | None:
             rest = " ".join(words[skip:]).strip(" -:,")
             return rest if len(plain(rest)) >= 4 else None
         break
+    # "Alphabet Soup With Barney", "Shapes - Barney": the show named at the
+    # end. Needs a joining word or a dash so a title that only happens to end
+    # in the show's name ("Just Friends" for "Friends") isn't split.
+    words = (title or "").split()
+    for n in (len(ss) + 3, len(ss) + 2, len(ss) + 1):   # "with Barney & Friends" / "with Barney"
+        if len(words) <= n:
+            continue
+        tail = plain(" ".join(words[-n:])).split()
+        if not tail or tail[0] not in {"with", "starring", "featuring", "feat"}:
+            continue
+        name = tail[1:]
+        if name[:len(ss)] == ss and name[len(ss):] in ([], ["friends"], ["and", "friends"]):
+            rest = " ".join(words[:-n]).strip(" -:,")
+            return rest if len(plain(rest)) >= 4 else None
+    m = re.match(r"^(?P<rest>.+?)\s+[-–—:]\s+(?P<show>.+)$", title or "")
+    if m and plain(m["show"]) in (" ".join(ss), " ".join(ss) + " and friends"):
+        rest = m["rest"].strip(" -:,")
+        return rest if len(plain(rest)) >= 4 else None
     return None
+
+
+def mentions_show(cand: dict[str, Any], show: str) -> bool:
+    """Whether a TMDB result's name or summary names the show."""
+    key = plain(show)
+    if not key:
+        return True
+    text = " ".join(str(x) for x in [cand.get("title"), cand.get("original_title"), cand.get("overview"),
+                                     *(cand.get("alt_titles") or [])] if x)
+    return f" {key} " in f" {plain(text)} "
 
 
 def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[tuple[str, str]] | None = None,
@@ -526,6 +554,8 @@ def confidence(cands: list[dict[str, Any]]) -> str:
     if not cands:
         return "none"
     best = cands[0]
+    if best.get("not_the_show"):
+        return "weak"
     lead = best["score"] - (cands[1]["score"] if len(cands) > 1 else 0)
     if best["similarity"] >= 0.95 and best.get("year_consistent") is not False:
         if best.get("runtime_match") and lead >= 10:
@@ -594,6 +624,16 @@ def search(title: str, *, find: Callable[[str, int | None], list[dict[str, Any]]
             c.update({k: v for k, v in (details(c) or {}).items() if v is not None})
         ranked = rank(best_query, ranked, ceiling=ceiling, hint_year=hint_year, minutes=minutes,
                       kids_hint=kids_hint)
+    if show:
+        # "Alphabet Soup With Barney": a film called "Alphabet Soup" that has
+        # nothing to do with Barney is a different video, however close the name.
+        for c in ranked:
+            searched_with_show = f" {plain(show)} " in f" {plain(c.get('found_query') or '')} "
+            if not searched_with_show and not mentions_show(c, show):
+                c["score"] = round(c["score"] - 30, 1)
+                c["not_the_show"] = True
+                c.setdefault("why", []).append(f"nothing about {show} in it")
+        ranked.sort(key=lambda c: c["score"], reverse=True)
     conf = confidence(ranked)
     return {"confidence": conf, "status": STATUS[conf], "candidates": ranked[:5], "tried": tried,
             "found_with": ranked[0].get("found_with")}

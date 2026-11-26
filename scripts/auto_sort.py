@@ -479,6 +479,11 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
     elif dur is not None and dur >= 40 * 60:
         kind = "movie"
         why.append("feature length")
+    elif dur is not None and dur >= 15 * 60 and "vhskids" in cols and not NOT_WHOLE.search(name):
+        # A half-hour tape from the Archive's kids' collection is a kids'
+        # show or special, not a feature film.
+        kind = "kids_show"
+        why.append("half-hour tape from the kids' collection")
     elif dur is not None and dur >= 15 * 60:
         kind = "movie" if not NOT_WHOLE.search(name) else "clip"
         why.append("half-hour length: a short feature or a special" if kind == "movie" else "name says clip")

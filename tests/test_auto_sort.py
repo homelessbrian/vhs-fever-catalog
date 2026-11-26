@@ -198,6 +198,10 @@ class PatternsFromRealPages(unittest.TestCase):
         self.assertEqual(k("Golf Lessons with Arnold Palmer (1988 VHS).mp4"), "hobby")
         self.assertEqual(k("Barney - Waiting for Santa (1990 VHS).mp4", 2700), "kids_show")
         self.assertEqual(k("Wee Sing Sing-Along (1986 VHS).mp4"), "kids_learning")
+        # Half-hour tapes from the kids' collection aren't feature films.
+        kid = lambda n, d=1948: sort_one(n, d, item=page(n, 1, ("vhskids", "vhsvault")))["kind"]
+        self.assertEqual(kid("Cuddle Time Stories 1994 VHS.mp4"), "kids_show")
+        self.assertEqual(k("Cuddle Time Stories 1994 VHS.mp4", 1948), "movie")
         self.assertEqual(k("Learn the ABCs with Bert (1989 VHS).mp4"), "kids_learning")
         self.assertEqual(k("Karaoke Hits Volume 3 (1995 VHS).mp4"), "karaoke")
         self.assertEqual(k("Eddie Murphy Raw stand-up (1987 VHS).mp4", 5400), "standup")

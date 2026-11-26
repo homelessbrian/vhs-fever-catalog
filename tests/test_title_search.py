@@ -240,3 +240,33 @@ class RealNameTests(unittest.TestCase):
         res = ts.search("Absolutely Fabulous Jealous", find=lambda q, y: [dict(f, media_type="movie") for f in films]
                         if ts.plain(q) == "jealous" else [], show="Absolutely Fabulous")
         self.assertIn(res["confidence"], {"none", "weak"})
+
+    def test_show_named_at_the_end_is_taken_off(self):
+        self.assertEqual(ts.without_show("Alphabet Soup With Barney", "Barney"), "Alphabet Soup")
+        self.assertEqual(ts.without_show("Imagine with Barney & Friends", "Barney"), "Imagine")
+        self.assertEqual(ts.without_show("Shapes and Colors - Barney", "Barney"), "Shapes and Colors")
+        # A title that only happens to end in the show's name isn't split.
+        self.assertIsNone(ts.without_show("Just Friends", "Friends"))
+        self.assertIsNone(ts.without_show("Barney Miller Pilot", "Miller"))
+
+    def test_film_that_isnt_the_show_is_not_trusted(self):
+        # The real case: "Alphabet Soup With Barney" was matched to William
+        # Wegman's dog film "Alphabet Soup" (1995) by dropping "With Barney".
+        wegman = {"tmdb_id": 106082, "title": "Alphabet Soup", "release_date": "1995-01-01", "popularity": 0.2,
+                  "overview": "William Wegman and his dogs teach children the alphabet."}
+        other = {"tmdb_id": 1492638, "title": "Alphabet Soup", "release_date": None, "popularity": 0.1,
+                 "overview": "Three friends eat a magical soup."}
+        find = lambda q, y: [dict(f, media_type="movie") for f in (wegman, other)] \
+            if ts.plain(q) == "alphabet soup" else []
+        res = ts.search("Alphabet Soup With Barney 2001 VHS", find=find, minutes=32.5, ceiling=2001, show="Barney")
+        self.assertEqual(res["confidence"], "weak")
+        self.assertTrue(res["candidates"][0]["not_the_show"])
+        self.assertIn("nothing about Barney in it", res["candidates"][0]["why"])
+
+    def test_match_that_names_the_show_still_counts(self):
+        film = {"tmdb_id": 7, "title": "Alphabet Soup", "release_date": "1995-01-01", "popularity": 1,
+                "overview": "Barney and his friends sing about letters."}
+        find = lambda q, y: [dict(film, media_type="movie")] if ts.plain(q) == "alphabet soup" else []
+        res = ts.search("Alphabet Soup With Barney", find=find, show="Barney")
+        self.assertNotEqual(res["confidence"], "weak")
+        self.assertFalse(res["candidates"][0].get("not_the_show"))
