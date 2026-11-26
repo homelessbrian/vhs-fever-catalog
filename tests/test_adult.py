@@ -28,12 +28,14 @@ class AdultTest(unittest.TestCase):
         self.assertFalse(pick_batch.wanted(dict(row, title="Barely Legal 3"), "vhs_movies"))
 
 
-    def test_adult_collection_picked_with_the_clean_finds(self):
+    def test_adult_collection_picked_first(self):
         import json, subprocess, tempfile
         d = Path(tempfile.mkdtemp())
         base = {"kind_guess": "movie_or_unknown", "format_guess": "VHS", "size_bytes": 1e9}
         rows = [dict(base, identifier=f"k{i}", found_by=["keyword vhs rip"], collections=["x"],
                      added_to_archive=f"2025-01-0{i}") for i in range(1, 5)]
+        rows += [dict(base, identifier=f"u{i}", found_by=["uploader"], found_by_uploader=True, collections=["x"],
+                      added_to_archive=f"2025-02-0{i}") for i in range(1, 5)]
         rows.append(dict(base, identifier="a1", found_by=["collection adultvhs"], collections=["adultvhs"],
                          added_to_archive="2020-01-01", format_guess="unknown"))
         (d / "more.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))

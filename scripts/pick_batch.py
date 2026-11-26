@@ -121,9 +121,9 @@ def main() -> None:
     pool.sort(key=lambda r: r.get("added_to_archive") or "", reverse=True)
     # Outside finds from Vault uploaders are the cleanest, so they go before
     # keyword and collection finds. Newest first within each.
-    # The Archive's adult VHS collection is just as clean (all tapes), so it goes with them.
-    pool.sort(key=lambda r: "found_by" in r and not r.get("found_by_uploader")
-              and not set(r.get("collections") or []) & adult.ADULT_COLLECTIONS)
+    # The Archive's adult VHS collection is small and all tapes, so it goes first.
+    pool.sort(key=lambda r: 0 if set(r.get("collections") or []) & adult.ADULT_COLLECTIONS
+              else 2 if "found_by" in r and not r.get("found_by_uploader") else 1)
     if a.source == "both":
         # Half Vault, half outside in every batch, so both keep coming in.
         inside = [r for r in pool if "found_by" not in r]
