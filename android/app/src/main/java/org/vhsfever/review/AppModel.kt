@@ -26,7 +26,9 @@ sealed interface Screen {
 }
 
 enum class QueueMode(val label: String) {
-    REVIEW("To review"), SURE("Bot sure"), DONE("Done"), ALL("All")
+    REVIEW("To review"), SURE("Bot sure"), DONE("Done"), ALL("All"),
+    /** Adult tapes. Only there while the curtain is open; never in the other lists. */
+    CURTAIN("Behind the curtain")
 }
 
 class AppModel(private val ctx: Context) {
@@ -78,6 +80,47 @@ class AppModel(private val ctx: Context) {
     var foreign by mutableStateOf<Map<String, String>>(emptyMap()); private set
     private val undo = ArrayDeque<Pair<String, FileDecision?>>()
     var lastUndoLabel by mutableStateOf<String?>(null)
+
+    // ---- the red curtain (adult tapes)
+    /** Is a curtain PIN set on this phone? */
+    var curtainPinSet by mutableStateOf(!prefs.getString("curtain_pin", null).isNullOrEmpty()); private set
+    /** Open only until the app is closed; never saved. */
+    var curtainOpen by mutableStateOf(false); private set
+
+    /** Sets the PIN the first time, and opens the curtain. */
+    fun setCurtainPin(pin: String): String? {
+        if (!pin.matches(Regex("\\d{4,8}"))) return "Use 4 to 8 numbers."
+        prefs.edit().putString("curtain_pin", pin).apply()
+        curtainPinSet = true
+        curtainOpen = true
+        return null
+    }
+
+    fun openCurtain(pin: String): Boolean {
+        val ok = pin == prefs.getString("curtain_pin", null)
+        if (ok) curtainOpen = true
+        return ok
+    }
+
+    fun closeCurtain() {
+        curtainOpen = false
+        if (mode == QueueMode.CURTAIN) mode = QueueMode.REVIEW
+        // Leave any adult tape that's open on screen.
+        while (stack.size > 1 && stack.last().let { s -> (s as? Screen.Review)?.fileId ?: (s as? Screen.MovieEdit)?.fileId }
+                ?.let { byId[it]?.adult } == true) stack.removeAt(stack.lastIndex)
+    }
+
+    /** Forget the PIN (needs the old one), so a new one can be set. */
+    fun clearCurtainPin(pin: String): Boolean {
+        if (pin != prefs.getString("curtain_pin", null)) return false
+        prefs.edit().remove("curtain_pin").apply()
+        curtainPinSet = false
+        closeCurtain()
+        return true
+    }
+
+    /** The lists to show as chips: the curtain only while it's open. */
+    fun modes(): List<QueueMode> = QueueMode.entries.filter { it != QueueMode.CURTAIN || curtainOpen }
 
     var token by mutableStateOf(prefs.getString("github_token", "") ?: "")
         private set
@@ -301,7 +344,9 @@ class AppModel(private val ctx: Context) {
     }
 
     /** Copies are hidden unless their sound/picture check differs from the original's. */
-    private fun visibleInQueue(f: FileItem): Boolean {
+    private fun visibleInQueue(f: FileItem, inList: QueueMode = mode): Boolean {
+        // Adult tapes only ever show in the curtain list, and only while it's open.
+        if (f.adult != (inList == QueueMode.CURTAIN) || (f.adult && !curtainOpen)) return false
         if (englishOnly && f.id in foreign) return false
         if (!f.isCopy) return true
         val orig = f.originalId?.let { byId[it] } ?: return true
@@ -318,6 +363,7 @@ class AppModel(private val ctx: Context) {
             QueueMode.SURE -> d == null && sure
             QueueMode.DONE -> d != null
             QueueMode.ALL -> true
+            QueueMode.CURTAIN -> f.adult && curtainOpen
         }
     }
 
@@ -330,7 +376,7 @@ class AppModel(private val ctx: Context) {
             .sortedWith(order).toList()
     }
 
-    fun count(mode: QueueMode): Int = files.count { visibleInQueue(it) && inMode(it, mode) }
+    fun count(mode: QueueMode): Int = files.count { visibleInQueue(it, mode) && inMode(it, mode) }
 
     fun progress(): Triple<Int, Int, Int> {
         val visible = files.filter { visibleInQueue(it) }
@@ -384,7 +430,7 @@ class AppModel(private val ctx: Context) {
     /** Next file in the current list after [fileId], skipping ones already decided. */
     fun nextAfter(fileId: String, onlyUnreviewed: Boolean = true): FileItem? {
         val q = files.asSequence().filter { visibleInQueue(it) }
-            .filter { mode == QueueMode.ALL || mode == QueueMode.DONE || inMode(it, mode) || it.id == fileId }
+            .filter { mode == QueueMode.ALL || mode == QueueMode.DONE || mode == QueueMode.CURTAIN || inMode(it, mode) || it.id == fileId }
             .sortedWith(order).toList()
         val i = q.indexOfFirst { it.id == fileId }
         return q.drop(i + 1).firstOrNull { !onlyUnreviewed || decisionFor(it)?.status == null }

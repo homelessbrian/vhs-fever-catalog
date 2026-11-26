@@ -37,26 +37,27 @@ from pathlib import Path
 from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import adult  # noqa: E402
 import discover_new_items as vault  # noqa: E402
 
 SEARCH = "https://archive.org/advancedsearch.php"
 METADATA = "https://archive.org/metadata/{}/metadata/uploader"
-FIELDS = vault.FIELDS + ["access-restricted-item"]
+FIELDS = vault.FIELDS + ["access-restricted-item", "creator"]
 
-# Never wanted: adult tapes, video-game footage, DVD disc images, a high school TV station
+# Never wanted: video-game footage, DVD disc images, a high school TV station
 # called "VHS", pages that need an Archive login to play, the TV News
 # Archive (not playable) and the Vault itself (already covered).
-SKIP_COLLECTIONS = ["vhsvault", "adultvhs", "gamevideos", "game_replays", "speed_runs", "vhstvnj",
+# Adult tapes are kept (tagged "adult", for the apps' red curtain) unless
+# adult.blocked() says they must never be used.
+SKIP_COLLECTIONS = ["vhsvault", "gamevideos", "game_replays", "speed_runs", "vhstvnj",
                     "community_media", "loggedin", "tvnews", "tvarchive", "dvdtray", "dvdtray_inbox"]
-ADULT_WORDS = re.compile(r"\b(?:xxx|porn\w*|playboy|penthouse|erotic\w*|nudes?|nudity|softcore|hardcore|hentai|"
-                         r"adult (?:film|movie|video)s?|sexy|stripper\w*|lingerie)\b", re.I)
 BASE = ("mediatype:movies AND NOT access-restricted-item:true AND "
         + " AND ".join(f"NOT collection:{c}" for c in SKIP_COLLECTIONS))
 
 KEYWORDS = ['"vhs rip"', "vhsrip", '"vhs capture"', '"vhs transfer"', '"from vhs"', '"from a vhs"',
             '"taped off"', '"recorded off"', '"off air"', '"as aired"', '"with commercials"',
             '"original commercials"', '"vhs tape"', '"betamax"', '"laserdisc rip"']
-COLLECTIONS = ["classic_tv_commercials", "classic_tv_commercials_emperor", "localnewsarchive", "classic_tv"]
+COLLECTIONS = ["adultvhs", "classic_tv_commercials", "classic_tv_commercials_emperor", "localnewsarchive", "classic_tv"]
 COMMERCIAL_COLLECTIONS = {"classic_tv_commercials", "classic_tv_commercials_emperor", "vhscommercials"}
 
 UPLOADER_MIN_SEEDS = 3      # Vault pages an uploader needs before their other uploads are read
@@ -95,12 +96,15 @@ def lookup_uploader(identifier: str) -> str | None:
     return result.strip() if isinstance(result, str) and "@" in result else None
 
 
+def page_text(doc: dict[str, Any]) -> list[Any]:
+    return [doc.get("title"), doc.get("subject"), doc.get("description"), doc.get("creator")]
+
+
 def is_unwanted(doc: dict[str, Any]) -> bool:
     cols = vault.as_list(doc.get("collection"))
-    text = " ".join([str(doc.get("title") or "")] + vault.as_list(doc.get("subject")))
     return (str(doc.get("access-restricted-item")).lower() == "true"
-            or bool(ADULT_WORDS.search(text))
-            or any(c in SKIP_COLLECTIONS or "adult" in c.lower() or "xxx" in c.lower() for c in cols))
+            or any(c in SKIP_COLLECTIONS for c in cols)
+            or adult.blocked(cols, *page_text(doc)) is not None)
 
 
 def guess(doc: dict[str, Any], source_kind: str) -> dict[str, Any]:
@@ -260,6 +264,8 @@ def run(a: argparse.Namespace, search_fn: Callable[[str, int, int], list[dict[st
                         "size_bytes": d.get("item_size"), "files": d.get("num_files"),
                         "url": f"https://archive.org/details/{ident}", "found_by": [], **guess(d, src.kind),
                     }
+                    if adult.is_adult(row["collections"], d.get("title"), d.get("subject")):
+                        row["adult"] = True
                     src.state["found"] = int(src.state.get("found") or 0) + 1
                     added[src.kind] += 1
                 if src.label.split(" (")[0] not in row["found_by"]:

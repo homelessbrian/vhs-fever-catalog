@@ -26,6 +26,7 @@ data class FileItem(
     val guess: Movie?,              // TMDB's best guess when the bot isn't sure
     val genres: List<String>,
     val botSure: Boolean,           // the bot put this file on the shelves by itself
+    val adult: Boolean = false,     // adult tape: only shown behind the red curtain
     var copyIds: List<String> = emptyList(),   // Archive copies made from this file
     var originalId: String? = null,            // for a copy: the file it was made from
 ) {
@@ -215,6 +216,7 @@ fun parseFeed(text: String): List<FileItem> {
         val botMovie = Movie.fromBot(t.optJSONObject("movie"))
         val guess = Movie.fromBot(t.optJSONObject("guess"))
         val genres = t.optJSONArray("genres").strings()
+        val adult = t.optBoolean("adult")
         fun addRec(r: JSONObject, edId: String?, year: String?, notes: List<String>) {
             for (s in r.optJSONArray("segs").objects()) {
                 val files = s.optJSONArray("src").objects().map { x ->
@@ -227,7 +229,7 @@ fun parseFeed(text: String): List<FileItem> {
                         titleId = t.optString("id"), titleName = t.optString("t"), rawName = t.optString("raw", t.optString("t")),
                         editionId = edId, releaseYear = year, editionNotes = notes,
                         tmdbCeiling = ceiling, suggestions = suggestions, botMovie = botMovie, guess = guess,
-                        genres = genres, botSure = x.optBoolean("ok"),
+                        genres = genres, botSure = x.optBoolean("ok"), adult = adult,
                     )
                 }
                 val originals = files.filter { !it.isCopy }

@@ -92,9 +92,9 @@ fun ListStatusBar(m: AppModel) {
 
 @Composable
 fun QueueScreen(m: AppModel) {
-    val list = remember(m.files, m.decisions, m.audio, m.mode, m.search, m.englishOnly, m.foreign, m.robot) { m.queue() }
-    val counts = remember(m.files, m.decisions, m.robot, m.englishOnly, m.foreign) { QueueMode.entries.associateWith { m.count(it) } }
-    val (good, bad, total) = remember(m.files, m.decisions, m.audio, m.englishOnly, m.foreign) { m.progress() }
+    val list = remember(m.files, m.decisions, m.audio, m.mode, m.search, m.englishOnly, m.foreign, m.robot, m.curtainOpen) { m.queue() }
+    val counts = remember(m.files, m.decisions, m.robot, m.englishOnly, m.foreign, m.curtainOpen) { QueueMode.entries.associateWith { m.count(it) } }
+    val (good, bad, total) = remember(m.files, m.decisions, m.audio, m.englishOnly, m.foreign, m.mode, m.curtainOpen) { m.progress() }
     Column(Modifier.fillMaxSize()) {
         ListStatusBar(m)
         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -130,9 +130,14 @@ fun QueueScreen(m: AppModel) {
                 placeholder = { Text("Search movies, filenames, Archive IDs") },
                 colors = fieldColors(), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QueueMode.entries.forEach { q -> Chip("${q.label} · ${counts[q] ?: 0}", m.mode == q, { m.mode = q }) }
+                m.modes().forEach { q ->
+                    if (q == QueueMode.CURTAIN) Chip("${q.label} · ${counts[q] ?: 0}", m.mode == q, { m.mode = q }, C.curtain, Color.White)
+                    else Chip("${q.label} · ${counts[q] ?: 0}", m.mode == q, { m.mode = q })
+                }
                 Chip("English only", m.englishOnly, { m.changeEnglishOnly(!m.englishOnly) }, C.good)
             }
+            if (m.mode == QueueMode.CURTAIN) Text("Adult tapes. Only here while the curtain is open; never on the normal lists or TV shelves. Close it in Settings.",
+                color = C.muted, fontSize = 12.sp)
             if (m.mode == QueueMode.SURE) Text("The bot put these on the TV shelves by itself. Look one over any time, or mark it bad to take it off.",
                 color = C.muted, fontSize = 12.sp)
             if (m.englishOnly && m.foreign.isNotEmpty()) Text("${m.foreign.size} files that look non-English are hidden.",

@@ -33,6 +33,7 @@ object C {
     val blueBg = Color(0xFF1E3550)
     val warnBg = Color(0xFF4A3A14)
     val warn = Color(0xFFFFD98A)
+    val curtain = Color(0xFF9E1B22)
 }
 
 class MainActivity : ComponentActivity() {

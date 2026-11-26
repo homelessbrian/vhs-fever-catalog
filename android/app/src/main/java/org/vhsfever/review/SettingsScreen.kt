@@ -87,6 +87,8 @@ fun SettingsScreen(m: AppModel, installApk: (File) -> Unit) {
                 }
             }
 
+            CurtainCard(m)
+
             Card {
                 SectionLabel("App updates", C.gold)
                 Text("This is version ${BuildConfig.VERSION_NAME}", color = C.text)
@@ -101,11 +103,61 @@ fun SettingsScreen(m: AppModel, installApk: (File) -> Unit) {
             Card {
                 SectionLabel("Movie list")
                 m.listInfo?.let { Text(it, color = C.text, fontSize = 14.sp) }
-                val movies = m.files.map { it.titleId }.distinct().size
+                val movies = m.files.filter { !it.adult || m.curtainOpen }.map { it.titleId }.distinct().size
                 Text("$movies movies · ${m.files.size} files · ${m.audio.size} sound checks", color = C.muted, fontSize = 13.sp)
                 Text("Only full-length VHS movies are listed. The bot adds more as it reads new Archive pages.", color = C.muted, fontSize = 12.sp)
                 TextButton(onClick = { m.reloadCatalog() }) { Text("Reload the list from GitHub", color = C.gold) }
             }
         }
     }
+}
+
+/** The red curtain: adult tapes, hidden until opened with a PIN. Closes again when the app closes. */
+@Composable
+private fun CurtainCard(m: AppModel) {
+    var pin by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf<String?>(null) }
+    val adultMovies = m.files.filter { it.adult }.map { it.titleId }.distinct().size
+    val red = ButtonDefaults.buttonColors(containerColor = C.curtain, contentColor = Color.White)
+    Card {
+        SectionLabel("Behind the red curtain", C.curtain)
+        Text("Adult tapes are kept apart, like the back room of a rental store. They never show in the normal lists or on the TV shelves.",
+            color = C.muted, fontSize = 13.sp)
+        when {
+            m.curtainOpen -> {
+                Text("The curtain is open · $adultMovies adult tapes", color = C.text)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { m.mode = QueueMode.CURTAIN; m.back() }, colors = red) { Text("Go to the tapes") }
+                    TextButton(onClick = { m.closeCurtain() }) { Text("Close the curtain", color = C.gold) }
+                }
+            }
+            !m.curtainPinSet -> {
+                Text("Pick a PIN (4 to 8 numbers). You'll need it each time you open the app.", color = C.muted, fontSize = 13.sp)
+                PinField(pin, { pin = it; err = null }, "New PIN")
+                err?.let { Text(it, color = C.bad, fontSize = 13.sp) }
+                Button(enabled = pin.length >= 4, onClick = { err = m.setCurtainPin(pin); if (err == null) pin = "" }, colors = red) {
+                    Text("I'm 18 or older · set PIN and open")
+                }
+            }
+            else -> {
+                PinField(pin, { pin = it; err = null }, "PIN")
+                err?.let { Text(it, color = C.bad, fontSize = 13.sp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(enabled = pin.length >= 4, onClick = {
+                        if (m.openCurtain(pin)) pin = "" else err = "Wrong PIN."
+                    }, colors = red) { Text("Open the curtain") }
+                    TextButton(enabled = pin.length >= 4, onClick = {
+                        if (m.clearCurtainPin(pin)) pin = "" else err = "Wrong PIN."
+                    }) { Text("Change PIN", color = C.muted) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinField(value: String, onChange: (String) -> Unit, label: String) {
+    OutlinedTextField(value, { onChange(it.filter(Char::isDigit).take(8)) }, singleLine = true, label = { Text(label) },
+        visualTransformation = PasswordVisualTransformation(), colors = fieldColors(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
 }

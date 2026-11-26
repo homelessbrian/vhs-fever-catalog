@@ -87,6 +87,7 @@ sealed interface Section {
     data object NewArrivals : Section
     data object Watchlist : Section
     data object Search : Section
+    data object Curtain : Section
     data object Settings : Section
 }
 
@@ -104,6 +105,8 @@ private val NAV = listOf(
     NavItem("New Arrivals", Section.NewArrivals, icon { moveTo(12f, 3f); verticalLineTo(7f); moveTo(12f, 17f); verticalLineTo(21f); moveTo(3f, 12f); horizontalLineTo(7f); moveTo(17f, 12f); horizontalLineTo(21f); moveTo(6f, 6f); lineTo(8.5f, 8.5f); moveTo(15.5f, 15.5f); lineTo(18f, 18f); moveTo(18f, 6f); lineTo(15.5f, 8.5f); moveTo(8.5f, 15.5f); lineTo(6f, 18f) }),
     NavItem("My Watchlist", Section.Watchlist, icon { moveTo(6f, 3f); horizontalLineTo(18f); verticalLineTo(21f); lineTo(12f, 17f); lineTo(6f, 21f); close() }),
     NavItem("Search", Section.Search, icon { moveTo(18f, 11f); arcTo(7f, 7f, 0f, true, true, 4f, 11f); arcTo(7f, 7f, 0f, true, true, 18f, 11f); moveTo(16.5f, 16.5f); lineTo(21f, 21f) }),
+    // The back room: two curtain drapes hanging from a rod.
+    NavItem("Red Curtain", Section.Curtain, icon { moveTo(3f, 4f); horizontalLineTo(21f); moveTo(5f, 4f); curveTo(5f, 11f, 7f, 16f, 11f, 20f); horizontalLineTo(5f); close(); moveTo(19f, 4f); curveTo(19f, 11f, 17f, 16f, 13f, 20f); horizontalLineTo(19f); close() }),
     NavItem("Settings", Section.Settings, icon { moveTo(15f, 12f); arcTo(3f, 3f, 0f, true, true, 9f, 12f); arcTo(3f, 3f, 0f, true, true, 15f, 12f); moveTo(12f, 2f); verticalLineTo(5f); moveTo(12f, 19f); verticalLineTo(22f); moveTo(2f, 12f); horizontalLineTo(5f); moveTo(19f, 12f); horizontalLineTo(22f); moveTo(5f, 5f); lineTo(7f, 7f); moveTo(17f, 17f); lineTo(19f, 19f); moveTo(19f, 5f); lineTo(17f, 7f); moveTo(7f, 17f); lineTo(5f, 19f) }),
 )
 
@@ -146,6 +149,7 @@ fun StoreScreen(
     catalog: Catalog, section: Section, status: String, watchlist: Set<String>, restoreKey: String?,
     onSection: (Section) -> Unit, onOpen: (Title) -> Unit, onRefresh: () -> Unit,
     update: Updater.State = Updater.State.Idle, onCheckUpdate: () -> Unit = {},
+    curtainPinSet: Boolean = false, onCurtainPin: (String) -> Boolean = { false }, onCurtainReset: () -> Unit = {},
 ) {
     val selectedFr = remember { FocusRequester() }
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Ink.NavyTop, 0.6f to Ink.Navy))) {
@@ -159,6 +163,16 @@ fun StoreScreen(
                 catalog.titles.filter { it.key in watchlist }, restoreKey, onOpen,
                 empty = "Nothing saved yet. Press + WATCHLIST on a tape to keep it here.")
             Section.Search -> SearchContent(catalog, restoreKey, onOpen)
+            Section.Curtain -> if (Curtain.open) {
+                Column(Modifier.fillMaxSize()) {
+                    GridContent("Behind the Red Curtain", "Adult tapes · 18+", catalog.curtain, restoreKey, onOpen,
+                        empty = "No adult tapes marked good yet. Review them in the phone app, behind its curtain.")
+                }
+                Row(Modifier.align(Alignment.TopEnd).padding(top = 40.px, end = 40.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
+                    OutlineButton("CLOSE THE CURTAIN", onClick = { Curtain.open = false })
+                    OutlineButton("CHANGE PIN", onClick = onCurtainReset)
+                }
+            } else PinPad(curtainPinSet, onCurtainPin)
             Section.Settings -> SettingsContent(catalog, status, onRefresh, update, onCheckUpdate)
         }
         LogoBadge(Modifier.offset(18.px, 16.px))
@@ -562,6 +576,50 @@ fun UpdateDialog(build: Int, onInstall: () -> Boolean, onLater: () -> Unit) {
             Row(Modifier.padding(top = 24.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
                 GoldButton("INSTALL", Modifier.focusRequester(fr)) { if (!onInstall()) needsPermission = true }
                 OutlineButton("LATER", onClick = onLater)
+            }
+        }
+    }
+}
+
+/**
+ * In front of the adult tapes: a red curtain and a number pad for the PIN. The first time, the PIN
+ * typed here becomes the PIN (4 to 8 numbers).
+ */
+@Composable
+private fun PinPad(pinSet: Boolean, onPin: (String) -> Boolean) {
+    var pin by remember { mutableStateOf("") }
+    var wrong by remember { mutableStateOf(false) }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    val drape = Brush.horizontalGradient(listOf(Color(0xFF4A060B), Color(0xFF9E1B22), Color(0xFF5E0A10), Color(0xFFB02129),
+        Color(0xFF4A060B), Color(0xFF9E1B22), Color(0xFF5E0A10)))
+    Box(Modifier.fillMaxSize().padding(start = 236.px).background(drape)) {
+        Column(Modifier.align(Alignment.Center).background(Color(0xE6080B22), RoundedCornerShape(16.px))
+            .border(2.px, Ink.Gold, RoundedCornerShape(16.px)).padding(28.px),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.px)) {
+            Text("ADULTS ONLY · 18+", style = TextStyle(fontFamily = Type.Mono, fontSize = 14.fs, letterSpacing = 2f.fs, color = Ink.Gold))
+            Text(if (pinSet) "Enter the PIN" else "Pick a PIN for the curtain",
+                style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Bold, fontSize = 28.fs, color = Color.White))
+            Text(if (pin.isEmpty()) " " else "●".repeat(pin.length),
+                style = TextStyle(fontFamily = Type.Mono, fontSize = 30.fs, letterSpacing = 8f.fs, color = Color.White))
+            Text(when { wrong -> "Wrong PIN"; !pinSet -> "4 to 8 numbers. You'll need it each time you open the app."; else -> " " },
+                style = TextStyle(fontFamily = Type.Barlow, fontSize = 17.fs, color = if (wrong) Ink.Pink else Ink.Soft))
+            val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK")
+            for (row in keys.chunked(3)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.px)) {
+                    for (k in row) {
+                        val mod = Modifier.width(92.px).let { if (k == "1") it.focusRequester(first) else it }
+                        val press = {
+                            wrong = false
+                            when (k) {
+                                "⌫" -> pin = pin.dropLast(1)
+                                "OK" -> if (pin.length >= 4) { if (!onPin(pin)) wrong = true; pin = "" }
+                                else -> if (pin.length < 8) pin += k
+                            }
+                        }
+                        if (k == "OK") GoldButton(k, mod, press) else OutlineButton(k, mod, press)
+                    }
+                }
             }
         }
     }

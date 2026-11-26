@@ -45,6 +45,17 @@ class MainActivity : ComponentActivity() {
         Ui.fit(dm.widthPixels / dm.density, dm.heightPixels / dm.density)
         setContent { StoreTheme { App(repo, artRepo, prefs) } }
     }
+
+    /** Leaving the app closes the red curtain again. */
+    override fun onStop() {
+        super.onStop()
+        Curtain.open = false
+    }
+}
+
+/** The red curtain in front of the adult tapes. Open only until the app is left; the PIN is kept on the TV. */
+object Curtain {
+    var open by mutableStateOf(false)
 }
 
 /** Our colours, and text at its designed size whatever the TV's text-size setting is. */
@@ -64,7 +75,8 @@ fun StoreTheme(content: @Composable () -> Unit) {
 fun App(repo: Repo, artRepo: ArtRepo, prefs: android.content.SharedPreferences) {
     var raw by remember { mutableStateOf<Catalog?>(null) }
     val art = remember { mutableStateMapOf<String, Art>() }
-    val catalog = raw?.let { c -> Catalog(c.titles.map { it.withArt(art[it.key]) }) }
+    val catalog = raw?.let { c -> Catalog(c.titles.map { it.withArt(art[it.key]) }, c.curtain) }
+    var curtainPin by remember { mutableStateOf(prefs.getString("curtain_pin", null)) }
     var status by remember { mutableStateOf("Loading the shelves…") }
     var section by remember { mutableStateOf<Section>(Section.Home) }
     var openKey by remember { mutableStateOf<String?>(null) }
@@ -99,10 +111,12 @@ fun App(repo: Repo, artRepo: ArtRepo, prefs: android.content.SharedPreferences) 
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Ink.NavyTop, Ink.Navy)))) {
         val c = catalog
-        val t = openKey?.let { k -> c?.titles?.firstOrNull { it.key == k } }
+        val t = openKey?.let { k -> c?.titles?.firstOrNull { it.key == k }
+            ?: c?.curtain?.firstOrNull { it.key == k && Curtain.open } }
         when {
             t != null && c != null -> DetailScreen(
-                t, c, onWatchlist = t.key in watchlist, previewOn = true,
+                // "More like this" under an adult tape only ever shows other adult tapes.
+                t, if (t.adult) Catalog(c.curtain) else c, onWatchlist = t.key in watchlist, previewOn = true,
                 onBack = { restoreKey = t.key; openKey = null },
                 onOpen = { openKey = it.key },
                 onToggleWatchlist = {
@@ -119,7 +133,16 @@ fun App(repo: Repo, artRepo: ArtRepo, prefs: android.content.SharedPreferences) 
                     onSection = { restoreKey = null; section = it },
                     onOpen = { restoreKey = it.key; openKey = it.key },
                     onRefresh = { reload() },
-                    update = update, onCheckUpdate = { checkUpdate() })
+                    update = update, onCheckUpdate = { checkUpdate() },
+                    curtainPinSet = curtainPin != null,
+                    onCurtainPin = { pin ->
+                        when {
+                            curtainPin == null -> { prefs.edit().putString("curtain_pin", pin).apply(); curtainPin = pin; Curtain.open = true; true }
+                            pin == curtainPin -> { Curtain.open = true; true }
+                            else -> false
+                        }
+                    },
+                    onCurtainReset = { prefs.edit().remove("curtain_pin").apply(); curtainPin = null; Curtain.open = false })
             }
             else -> Text(status, modifier = Modifier.align(Alignment.Center).padding(48.px),
                 style = TextStyle(fontFamily = Type.Barlow, fontSize = 26.fs, color = Ink.Cream, textAlign = TextAlign.Center))

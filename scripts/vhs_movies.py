@@ -107,9 +107,12 @@ def keep_long(model_dir: Path) -> dict[str, Any]:
     model = load_model(model_dir)
     total_pages = len(model["archive-items"])
     total = len(model["recordings"])
-    keep = {r["recording_id"] for r in model["recordings"] if is_long_candidate(r)}
+    blocked = {i["archive_identifier"] for i in model["archive-items"] if i.get("blocked")}
+    keep = {r["recording_id"] for r in model["recordings"] if is_long_candidate(r)
+            and not blocked & set(r.get("archive_identifiers") or [])}
     trimmed = trim_model(model, keep)
-    summary = {"pages_read": total_pages, "recordings_read": total, "long_enough": len(keep)}
+    summary = {"pages_read": total_pages, "recordings_read": total, "long_enough": len(keep),
+               "blocked_adult_pages": len(blocked)}
     save_model(model_dir, trimmed, summary)
     return summary
 
@@ -184,8 +187,10 @@ def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None) -> str | Non
     return None
 
 
-def bot_sure(row: dict[str, Any], title: dict[str, Any] | None) -> list[str]:
+def bot_sure(row: dict[str, Any], title: dict[str, Any] | None, is_adult: bool = False) -> list[str]:
     """Why the bot can't put this movie on the shelf by itself (empty = sure)."""
+    if is_adult:
+        return ["adult tape: always checked by hand"]
     cand, conf = best_candidate(title)
     worries = []
     if conf != "sure" or cand.get("media_type") != "movie":
@@ -235,6 +240,11 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
 
     model = load_model(model_dir)
     titles = {t["title_suggestion_id"]: t for t in model["titles"]}
+    # Adult tapes (kept behind the apps' red curtain) and blocked ones (never kept).
+    adult_pages = {i["archive_identifier"] for i in model["archive-items"] if i.get("adult")}
+    blocked_pages = {i["archive_identifier"] for i in model["archive-items"] if i.get("blocked")}
+    rec_pages = {r["recording_id"]: set(r.get("archive_identifiers") or []) for r in model["recordings"]}
+    adult_recs = {rid for rid, pages in rec_pages.items() if pages & adult_pages}
     rows = read_jsonl(sort_path)
     rows_by_rec: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -246,6 +256,8 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     for rid, group in rows_by_rec.items():
         group.sort(key=lambda r: (r.get("role") != "original", r["verdict"] == "bad"))
         why = why_not_kept(group[0], titles.get(group[0].get("title_suggestion_id")))
+        if rec_pages.get(rid, set()) & blocked_pages:
+            why = "blocked adult tape"
         if why is None:
             keep_recs.add(rid)
         else:
@@ -255,7 +267,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     cache: dict[str, Any] = {}
     if cache_path and cache_path.is_file():
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
-    want = sorted({c["tmdb_id"] for rid in keep_recs for r in rows_by_rec[rid][:1]
+    want = sorted({c["tmdb_id"] for rid in keep_recs - adult_recs for r in rows_by_rec[rid][:1]
                    for c, conf in [best_candidate(titles.get(r.get("title_suggestion_id")))]
                    if c.get("media_type") == "movie" and c.get("tmdb_id") and conf in {"sure", "likely", "several"}})
     calls = tmdb_details(want, cache, os.environ.get("TMDB_API_READ_ACCESS_TOKEN"))
@@ -268,7 +280,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
             if r["verdict"] == "bad":
                 out_rows.append(r)
                 continue
-            worries = bot_sure(r, titles.get(r.get("title_suggestion_id")))
+            worries = bot_sure(r, titles.get(r.get("title_suggestion_id")), rid in adult_recs)
             if worries:
                 r = dict(r, verdict="review", confidence="low", verdict_why=worries)
             else:
@@ -284,7 +296,21 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     # Clean names, genres, and which files the bot is sure about.
     genre_count: Counter[str] = Counter()
     sure_titles = 0
+    curtain = 0
     for t in feed["titles"]:
+        recs_out = t["un"] + [r for e in t["eds"] for r in e["recs"]]
+        if any(r["id"] in adult_recs for r in recs_out):
+            # Behind the curtain: title and Archive links only. No pictures,
+            # no TMDB guesses (TMDB isn't searched for adult tapes).
+            t["adult"] = True
+            for r in recs_out:
+                r["art"] = []
+            t["tmdb"] = {"status": "adult_not_looked_up", "c": []}
+            t["raw"] = t["t"]
+            t["t"] = clean_title(t["t"])
+            t["genres"] = []
+            curtain += 1
+            continue
         src_title = titles.get(t["id"]) or {}
         cand, conf = best_candidate(src_title)
         info = cache.get(str(cand.get("tmdb_id"))) if cand.get("media_type") == "movie" else None
@@ -309,7 +335,8 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     feed["titles"].sort(key=lambda t: t["t"].casefold())
     feed["summary"] = {
         "pages_read": pages_read, "vhs_movies": len(feed["titles"]), "bot_sure": sure_titles,
-        "waiting_for_review": len(feed["titles"]) - sure_titles,
+        "waiting_for_review": len(feed["titles"]) - sure_titles - curtain,
+        "behind_the_curtain": curtain,
         "files": len(out_rows), "genres": dict(genre_count.most_common()),
         "left_out": dict(dropped.most_common()), "tmdb_detail_lookups": calls,
     }

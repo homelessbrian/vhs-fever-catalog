@@ -41,6 +41,8 @@ class DiscoverMoreItemsTest(unittest.TestCase):
         if '"vhs rip"' in query and "addeddate" not in query:
             return [doc("k1", "Some Tape", "2019-01-01T00:00:00Z", description="Ripped from my vhs rip deck"),
                     doc("x1", "Penthouse Tape", "2019-01-02T00:00:00Z"),
+                    doc("x2", "Penthouse Teen Tape", "2019-01-02T00:00:01Z"),
+                    doc("x3", "Some XXX Tape", "2019-01-02T00:00:02Z", description="starring Traci Lords"),
                     doc("v2", "Already in the Vault", "2019-01-03T00:00:00Z")]
         if "collection:classic_tv_commercials_emperor" in query and "addeddate" not in query:
             return [doc("c1", "1985 Pepsi", "2010-01-01T00:00:00Z", cols=("classic_tv_commercials_emperor",))]
@@ -54,7 +56,9 @@ class DiscoverMoreItemsTest(unittest.TestCase):
     def test_finds_items_three_ways_and_keeps_emails_private(self):
         summary = dm.run(self.args(), self.fake_search, self.uploaders.get)
         rows, state = self.read_out()
-        self.assertEqual(set(rows), {"u1", "u2", "k1", "c1"})       # adult and Vault pages left out
+        self.assertEqual(set(rows), {"u1", "u2", "k1", "c1", "x1"})  # Vault and blocked adult pages left out
+        self.assertTrue(rows["x1"]["adult"])                         # kept for the red curtain
+        self.assertNotIn("adult", rows["u1"])
         self.assertTrue(rows["u1"]["found_by_uploader"])
         self.assertEqual(rows["u1"]["format_guess"], "VHS")
         self.assertEqual(rows["k1"]["format_guess"], "VHS")          # learned from the description
@@ -81,7 +85,7 @@ class DiscoverMoreItemsTest(unittest.TestCase):
                          self.fake_search, no_lookups)
         rows, _ = self.read_out()
         self.assertEqual(summary["new_this_run"], {})
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 5)
         self.assertTrue(any("addeddate:[2021-02-01T00:00:00Z TO *]" in q for q in self.queries))
 
     def test_same_second_page_steps_forward(self):
@@ -93,8 +97,12 @@ class DiscoverMoreItemsTest(unittest.TestCase):
         self.assertIn("addeddate:[2020-01-01T00:00:00Z TO *]", query)
 
     def test_unwanted(self):
-        self.assertTrue(dm.is_unwanted(doc("a", "Fine", "x", cols=("adultvhs",))))
-        self.assertTrue(dm.is_unwanted(doc("a", "Playboy Video Calendar", "x")))
+        self.assertFalse(dm.is_unwanted(doc("a", "Fine", "x", cols=("adultvhs",))))      # adult tapes are kept
+        self.assertFalse(dm.is_unwanted(doc("a", "Playboy Video Calendar", "x")))
+        # ...but never ones that point at minors or star a performer who was under 18
+        self.assertTrue(dm.is_unwanted(doc("a", "Fine", "x", cols=("adultvhs",), description="a schoolgirl")))
+        self.assertTrue(dm.is_unwanted(doc("a", "New Wave Hookers", "x", cols=("adultvhs",), creator="Traci Lords")))
+        self.assertFalse(dm.is_unwanted(doc("a", "Cry-Baby (1990) VHS", "x", creator="Traci Lords")))  # not adult
         self.assertTrue(dm.is_unwanted(doc("a", "Fine", "x", **{"access-restricted-item": "true"})))
         self.assertFalse(dm.is_unwanted(doc("a", "Sexton Blake (1972) VHS", "x")))
 

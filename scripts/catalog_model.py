@@ -723,6 +723,20 @@ def _apply_tv_tape(it: dict[str, Any], tv: dict[str, Any], name: str, pieces: li
     it["flags"] = [f for f in it.get("flags") or [] if f not in drop] + ["off_air_tv_tape_from_archive_page"]
 
 
+def _adult_marks(item: dict[str, Any], files: list[dict[str, Any]]) -> dict[str, Any]:
+    import adult
+    cols = _as_list(item.get("collection"))
+    text = [item.get("title"), item.get("subject"), item.get("description"), item.get("creator"),
+            [f.get("name") for f in files if _is_video(f)]]
+    out: dict[str, Any] = {}
+    if adult.is_adult(cols, item.get("title"), item.get("subject")):
+        out["adult"] = True
+        why = adult.blocked(cols, *text)
+        if why:
+            out["blocked"] = why
+    return out
+
+
 def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     archive_items: list[dict[str, Any]] = []
     archive_files: list[dict[str, Any]] = []
@@ -757,6 +771,8 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             "page_context": ctx_by_item.get(ident),
             "tv_tape": tv_by_item.get(ident),
             "access_restricted": bool(item.get("access_restricted")),
+            # Adult tapes are kept for the apps' red curtain; blocked ones never are (adult.py).
+            **_adult_marks(item, files),
             "archive_url": f"https://archive.org/details/{ident}",
             "video_file_count": sum(_is_video(f) for f in files),
             "uploaded_image_count": sum(_is_image(f) and f.get("source") == "original"
@@ -1239,6 +1255,7 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
             # One collection comes back as a plain string, several as a list.
             "collection": [col] if isinstance(col, str) else col,
             "subject": md.get("subject"), "description": md.get("description"), "date": md.get("date"),
+            "creator": md.get("creator"),
             "access_restricted": bool(data.get("is_dark")) or str(md.get("access-restricted-item", "")).lower() == "true",
             "files": data.get("files") or [],
         })

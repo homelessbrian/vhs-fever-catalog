@@ -43,6 +43,7 @@ data class Title(
     val backdrop: String? = null,
     val genres: List<String> = emptyList(),
     val addedAt: String = "",        // when the newest tape of it was marked good
+    val adult: Boolean = false,      // adult tape: only behind the red curtain, never on the shelves
 ) {
     /** Fills in TMDB art and blurb; the poster counts as confirmed only when the TMDB match is. */
     fun withArt(a: Art?): Title = if (a == null) this else copy(
@@ -55,7 +56,8 @@ data class Title(
     )
 }
 
-data class Catalog(val titles: List<Title>) {
+/** [titles] are the shelves; [curtain] holds adult tapes, shown only behind the red curtain. */
+data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList()) {
     /** Newest tapes marked good first. */
     val newArrivals: List<Title> get() = titles.sortedByDescending { it.addedAt }
 
@@ -100,6 +102,7 @@ data class Catalog(val titles: List<Title>) {
                     // The movie the bot is sure about, with its genres.
                     val botMovie = t.optJSONObject("movie")?.takeIf { it.optInt("tmdb_id") > 0 }
                     val feedGenres = t.optJSONArray("genres").strings()
+                    val adult = t.optBoolean("adult")
                     val recs = t.optJSONArray("un").objs().map { null to it } +
                         t.optJSONArray("eds").objs().flatMap { e -> e.optJSONArray("recs").objs().map { e to it } }
                     for ((ed, rec) in recs) {
@@ -131,7 +134,13 @@ data class Catalog(val titles: List<Title>) {
                                     releaseYear = year,
                                     addedAt = d.optString("updated_at").ifBlank { listDate },
                                 )
-                                val meta = if (movie != null && movie.optString("title").isNotBlank()) Meta(
+                                val meta = if (adult) Meta(
+                                    // Behind the curtain: a plain box with the name. No TMDB art is ever looked up.
+                                    key = "adult:" + t.optString("id"),
+                                    name = movie?.str("title")?.takeIf { movie.optString("source") != "none" } ?: cleanName(t.optString("t")),
+                                    year = movie?.str("year"), poster = null, suggested = false, overview = null, shelf = shelf,
+                                    adult = true,
+                                ) else if (movie != null && movie.optString("title").isNotBlank()) Meta(
                                     key = "tmdb:" + movie.optInt("tmdb_id"), name = movie.optString("title"),
                                     year = movie.str("year"), poster = movie.str("poster"), suggested = false,
                                     overview = null, shelf = shelf,
@@ -186,9 +195,10 @@ data class Catalog(val titles: List<Title>) {
                     searchName = searchQuery(metas.firstNotNullOfOrNull { it.feedName } ?: best.name).first,
                     // Tape years are release years of the tape, not the film, so they are not used here.
                     searchYear = searchQuery(metas.firstNotNullOfOrNull { it.feedName } ?: best.name).second,
+                    adult = metas.any { it.adult },
                 )
             }.sortedBy { sortKey(it.name) }
-            return Catalog(titles)
+            return Catalog(titles.filter { !it.adult }, titles.filter { it.adult })
         }
 
         private data class Meta(
@@ -198,6 +208,7 @@ data class Catalog(val titles: List<Title>) {
             val feedName: String? = null,
             val genres: List<String> = emptyList(),
             val backdrop: String? = null,
+            val adult: Boolean = false,
         )
 
         fun tapeLabel(media: String?, year: String?, version: String?, notes: List<String>): String {

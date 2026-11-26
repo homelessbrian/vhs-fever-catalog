@@ -288,6 +288,9 @@ def detect_format(rec: dict[str, Any], src: dict[str, Any], probe: dict[str, Any
     cols = collections_of(item)
     if cols & {"vhsvault", "vhsmovies", "vhskids", "vhstvshows", "vhsmisc", "vhscommercials", "vhstrailers"}:
         score["VHS"] += 0.5   # a weak hint only: VHS Vault also holds DVDs and downloads
+    if cols & {"adultvhs"}:
+        score["VHS"] += 2.5
+        clues.append("from the Archive's adult VHS tape collection")
 
     w, h = probe.get("width"), probe.get("height")
     if w and h:

@@ -55,4 +55,13 @@ class ParseTest {
         assertEquals("great tape", back.getString("notes"))
         assertNull(FileDecision.fromJson(FileDecision(status = "good").toJson()).robot)
     }
+
+    @Test fun adultTitleMarksItsFiles() {
+        val feed = JSONObject(res("feed-sample.json"))
+        feed.getJSONArray("titles").getJSONObject(0).put("adult", true)
+        val files = parseFeed(feed.toString())
+        val first = feed.getJSONArray("titles").getJSONObject(0).optString("id")
+        assertTrue(files.filter { it.titleId == first }.all { it.adult })
+        assertTrue(files.filter { it.titleId != first }.none { it.adult })
+    }
 }

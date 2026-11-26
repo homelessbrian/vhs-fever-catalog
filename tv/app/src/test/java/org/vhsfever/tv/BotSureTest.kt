@@ -25,4 +25,19 @@ class BotSureTest {
         val bad = """{"files":{""" + ids.joinToString(",") { "\"$it\":{\"status\":\"bad\"}" } + "}}"
         assertTrue(Catalog.build(res("movies-feed-sample.json"), bad).titles.isEmpty())
     }
+
+    @Test fun adultTapesOnlyGoBehindTheCurtain() {
+        val feed = org.json.JSONObject(res("movies-feed-sample.json"))
+        val titles = feed.getJSONArray("titles")
+        for (i in 0 until titles.length()) titles.getJSONObject(i).put("adult", true)
+        val ids = Catalog.build(res("movies-feed-sample.json"), noDecisions).titles.single().tapes.map { it.fileId }
+        val good = """{"files":{""" + ids.joinToString(",") { "\"$it\":{\"status\":\"good\"}" } + "}}"
+        val c = Catalog.build(feed.toString(), good)
+        assertTrue(c.titles.isEmpty())               // never on the shelves, New Arrivals or genres
+        assertTrue(c.genreShelves.isEmpty())
+        val t = c.curtain.single()
+        assertTrue(t.adult)
+        assertEquals(null, t.poster)                 // no pictures, and no TMDB art to look up
+        assertEquals(null, t.tmdbId)
+    }
 }

@@ -21,7 +21,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import adult  # noqa: E402
 
 NOT_A_MOVIE = re.compile(r"\b(?:opening|closing|logos?|promo|intro|introduction|outros?|segments?|trailers?|preview|"
                          r"bumpers?|ident|announcements?|credits|clip|clips|commercials?|sampler|teaser|tv spot|"
@@ -50,6 +54,8 @@ def wanted(r: dict, kind: str) -> bool:
     if isinstance(title, list):        # a few Archive pages have more than one title
         title = " ".join(str(x) for x in title)
     gb = int(r.get("size_bytes") or 0) / 1e9
+    if adult.blocked(cols, title):
+        return False          # never read: see adult.py
     if kind == "vhs_movies":
         if r.get("kind_guess") != "movie_or_unknown" or cols & NOT_MOVIE_COLLECTIONS:
             return False
@@ -58,7 +64,8 @@ def wanted(r: dict, kind: str) -> bool:
         if r.get("format_guess") in {"DVD", "BLU-RAY", "TV", "WEB"}:
             return False
         if "found_by" in r:
-            return bool(r.get("found_by_uploader") or r.get("format_guess") in {"VHS", "BETAMAX"})
+            return bool(r.get("found_by_uploader") or r.get("format_guess") in {"VHS", "BETAMAX"}
+                        or cols & adult.ADULT_COLLECTIONS)
         return True
     if kind == "movies":
         if r.get("kind_guess") != "movie_or_unknown" or cols & {"vhsopenings", "vhsinstructionals"}:

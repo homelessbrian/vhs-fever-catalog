@@ -39,7 +39,7 @@ API = "https://api.themoviedb.org/3"
 # copied forward; confident matches are kept.
 MATCHER_VERSION = 3
 KEEP_STATUSES = {"one_likely_candidate", "one_likely_episode", "skipped_tape_opening",
-                 "skipped_commercial_or_promo", "skipped_not_english"}
+                 "skipped_commercial_or_promo", "skipped_not_english", "skipped_adult"}
 # File names that are a piece of a tape, not the film itself: the Archive
 # page title is never used for these.
 TAPE_PART = re.compile(r"\b(?:opening|closing|intro|outro|trailers?|teasers?|promos?|previews?|sneak peek|credits|"
@@ -125,6 +125,9 @@ def main() -> None:
     titles, editions, recs = read("titles"), read("editions"), read("recordings")
     items = {i["archive_identifier"]: i for i in (read("archive-items") if (d / "archive-items.jsonl").exists() else [])}
 
+    adult_pages = {k for k, v in items.items() if v.get("adult")}
+    adult_tids = {r["title_suggestion_id"] for r in recs
+                  if r.get("title_suggestion_id") and adult_pages & set(r.get("archive_identifiers") or [])}
     cats: dict[str, set[str]] = {}
     hints: dict[str, set[str]] = {}
     lengths: dict[str, list[float]] = {}
@@ -362,7 +365,11 @@ def main() -> None:
             # The Archive page names a show this title was never tried
             # against: look again, even over a confident movie match.
             retry = True
-        if old and (not retry or lookups >= args.retry_lookups or not token):
+        if tid in adult_tids:
+            # Adult tapes (the apps' red curtain) aren't searched: TMDB's adult
+            # entries come with explicit posters, and mainstream guesses are wrong.
+            t["tmdb"] = {"status": "skipped_adult"}
+        elif old and (not retry or lookups >= args.retry_lookups or not token):
             t["tmdb"] = old
             counts["reused_from_earlier_run"] = counts.get("reused_from_earlier_run", 0) + 1
         elif c == {"vhs_opening_or_previews"}:
