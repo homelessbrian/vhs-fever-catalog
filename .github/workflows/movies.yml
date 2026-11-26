@@ -1,0 +1,243 @@
+name: Find VHS movies
+
+# The one bot. Each run:
+#   1. finds new Archive uploads (VHS Vault, plus tapes found outside it)
+#   2. picks the next pages it hasn't read yet (data/batches/ lists every page read)
+#   3. reads every page so far, keeps only recordings 40 minutes or longer that
+#      aren't split, taped off TV, tape openings or DVD/Blu-ray
+#   4. matches those to TMDB and checks their sound and picture
+#   5. keeps only full-length VHS movies, cleans up the names, adds TMDB genres
+#   6. publishes the one movie list to the movies-data branch, which both apps read
+# Then, when data/batches/auto.json says keep_going, it starts the next run.
+# Nothing is ever approved for you: the bot only puts a movie on the shelves when
+# it is sure, and you can always mark it bad in the review app.
+
+on:
+  workflow_dispatch:
+    inputs:
+      size:
+        description: "Archive pages to read this run (empty = the size in data/batches/auto.json)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "23 8 * * *"   # once a day, in case the chain ever stops
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: vhs-fever-movies
+  cancel-in-progress: false
+
+env:
+  RAW: https://raw.githubusercontent.com/${{ github.repository }}
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    outputs:
+      batch: ${{ steps.pick.outputs.batch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests
+        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items
+
+      - name: What the bot found and read before
+        run: |
+          mkdir -p prev/bot found
+          git fetch -q --depth 1 origin movies-data && git worktree add -q prev-tree FETCH_HEAD && cp -r prev-tree/bot/. prev/bot/ || true
+          for f in prev/bot/*.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
+          ls -la prev/bot
+
+      - name: Restore saved Archive pages
+        uses: actions/cache@v4
+        with:
+          path: work/archive-cache
+          key: archive-pages-${{ github.run_id }}
+          restore-keys: archive-pages-
+      # Who uploaded which Vault page. Kept only in this private cache, never
+      # published, so nobody's e-mail address ends up in the repository.
+      - name: Restore looked-up Vault uploaders
+        uses: actions/cache@v4
+        with:
+          path: work/private
+          key: vault-uploaders-${{ github.run_id }}
+          restore-keys: vault-uploaders-
+
+      - name: Find new VHS Vault uploads
+        continue-on-error: true
+        run: |
+          touch prev/bot/new-items.jsonl
+          python scripts/discover_new_items.py --known prev/bot/new-items.jsonl --backfill-pages 10 --output-dir found
+      - name: Find tapes outside the VHS Vault
+        continue-on-error: true
+        run: |
+          [ -s found/new-items.jsonl ] || cp prev/bot/new-items.jsonl found/
+          touch prev/bot/more-items.jsonl; [ -f prev/bot/more-sources-state.json ] || echo '{}' > prev/bot/more-sources-state.json
+          python scripts/discover_more_items.py --known prev/bot/more-items.jsonl --state prev/bot/more-sources-state.json \
+            --uploader-cache work/private/uploaders.json --vault-items found/new-items.jsonl --max-pages 60 --output-dir found
+      - name: Keep the earlier lists if a search failed
+        run: |
+          [ -s found/new-items.jsonl ] || cp prev/bot/new-items.jsonl found/
+          if [ ! -s found/more-items.jsonl ]; then cp prev/bot/more-items.jsonl found/; cp prev/bot/more-sources-state.json found/; fi
+
+      - name: Pick the next pages to read
+        id: pick
+        run: |
+          size="${{ inputs.size }}"
+          [ -n "$size" ] || size="$(python -c 'import json;print(json.load(open("data/batches/auto.json")).get("size",1000))')"
+          from="$(python -c 'import json;print(json.load(open("data/batches/auto.json")).get("from","both"))')"
+          python scripts/pick_batch.py --new-items found/new-items.jsonl --more-items found/more-items.jsonl \
+            --from "$from" --size "$size" --github-output pick.txt
+          b="$(sed -n 's/^batch=//p' pick.txt)"
+          if [ -n "$b" ]; then
+            git config user.name homelessbrian
+            git config user.email 38150792+homelessbrian@users.noreply.github.com
+            git add "data/batches/$b.txt" && git commit -q -m "Movie bot: read $b"
+            for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && break; sleep 5; done
+            echo "Reading $b: $(grep -cv '^#' "data/batches/$b.txt") new Archive pages"
+          else
+            echo "No new pages to read; rebuilding the list from the pages already read."
+          fi
+          echo "batch=$b" >> "$GITHUB_OUTPUT"
+
+      - name: Read every page so far and keep recordings 40 minutes or longer
+        run: |
+          grep -hv '^#' data/batches/batch-*.txt | sed '/^\s*$/d' | sort -u > all-pages.txt
+          echo "$(wc -l < all-pages.txt) Archive pages in all"
+          python scripts/catalog_model.py --identifiers all-pages.txt --cache-dir work/archive-cache \
+            --max-age-days 120 --output-dir model
+          python scripts/vhs_movies.py keep-long --model-dir model
+      - name: Install English word list
+        run: (sudo apt-get update -qq && sudo apt-get install -y -qq wamerican) || true
+      - name: Match them on TMDB (suggestions only)
+        env:
+          TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
+          TVDB_PIN: ${{ secrets.TVDB_PIN }}
+        run: |
+          touch prev/bot/titles.jsonl
+          python scripts/match_titles_tmdb.py --model-dir model --reuse prev/bot/titles.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: movie-bot-model
+          path: |
+            model
+            found
+            prev/bot/audio-checks.jsonl
+            prev/bot/tmdb-movies.json
+            all-pages.txt
+          retention-days: 3
+
+  sound:
+    needs: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - uses: actions/download-artifact@v4
+        with:
+          name: movie-bot-model
+      - name: Check sound and picture (small reads only; earlier checks reused)
+        run: |
+          touch prev/bot/audio-checks.jsonl
+          python scripts/check_audio.py --recordings model/recordings.jsonl --previous prev/bot/audio-checks.jsonl \
+            --output audio-${{ matrix.shard }}.jsonl --shard ${{ matrix.shard }} --shards 4 --workers 12
+      - uses: actions/upload-artifact@v4
+        with:
+          name: movie-bot-sound-${{ matrix.shard }}
+          path: audio-${{ matrix.shard }}.jsonl
+          retention-days: 3
+
+  publish:
+    needs: [read, sound]
+    if: ${{ always() && needs.read.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: movie-bot-model
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: movie-bot-sound-*
+          path: parts
+          merge-multiple: true
+      - name: Keep only VHS movies and build the movie list
+        env:
+          TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+        run: |
+          # Sound checks: this run's, plus earlier ones for any shard that failed.
+          python scripts/merge_sound_checks.py --output model/audio-checks.jsonl prev/bot/audio-checks.jsonl parts/*.jsonl
+          python scripts/auto_sort.py --model-dir model --audio model/audio-checks.jsonl --output-dir sorted
+          python scripts/vhs_movies.py finish --model-dir model --auto-sort sorted/auto-sort.jsonl \
+            --audio model/audio-checks.jsonl --output-dir site --tmdb-cache prev/bot/tmdb-movies.json \
+            --pages-read "$(wc -l < all-pages.txt)"
+          # What the bot remembers for next time, so nothing is searched or checked twice.
+          mkdir -p site/bot
+          cp model/titles.jsonl site/bot/titles.jsonl
+          cp model/audio-checks.jsonl site/bot/audio-checks.jsonl
+          mv site/tmdb-movies.json site/bot/tmdb-movies.json
+          cp found/new-items.jsonl found/more-items.jsonl site/bot/
+          cp found/more-sources-state.json site/bot/ 2>/dev/null || echo '{}' > site/bot/more-sources-state.json
+          gzip -9f site/bot/*.jsonl
+          python - <<'PY'
+          import json
+          s = json.load(open("site/summary.json"))
+          s["built_at"] = __import__("datetime").datetime.utcnow().isoformat(timespec="seconds") + "Z"
+          json.dump(s, open("site/summary.json", "w"), indent=2, ensure_ascii=False)
+          PY
+          cat > site/README.md <<'MD'
+          # VHS FEVER movie list
+
+          Made by the "Find VHS movies" bot. Full-length VHS movies only.
+
+          - `reviewer-feed.json`: the movie list both apps read (movies, their tapes and files, genres)
+          - `auto-sort.jsonl`: the bot's call for each file (sure / not sure / bad, and why)
+          - `audio-checks.jsonl`: sound and picture check for each file
+          - `summary.json`: counts, genres, and what was left out
+          - `bot/`: what the bot remembers between runs (pages found, TMDB matches, sound checks)
+          MD
+          sed -i 's/^          //' site/README.md
+          touch site/.nojekyll
+          { echo '## Movie list'; echo '```'; cat site/summary.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          du -sh site; ls -la site site/bot
+      - name: Publish to movies-data
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: movies-data
+          publish_dir: ./site
+          force_orphan: true
+          enable_jekyll: false
+          commit_message: "Movie list ${{ needs.read.outputs.batch || 'rebuild' }}"
+      - name: Keep going with the next pages
+        if: ${{ needs.read.outputs.batch != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch -q origin main && git checkout -q FETCH_HEAD -- data/batches/auto.json 2>/dev/null || true
+          if python -c 'import json,sys;sys.exit(0 if json.load(open("data/batches/auto.json")).get("keep_going") else 1)'; then
+            gh workflow run movies.yml --repo "${{ github.repository }}" --ref main
+            echo "Started the next run."
+          else
+            echo "Paused (keep_going is off in data/batches/auto.json)."
+          fi

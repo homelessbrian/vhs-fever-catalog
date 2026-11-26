@@ -1,0 +1,453 @@
+{
+ "generated_at": "2026-11-26T03:45:28+00:00",
+ "summary": {
+  "pages_read": 6000,
+  "vhs_movies": 227,
+  "bot_sure": 0,
+  "waiting_for_review": 227,
+  "files": 463,
+  "genres": {},
+  "left_out": {
+   "not a movie": 506,
+   "taped off TV or a TV episode": 229,
+   "not VHS": 77,
+   "TMDB says it's a TV show": 29,
+   "doesn't play": 2,
+   "not in English": 1
+  },
+  "tmdb_detail_lookups": 0
+ },
+ "titles": [
+  {
+   "id": "vhsf-title-sugg-da29345f042809d1",
+   "t": "Snoopy, Come Home",
+   "series": null,
+   "dash": null,
+   "hint": null,
+   "similar": [],
+   "years": [],
+   "cats": [
+    "vhs_release"
+   ],
+   "nrec": 1,
+   "nsrc": 2,
+   "tmdb": {
+    "status": "weak_candidates_only",
+    "q": "A Question of Taste",
+    "kind": "movie",
+    "src": null,
+    "ceiling": 1994,
+    "conf": "weak",
+    "found_with": "last 2 words dropped",
+    "c": [
+     {
+      "tmdb_id": 1358522,
+      "media_type": "movie",
+      "title": "A Question About Sex",
+      "release_date": "1990-09-13",
+      "similarity": 0.75,
+      "year_consistent": true,
+      "poster": "https://image.tmdb.org/t/p/w342/d1WFjmgQxjjufVmjoMC7knsMP9t.jpg",
+      "overview": "Teenage girl who advocates sex education at her school finds herself butting heads with her mother who is seeking a spot on the school board.",
+      "tmdb_url": "https://www.themoviedb.org/movie/1358522",
+      "runtime": 45,
+      "why": [
+       "name 75% alike"
+      ]
+     },
+     {
+      "tmdb_id": 134994,
+      "media_type": "movie",
+      "title": "A Question of Guilt",
+      "release_date": "1978-02-21",
+      "similarity": 0.714,
+      "year_consistent": true,
+      "poster": "https://image.tmdb.org/t/p/w342/uKzp6qYjHhvpiB4Xyy7kJ97cfeE.jpg",
+      "overview": "A swinging divorc\u00e9e is prejudged by a police detective and accused of killing her child.",
+      "tmdb_url": "https://www.themoviedb.org/movie/134994",
+      "why": [
+       "name 71% alike"
+      ]
+     },
+     {
+      "tmdb_id": 1249041,
+      "media_type": "movie",
+      "title": "A Question Of Faith",
+      "release_date": "1979-12-02",
+      "similarity": 0.714,
+      "year_consistent": true,
+      "poster": "https://image.tmdb.org/t/p/w342/u9vAyupV6vHAMcfWi2vU1I1qb4o.jpg",
+      "overview": "The last days of famous Russian author Leo Tolstoy which are paralleled with one of his last stories - The Death of Ivan Ilyich - about a man who is happy with his life until he finds out he's sick and is about to die.",
+      "tmdb_url": "https://www.themoviedb.org/movie/1249041",
+      "why": [
+       "name 71% alike"
+      ]
+     },
+     {
+      "tmdb_id": 1299179,
+      "media_type": "movie",
+      "title": "A Question of Identity",
+      "release_date": "1992-11-13",
+      "similarity": 0.71,
+      "year_consistent": true,
+      "poster": "https://image.tmdb.org/t/p/w342/zrjKYR0e1BhGODpAUqA83H0j85o.jpg",
+      "overview": "Erwin van Haarlem is a man of mystery. Living in London in 1986 and ostensibly a Dutch art dealer, he is in fact spying for Czechoslovakia with a mission to track down supporters of the dissident group, Chapter 77.",
+      "tmdb_url": "https://www.themoviedb.org/movie/1299179",
+      "why": [
+       "name 71% alike"
+      ]
+     },
+     {
+      "tmdb_id": 882441,
+      "media_type": "movie",
+      "title": "A Question of Suspense",
+      "release_date": "1961-10-01",
+      "similarity": 0.71,
+      "year_consistent": true,
+      "overview": "A young woman sets out to get revenge against a rich man who murdered her lover.",
+      "tmdb_url": "https://www.themoviedb.org/movie/882441",
+      "why": [
+       "name 71% alike"
+      ]
+     }
+    ]
+   },
+   "eds": [
+    {
+     "id": "vhsf-edition-sugg-d1ab0588fccc5afd",
+     "media": "VHS",
+     "year": "1994",
+     "notes": [
+      "UK"
+     ],
+     "flags": [
+      "recordings_carry_edition_notes_check_if_separate_release"
+     ],
+     "recs": [
+      {
+       "id": "vhsf-rec-4922d32fcff13a29",
+       "name": "A Question of Taste (1994 UK VHS).mp4",
+       "cat": "vhs_release",
+       "why": [],
+       "flags": [],
+       "dur": 3121.3,
+       "parts": 1,
+       "items": [
+        "a-question-of-taste-1994-uk-vhs"
+       ],
+       "also": [
+        "A Question of Taste (1994 UK VHS).mp4"
+       ],
+       "ver": null,
+       "notes": [
+        "UK"
+       ],
+       "ident": "md5",
+       "art": [],
+       "segs": [
+        {
+         "o": 1,
+         "dur": 3121.3,
+         "src": [
+          {
+           "id": "vhsf-program-082d2cf929a94a0a",
+           "n": "A Question of Taste (1994 UK VHS).ia.mp4",
+           "item": "a-question-of-taste-1994-uk-vhs",
+           "role": "archive_derivative",
+           "fmt": "h.264 IA",
+           "url": "https://archive.org/download/a-question-of-taste-1994-uk-vhs/A%20Question%20of%20Taste%20%281994%20UK%20VHS%29.ia.mp4",
+           "play": true,
+           "dur": 3121.3,
+           "ok": true
+          },
+          {
+           "id": "vhsf-program-999fe451b7f30a5d",
+           "n": "A Question of Taste (1994 UK VHS).mp4",
+           "item": "a-question-of-taste-1994-uk-vhs",
+           "role": "original",
+           "fmt": "MPEG4",
+           "url": "https://archive.org/download/a-question-of-taste-1994-uk-vhs/A%20Question%20of%20Taste%20%281994%20UK%20VHS%29.mp4",
+           "play": true,
+           "dur": 3121.3,
+           "ok": true
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "un": [],
+   "raw": "A Question of Taste",
+   "genres": [
+    "Animation",
+    "Family"
+   ],
+   "movie": {
+    "tmdb_id": 12345,
+    "title": "Snoopy, Come Home",
+    "year": "1972",
+    "genres": [
+     "Animation",
+     "Family"
+    ],
+    "poster": null,
+    "overview": "Snoopy leaves home.",
+    "runtime": 81,
+    "backdrop": null
+   }
+  },
+  {
+   "id": "vhsf-title-sugg-178135df760f9d8f",
+   "t": "Aardman Animations Volume 1 Special Extended Edition",
+   "series": null,
+   "dash": null,
+   "hint": null,
+   "similar": [],
+   "years": [],
+   "cats": [
+    "vhs_release"
+   ],
+   "nrec": 1,
+   "nsrc": 2,
+   "tmdb": {
+    "status": "no_candidates",
+    "q": "Aardman Animations Volume 1 Special Extended Edition",
+    "kind": "movie",
+    "src": null,
+    "ceiling": 1991,
+    "conf": "none",
+    "found_with": null,
+    "c": []
+   },
+   "eds": [
+    {
+     "id": "vhsf-edition-sugg-780d91920770ace9",
+     "media": "VHS",
+     "year": "1991",
+     "notes": [
+      "UK"
+     ],
+     "flags": [
+      "recordings_carry_edition_notes_check_if_separate_release"
+     ],
+     "recs": [
+      {
+       "id": "vhsf-rec-ecca5719f6ac3655",
+       "name": "Aardman Animations Volume 1 Special Extended Edition (1991 UK VHS).mp4",
+       "cat": "vhs_release",
+       "why": [],
+       "flags": [],
+       "dur": 2942.21,
+       "parts": 1,
+       "items": [
+        "aardman-animations-volume-1-special-extended-edition-1991-uk-vhs"
+       ],
+       "also": [
+        "Aardman Animations Volume 1 Special Extended Edition (1991 UK VHS).mp4"
+       ],
+       "ver": null,
+       "notes": [
+        "UK"
+       ],
+       "ident": "md5",
+       "art": [],
+       "segs": [
+        {
+         "o": 1,
+         "dur": 2942.21,
+         "src": [
+          {
+           "id": "vhsf-program-36dd0caae41da704",
+           "n": "Aardman Animations Volume 1 Special Extended Edition (1991 UK VHS).ia.mp4",
+           "item": "aardman-animations-volume-1-special-extended-edition-1991-uk-vhs",
+           "role": "archive_derivative",
+           "fmt": "h.264 IA",
+           "url": "https://archive.org/download/aardman-animations-volume-1-special-extended-edition-1991-uk-vhs/Aardman%20Animations%20Volume%201%20Special%20Extended%20Edition%20%281991%20UK%20VHS%29.ia.mp4",
+           "play": true,
+           "dur": 2942.21
+          },
+          {
+           "id": "vhsf-program-a1ccb34caccb060c",
+           "n": "Aardman Animations Volume 1 Special Extended Edition (1991 UK VHS).mp4",
+           "item": "aardman-animations-volume-1-special-extended-edition-1991-uk-vhs",
+           "role": "original",
+           "fmt": "MPEG4",
+           "url": "https://archive.org/download/aardman-animations-volume-1-special-extended-edition-1991-uk-vhs/Aardman%20Animations%20Volume%201%20Special%20Extended%20Edition%20%281991%20UK%20VHS%29.mp4",
+           "play": true,
+           "dur": 2942.21
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "un": [],
+   "raw": "Aardman Animations Volume 1 Special Extended Edition",
+   "genres": []
+  },
+  {
+   "id": "vhsf-title-sugg-c5d23220f29173c8",
+   "t": "1003",
+   "series": null,
+   "dash": null,
+   "hint": null,
+   "similar": [],
+   "years": [],
+   "cats": [
+    "manual_review"
+   ],
+   "nrec": 1,
+   "nsrc": 2,
+   "tmdb": {
+    "status": "no_candidates",
+    "q": "Various programming from stations in Northeast Wisconsin (1990, WOC)",
+    "kind": "movie",
+    "src": null,
+    "ceiling": null,
+    "conf": "none",
+    "found_with": null,
+    "c": []
+   },
+   "eds": [],
+   "un": [
+    {
+     "id": "vhsf-rec-06ba10b45281bdb6",
+     "name": "1003 (2).mp4",
+     "cat": "manual_review",
+     "why": [
+      "no VHS/DVD format in filename"
+     ],
+     "flags": [
+      "no_media_format_in_filename"
+     ],
+     "dur": 14855.88,
+     "parts": 1,
+     "items": [
+      "northeast-wisconsin-1990-tape"
+     ],
+     "also": [
+      "1003 (2).mp4"
+     ],
+     "ver": null,
+     "notes": [],
+     "ident": "md5",
+     "art": [],
+     "segs": [
+      {
+       "o": 1,
+       "dur": 14855.88,
+       "src": [
+        {
+         "id": "vhsf-program-d727398548e4935f",
+         "n": "1003 (2).ia.mp4",
+         "item": "northeast-wisconsin-1990-tape",
+         "role": "archive_derivative",
+         "fmt": "h.264 IA",
+         "url": "https://archive.org/download/northeast-wisconsin-1990-tape/1003%20%282%29.ia.mp4",
+         "play": true,
+         "dur": 14855.88
+        },
+        {
+         "id": "vhsf-program-f2ded3505faa862c",
+         "n": "1003 (2).mp4",
+         "item": "northeast-wisconsin-1990-tape",
+         "role": "original",
+         "fmt": "MPEG4",
+         "url": "https://archive.org/download/northeast-wisconsin-1990-tape/1003%20%282%29.mp4",
+         "play": true,
+         "dur": 14855.88
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "raw": "1003 (2)",
+   "genres": []
+  },
+  {
+   "id": "vhsf-title-sugg-e257d9b2169fb6bd",
+   "t": "2001 Gullah Gullah Island, Little Bill, Rosie and Jim, Wizadora and much more",
+   "series": null,
+   "dash": null,
+   "hint": null,
+   "similar": [],
+   "years": [],
+   "cats": [
+    "manual_review"
+   ],
+   "nrec": 1,
+   "nsrc": 2,
+   "tmdb": {
+    "status": "no_candidates",
+    "q": "2001 Gullah Gullah Island, Little Bill, Rosie and Jim, Wizadora and much more",
+    "kind": "movie",
+    "src": null,
+    "ceiling": null,
+    "conf": "none",
+    "found_with": null,
+    "c": []
+   },
+   "eds": [],
+   "un": [
+    {
+     "id": "vhsf-rec-2e0950e3fbe30abc",
+     "name": "2001 Gullah Gullah Island, Little Bill, Rosie and Jim, Wizadora and much more.mpg",
+     "cat": "manual_review",
+     "why": [
+      "no VHS/DVD format in filename"
+     ],
+     "flags": [
+      "no_media_format_in_filename"
+     ],
+     "dur": 11011.84,
+     "parts": 1,
+     "items": [
+      "2001-gullah-gullah-island-little-bill-rosie-and-jim-wizadora-and-much-more"
+     ],
+     "also": [
+      "2001 Gullah Gullah Island, Little Bill, Rosie and Jim, Wizadora and much more.mpg"
+     ],
+     "ver": null,
+     "notes": [],
+     "ident": "md5",
+     "art": [],
+     "segs": [
+      {
+       "o": 1,
+       "dur": 11011.84,
+       "src": [
+        {
+         "id": "vhsf-program-6ce3439c9c156591",
+         "n": "2001 Gullah Gullah Island, Little Bill, Rosie and Jim, Wizadora and much more.mp4",
+         "item": "2001-gullah-gullah-island-little-bill-rosie-and-jim-wizadora-and-much-more",
+         "role": "archive_derivative",
+         "fmt": "h.264",
+         "url": "https://archive.org/download/2001-gullah-gullah-island-little-bill-rosie-and-jim-wizadora-and-much-more/2001%20Gullah%20Gullah%20Island%2C%20Little%20Bill%2C%20Rosie%20and%20Jim%2C%20Wizadora%20and%20much%20more.mp4",
+         "play": true,
+         "dur": 11011.84
+        },
+        {
+         "id": "vhsf-program-b2bb73dbad95e9ff",
+         "n": "2001 Gullah Gullah Island, Little Bill, Rosie and Jim, Wizadora and much more.mpg",
+         "item": "2001-gullah-gullah-island-little-bill-rosie-and-jim-wizadora-and-much-more",
+         "role": "original",
+         "fmt": "MPEG2",
+         "url": "https://archive.org/download/2001-gullah-gullah-island-little-bill-rosie-and-jim-wizadora-and-much-more/2001%20Gullah%20Gullah%20Island%2C%20Little%20Bill%2C%20Rosie%20and%20Jim%2C%20Wizadora%20and%20much%20more.mpg",
+         "play": false,
+         "dur": 11011.84
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "raw": "2001 Gullah Gullah Island, Little Bill, Rosie and Jim, Wizadora and much more",
+   "genres": []
+  }
+ ]
+}

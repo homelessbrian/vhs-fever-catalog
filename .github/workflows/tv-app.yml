@@ -1,0 +1,75 @@
+name: Build TV app (Android TV)
+
+on:
+  push:
+    branches: [main, rebuild/data-model, 'tv-preview/**']
+    paths:
+      - 'tv/**'
+      - '.github/workflows/tv-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - name: Test and build
+        working-directory: tv
+        env:
+          TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+        # Maven Central sometimes turns builds away for a minute ("Too Many Requests"): wait and try again.
+        run: |
+          for i in 1 2 3 4; do
+            gradle --no-daemon testDebugUnitTest assembleRelease > build.log 2>&1 && { cat build.log; exit 0; }
+            cat build.log
+            grep -q "Too Many Requests" build.log || exit 1
+            echo "Download limit hit, retrying in 60s ($i)"; sleep 60
+          done
+          exit 1
+      # Pictures of each screen drawn on the build machine, to compare with the mockups.
+      - name: Publish screen pictures
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls tv/app/build/screens/*.png >/dev/null 2>&1 || exit 0
+          for i in 1 2 3; do
+            gh release view tv-screens >/dev/null 2>&1 || \
+              gh release create tv-screens --prerelease \
+                --title "VHS FEVER TV screen pictures" --notes "Screens rendered by the TV app build." || true
+            gh release upload tv-screens tv/app/build/screens/*.png --clobber && exit 0
+            sleep 15
+          done
+          exit 1
+      - name: Name the app file
+        run: cp tv/app/build/outputs/apk/release/app-release.apk vhs-fever-tv.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vhs-fever-tv-${{ github.run_number }}
+          path: vhs-fever-tv.apk
+          retention-days: 30
+      # A fixed download link for the TV (e.g. in the Downloader app):
+      # https://github.com/homelessbrian/vhs-fever-catalog/releases/download/tv-latest/vhs-fever-tv.apk
+      - name: Publish to the tv-latest release
+        if: github.ref_name == 'rebuild/data-model' || github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Remake the release each time so its tag always sits on the build's own commit.
+          notes="Proof-of-concept TV app for testing playback. Build ${{ github.run_number }} from ${{ github.ref_name }}."
+          # version.txt is how the app on the TV knows a newer build is here
+          echo "${{ github.run_number }}" > version.txt
+          gh release delete tv-latest --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create tv-latest vhs-fever-tv.apk version.txt --prerelease --target "${{ github.sha }}" \
+            --title "VHS FEVER TV (latest test build)" --notes "$notes"

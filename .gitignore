@@ -223,5 +223,9 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Generated catalog exports and local run state
-data/
+data/*
 *.checkpoint.json
+
+# Batch lists are kept in Git (they are small and say what is in the catalog)
+!data/batches/
+!data/batches/*.txt
