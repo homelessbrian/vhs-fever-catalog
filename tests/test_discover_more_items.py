@@ -106,6 +106,13 @@ class DiscoverMoreItemsTest(unittest.TestCase):
         self.assertTrue(dm.is_unwanted(doc("a", "Fine", "x", **{"access-restricted-item": "true"})))
         self.assertFalse(dm.is_unwanted(doc("a", "Sexton Blake (1972) VHS", "x")))
 
+    def test_sources_waiting_longest_go_first(self):
+        state = {"sources": {"keyword:vhs rip": {"kind": "keyword", "label": "keyword", "marker": None,
+                                                 "last_read": "2026-01-01T00:00:00Z"}}}
+        (self.tmp / "state.json").write_text(json.dumps(state))
+        dm.run(self.args(state=str(self.tmp / "state.json"), max_pages=1), self.fake_search, self.uploaders.get)
+        self.assertNotIn('"vhs rip"', self.queries[0])     # a never-read source went first
+
 
 if __name__ == "__main__":
     unittest.main()

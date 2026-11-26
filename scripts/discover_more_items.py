@@ -234,6 +234,10 @@ def run(a: argparse.Namespace, search_fn: Callable[[str, int, int], list[dict[st
         sources += [Source(f"collection:{c}", "collection", f"collection {c}", f"collection:{c}", state)
                     for c in COLLECTIONS]
 
+    # Places not read for the longest time go first (never-read ones before all), so every
+    # source gets its turn even when there are more of them than one run has pages for.
+    sources.sort(key=lambda s: str(s.state.get("last_read") or ""))
+
     added: Counter[str] = Counter()
     pages = 0
     budget = a.max_pages
