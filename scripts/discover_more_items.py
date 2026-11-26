@@ -236,7 +236,8 @@ def run(a: argparse.Namespace, search_fn: Callable[[str, int, int], list[dict[st
 
     # Places not read for the longest time go first (never-read ones before all), so every
     # source gets its turn even when there are more of them than one run has pages for.
-    sources.sort(key=lambda s: str(s.state.get("last_read") or ""))
+    # Among never-read ones, the few collection and keyword searches go before the many uploaders.
+    sources.sort(key=lambda s: (str(s.state.get("last_read") or ""), s.kind == "uploader"))
 
     added: Counter[str] = Counter()
     pages = 0

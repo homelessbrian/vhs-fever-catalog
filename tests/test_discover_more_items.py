@@ -112,6 +112,7 @@ class DiscoverMoreItemsTest(unittest.TestCase):
         (self.tmp / "state.json").write_text(json.dumps(state))
         dm.run(self.args(state=str(self.tmp / "state.json"), max_pages=1), self.fake_search, self.uploaders.get)
         self.assertNotIn('"vhs rip"', self.queries[0])     # a never-read source went first
+        self.assertNotIn("uploader:", self.queries[0])      # ...and not one of the many uploaders
 
 
 if __name__ == "__main__":
