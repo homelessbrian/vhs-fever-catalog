@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import not_movies  # noqa: E402
 
 MIN_SECONDS = 40 * 60
 DROP_CATEGORIES = {"tv_recording", "vhs_opening_or_previews", "other_media_release"}
@@ -177,9 +178,47 @@ def taped_off_tv(text: str) -> bool:
     return bool(TAPED_OFF_TV.search(VIDEO_LABEL.sub(" ", text or "")))
 
 
-def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None) -> str | None:
+# Tape collections on the Archive. VHS Vault also holds some DVDs and downloads,
+# but a page there is still a reasonable sign of a tape.
+TAPE_COLLECTIONS = {"vhsvault", "vhsmovies", "vhskids", "vhstvshows", "vhsmisc", "adultvhs"}
+TAPE_WORDS_ON_PAGE = re.compile(r"\b(?:vhs|betamax|beta\s*max|video\s*tape|videocassette|vcr|laserdisc)\b", re.I)
+LAST_TAPE_YEAR = 2006   # films after this were hardly ever sold on VHS
+
+
+def tape_sign(row: dict[str, Any], title: dict[str, Any] | None, page: dict[str, Any] | None) -> str | None:
+    """Why the bot thinks this came off a tape, or None when nothing says so.
+
+    "Long and plays" is not enough: DJ sets, talks and news streams are that
+    too. Something has to point at a tape.
+    """
+    if row.get("format_confidence") in {"high", "medium"}:
+        return "file looks like a tape"
+    page = page or {}
+    cols = page.get("collection") or []
+    cols = {cols} if isinstance(cols, str) else set(cols)
+    if cols & TAPE_COLLECTIONS:
+        return "page is in a tape collection"
+    if TAPE_WORDS_ON_PAGE.search(str(row.get("name") or "").replace("_", " ")):
+        return "file name says it's a tape"
+    if (page.get("page_context") or {}).get("format") in {"VHS", "BETAMAX", "LASERDISC"} \
+            or TAPE_WORDS_ON_PAGE.search(str(page.get("archive_title") or "")):
+        return "page says it's a tape"
+    cand, conf = best_candidate(title)
+    year = str(cand.get("release_date") or "")[:4]
+    if conf in {"sure", "likely", "several"} and cand.get("media_type") == "movie" and year.isdigit() \
+            and int(year) <= LAST_TAPE_YEAR:
+        return "a movie from the VHS years"
+    return None
+
+
+def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None,
+                 page: dict[str, Any] | None = None, check_tape: bool = False) -> str | None:
     if ((title or {}).get("tmdb") or {}).get("status") == "skipped_not_english":
         return "not in English"
+    words = not_movies.not_a_movie(row.get("name"), (title or {}).get("display_title"),
+                                   (page or {}).get("archive_title"))
+    if words:
+        return f"not a movie ({words})"
     if taped_off_tv(row.get("name") or "") or taped_off_tv((title or {}).get("display_title") or ""):
         return "taped off TV or a TV episode"
     if row["kind"] != "movie":
@@ -193,6 +232,8 @@ def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None) -> str | Non
     cand, conf = best_candidate(title)
     if conf in {"sure", "likely"} and cand.get("media_type") == "tv":
         return "TMDB says it's a TV show"
+    if check_tape and not tape_sign(row, title, page):
+        return "not VHS (nothing says it's a tape)"
     return None
 
 
@@ -252,6 +293,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     # Adult tapes (kept behind the apps' red curtain) and blocked ones (never kept).
     adult_pages = {i["archive_identifier"] for i in model["archive-items"] if i.get("adult")}
     blocked_pages = {i["archive_identifier"] for i in model["archive-items"] if i.get("blocked")}
+    pages = {i["archive_identifier"]: i for i in model["archive-items"]}
     rec_pages = {r["recording_id"]: set(r.get("archive_identifiers") or []) for r in model["recordings"]}
     adult_recs = {rid for rid, pages in rec_pages.items() if pages & adult_pages}
     rows = read_jsonl(sort_path)
@@ -264,7 +306,12 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     dropped: Counter[str] = Counter()
     for rid, group in rows_by_rec.items():
         group.sort(key=lambda r: (r.get("role") != "original", r["verdict"] == "bad"))
-        why = why_not_kept(group[0], titles.get(group[0].get("title_suggestion_id")))
+        title = titles.get(group[0].get("title_suggestion_id"))
+        # The same tape can be on several pages: one tape-looking page is enough.
+        on_pages = [pages[p] for p in sorted(rec_pages.get(rid, set()) | {group[0].get("archive_identifier")})
+                    if p in pages] or [None]
+        on_pages.sort(key=lambda pg: tape_sign(group[0], title, pg) is None)
+        why = why_not_kept(group[0], title, on_pages[0], check_tape=True)
         if rec_pages.get(rid, set()) & blocked_pages:
             why = "blocked adult tape"
         if why is None:

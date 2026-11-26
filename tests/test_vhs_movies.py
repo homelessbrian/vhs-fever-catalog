@@ -143,3 +143,31 @@ class KindWordsInMovieTitles(unittest.TestCase):
     def test_tape_era_label_counts_as_vhs(self):
         import auto_sort as a
         self.assertTrue(any(f == "VHS" and rx.search("Star Wars CBS FOX 1984") for rx, f, _s in a.RIP_TAGS))
+
+
+class TapeSign(unittest.TestCase):
+    def test_no_sign_of_a_tape_is_left_out(self):
+        r = row(name="Blawan set.mp4", format_confidence="low")
+        self.assertIn("not VHS", vm.why_not_kept(r, title(conf=None), {"collection": ["opensource_movies"]},
+                                                 check_tape=True))
+
+    def test_any_tape_sign_keeps_it(self):
+        low = row(format_confidence="low")
+        self.assertIsNone(vm.why_not_kept(low, title(conf=None), {"collection": ["vhsvault"]}, check_tape=True))
+        self.assertIsNone(vm.why_not_kept(low, title(conf=None), {"archive_title": "Kuffs (1992 VHS)"},
+                                          check_tape=True))
+        old_film = title()
+        old_film["tmdb"]["candidates"][0]["release_date"] = "1942-08-13"
+        self.assertIsNone(vm.why_not_kept(low, old_film, {}, check_tape=True))
+        new_film = title()
+        new_film["tmdb"]["candidates"][0]["release_date"] = "2019-01-01"
+        self.assertIn("not VHS", vm.why_not_kept(row(name="Bambi.mp4", format_confidence="low"), new_film, {},
+                                                 check_tape=True))
+        self.assertIsNone(vm.why_not_kept(row(name="Old Bear (UK VHS).mp4", format_confidence="low"),
+                                          title(conf=None), {}, check_tape=True))
+
+    def test_dj_sets_and_talks_are_not_movies(self):
+        for name in ("Bonobo Boiler Room New York DJ Set.mp4", "CppCon 2019 Andrei Alexandrescu.mp4",
+                     "Black Hat USA 2019 Command Injection.ogv", "LIVE Press briefing on the storm.mp4"):
+            self.assertIn("not a movie", vm.why_not_kept(row(name=name), title()))
+        self.assertIsNone(vm.why_not_kept(row(name="Black Hawk Down (2002 VHS).mp4"), title()))

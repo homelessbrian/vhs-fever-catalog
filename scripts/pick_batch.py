@@ -26,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adult  # noqa: E402
+import not_movies  # noqa: E402
 
 NOT_A_MOVIE = re.compile(r"\b(?:opening|closing|logos?|promo|intro|introduction|outros?|segments?|trailers?|preview|"
                          r"bumpers?|ident|announcements?|credits|clip|clips|commercials?|sampler|teaser|tv spot|"
@@ -59,7 +60,7 @@ def wanted(r: dict, kind: str) -> bool:
     if kind == "vhs_movies":
         if r.get("kind_guess") != "movie_or_unknown" or cols & NOT_MOVIE_COLLECTIONS:
             return False
-        if NOT_A_MOVIE.search(title) or not 0.15 <= gb <= 20:
+        if NOT_A_MOVIE.search(title) or not_movies.not_a_movie(title) or not 0.15 <= gb <= 20:
             return False
         if r.get("format_guess") in {"DVD", "BLU-RAY", "TV", "WEB"}:
             return False
