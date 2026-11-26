@@ -59,11 +59,12 @@ data class Catalog(val titles: List<Title>) {
     /** Newest tapes marked good first. */
     val newArrivals: List<Title> get() = titles.sortedByDescending { it.addedAt }
 
-    /** Each genre with its titles, biggest shelf first. */
+    /** Each genre with its titles, biggest shelf first; movies TMDB gives no genre go on "Other", last. */
     val genreShelves: List<Pair<String, List<Title>>>
         get() = titles.flatMap { it.genres }.distinct()
             .map { g -> g to titles.filter { g in it.genres } }
-            .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first })
+            .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first }) +
+            listOfNotNull(titles.filter { it.genres.isEmpty() }.takeIf { it.isNotEmpty() }?.let { "Other" to it })
 
     companion object {
         /** Everything on the shelves is a VHS movie now. */
