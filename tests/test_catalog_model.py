@@ -340,3 +340,24 @@ class PageContextTests(unittest.TestCase):
         extra = next(r for r in model["recordings"] if r["display_name"] == "Show Tape Extra.mp4")
         self.assertEqual(extra["interpretation"]["media_format"], "VHS")
         self.assertIn("format_from_other_files_on_page", extra["interpretation"]["flags"])
+
+
+class SequelsOnOnePage(unittest.TestCase):
+    """Numbered files that are each movie length are sequels, not pieces of one video."""
+
+    @staticmethod
+    def page(ident, names, seconds):
+        files = [{"name": n, "source": "original", "format": "MPEG4", "length": str(seconds),
+                  "size": str(1000 + i), "md5": f"{i:032x}"} for i, n in enumerate(names)]
+        return {"identifier": ident, "title": ident, "files": files}
+
+    def test_movie_length_parts_stay_separate_movies(self):
+        names = [f"Back to the future/Back to the Future Part {i}.mp4" for i in (1, 2, 3)]
+        m = build([self.page("back-to-the-future-trilogy", names, 7000)])
+        self.assertEqual(len(m["recordings"]), 3)
+        self.assertTrue(all(r["part_count"] == 1 for r in m["recordings"]))
+
+    def test_short_numbered_pieces_still_join_into_one_video(self):
+        names = [f"Pocahontas part {i:02d}.mp4" for i in range(1, 6)]
+        m = build([self.page("pocahontas-split", names, 600)])
+        self.assertEqual([r["part_count"] for r in m["recordings"]], [5])

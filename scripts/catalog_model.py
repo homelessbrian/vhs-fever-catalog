@@ -66,6 +66,8 @@ RELEASE_GROUP_REV = re.compile(rf"^\s*(?P<media>{MEDIA_RE})\s*(?P<year>\d{{3,4}}
 # "(2002 Australian VHS)", "(1999 UK VHS)": a country between year and format.
 REGION_WORDS = re.compile(r"\b(?:US|USA|U\.S\.A?\.?|UK|U\.K\.|British|English|American|Australian|Australia|AUS|"
                           r"Canadian|Canada|CAN|NZ|New Zealand|Irish|PAL|NTSC|Original|Rental|Retail)\b", re.I)
+# A numbered file at least this long is a whole movie, not a piece of one.
+FULL_LENGTH_SECONDS = 40 * 60
 SPLIT_PART = re.compile(r"^(?P<base>.+?)\s+(?:part|pt\.?|clip|segment)\s*#?(?P<i>\d{1,3})(?:\s*[-:]\s+.*)?$", re.I)
 CAPTURE_NUMBER = re.compile(r"\s+-\s+0\d{2,3}\s*$")
 VERSION_GROUP = re.compile(r"^\s*(?:version|ver\.?|v)\s*#?\s*(?P<n>\d+)\s*$", re.I)
@@ -904,6 +906,10 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             split_groups[(first.get("archive_identifier"), title_key(m["base"]))].append((p, int(m["i"]), m["base"]))
     for (_ident, _base), members in split_groups.items():
         if len({i for _p, i, _b in members}) < 3:
+            continue
+        # "Back to the Future Part 1/2/3": when every numbered file is already
+        # movie length, they're sequels on one page, not pieces of one video.
+        if all((p.get("duration_seconds") or 0) >= FULL_LENGTH_SECONDS for p, _i, _b in members):
             continue
         for p, i, base in members:
             it = p["interpretation"]
