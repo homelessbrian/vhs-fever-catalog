@@ -704,7 +704,7 @@ def pick_art(rec: dict[str, Any], art_by_rec: dict[str, list[dict[str, Any]]],
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
-    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").split("\n") if x.strip()]
 
 
 def tv_summary(tv: dict[str, Any]) -> dict[str, Any]:

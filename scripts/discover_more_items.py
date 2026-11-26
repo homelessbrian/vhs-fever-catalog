@@ -196,7 +196,7 @@ def seed_order(vault_rows: list[dict[str, Any]], in_catalog: set[str]) -> list[s
 def read_jsonl(path: str | None) -> list[dict[str, Any]]:
     if not path or not Path(path).is_file():
         return []
-    return [json.loads(x) for x in Path(path).read_text(encoding="utf-8").splitlines() if x.strip()]
+    return [json.loads(x) for x in Path(path).read_text(encoding="utf-8").split("\n") if x.strip()]
 
 
 def read_json(path: str | None, default: Any) -> Any:

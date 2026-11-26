@@ -121,7 +121,7 @@ def main() -> None:
     args = ap.parse_args()
     token = os.environ.get("TMDB_API_READ_ACCESS_TOKEN")
     d = Path(args.model_dir)
-    read = lambda n: [json.loads(x) for x in (d / f"{n}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    read = lambda n: [json.loads(x) for x in (d / f"{n}.jsonl").read_text(encoding="utf-8").split("\n") if x.strip()]
     titles, editions, recs = read("titles"), read("editions"), read("recordings")
     items = {i["archive_identifier"]: i for i in (read("archive-items") if (d / "archive-items.jsonl").exists() else [])}
 
@@ -221,7 +221,7 @@ def main() -> None:
         p_ = Path(path)
         if not p_.is_file():
             continue
-        for line in p_.read_text(encoding="utf-8").splitlines():
+        for line in p_.read_text(encoding="utf-8").split("\n"):
             if line.strip():
                 old = json.loads(line)
                 tm = old.get("tmdb") or {}

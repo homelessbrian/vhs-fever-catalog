@@ -31,7 +31,7 @@ NOT_A_MOVIE = re.compile(r"\b(?:opening|closing|logos?|promo|intro|introduction|
 def already_picked(batches_dir: Path) -> set[str]:
     seen: set[str] = set()
     for f in sorted(batches_dir.glob("*.txt")):
-        for line in f.read_text(encoding="utf-8").splitlines():
+        for line in f.read_text(encoding="utf-8").split("\n"):
             line = line.strip()
             if line and not line.startswith("#"):
                 seen.add(line)
@@ -100,7 +100,7 @@ def main() -> None:
     def load(path: str | None) -> list[dict]:
         if not path or not Path(path).is_file():
             return []
-        return [json.loads(x) for x in Path(path).read_text(encoding="utf-8").splitlines() if x.strip()]
+        return [json.loads(x) for x in Path(path).read_text(encoding="utf-8").split("\n") if x.strip()]
     if a.source in {"vault", "both"} and not a.new_items:
         ap.error("--new-items is needed unless --from more")
     rows = load(a.new_items) if a.source in {"vault", "both"} else []

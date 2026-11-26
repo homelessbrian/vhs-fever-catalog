@@ -1246,7 +1246,7 @@ def build_reviewer_feed(model_dir: str) -> dict[str, Any]:
     from datetime import datetime, timezone
     from pathlib import Path
     d = Path(model_dir)
-    read = lambda n: [json.loads(x) for x in (d / f"{n}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    read = lambda n: [json.loads(x) for x in (d / f"{n}.jsonl").read_text(encoding="utf-8").split("\n") if x.strip()]
     titles, editions, recs, art = read("titles"), read("editions"), read("recordings"), read("artwork")
     rec_by = {r["recording_id"]: r for r in recs}
     art_by = {a["artwork_id"]: a for a in art}
