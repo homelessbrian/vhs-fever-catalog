@@ -82,59 +82,70 @@ data class Catalog(val titles: List<Title>) {
         }
 
         /** Builds the shelf from the catalog feed and the saved review decisions. */
-        fun build(feedText: String, decisionsText: String): Catalog {
+        fun build(feedText: String, decisionsText: String): Catalog = build(listOf { feedText }, decisionsText)
+
+        /**
+         * Builds the shelf from several catalog feeds (the older catalog and every batch so far)
+         * and the saved review decisions. Feeds are read one at a time to keep memory low on the TV;
+         * a file that shows up in more than one feed is only added once.
+         */
+        fun build(feeds: List<() -> String>, decisionsText: String): Catalog {
             val decisions = JSONObject(decisionsText).optJSONObject("files") ?: JSONObject()
             val good = HashMap<String, JSONObject>()
             for (k in decisions.keys()) {
                 val d = decisions.optJSONObject(k) ?: continue
                 if (d.optString("status") == "good") good[k] = d
             }
-            val feed = JSONObject(feedText)
             val found = mutableListOf<Triple<String, Tape, Meta>>()
+            val seen = HashSet<String>()
 
-            for (t in feed.optJSONArray("titles").objs()) {
-                // For now any TMDB suggestion is used for art (marked as a suggestion on screen).
-                val candidate = t.optJSONObject("tmdb")?.optJSONArray("c")?.optJSONObject(0)
-                    ?.takeIf { it.optInt("tmdb_id") > 0 }
-                val recs = t.optJSONArray("un").objs().map { null to it } +
-                    t.optJSONArray("eds").objs().flatMap { e -> e.optJSONArray("recs").objs().map { e to it } }
-                for ((ed, rec) in recs) {
-                    for (seg in rec.optJSONArray("segs").objs()) {
-                        // Include files a web browser can't play (MKV, MPEG-2, AVI): the TV player may still manage them.
-                        val srcs = seg.optJSONArray("src").objs()
-                        for (src in srcs) {
-                            val id = src.optString("id")
-                            val d = good[id] ?: continue
-                            val movie = d.optJSONObject("movie")
-                            val release = d.optJSONObject("release")
-                            val media = release?.str("media") ?: ed?.str("media")
-                            val year = release?.str("year") ?: ed?.str("year")
-                            val shelf = shelfName(d.str("shelf") ?: rec.str("cat"), media)
-                            val tape = Tape(
-                                fileId = id,
-                                label = tapeLabel(media, year, rec.str("ver"), rec.optJSONArray("notes").strings() +
-                                    listOfNotNull(release?.str("notes"))),
-                                fileName = src.optString("n"),
-                                archiveItem = src.optString("item"),
-                                minutes = src.optDouble("dur").takeIf { !it.isNaN() && it > 0 }?.let { Math.round(it / 60).toInt() },
-                                sources = orderSources(id, srcs),
-                                media = media?.takeIf { it != "TAPE_UNSPECIFIED" },
-                                releaseYear = year,
-                                addedAt = d.optString("updated_at"),
-                            )
-                            val meta = if (movie != null && movie.optString("title").isNotBlank()) Meta(
-                                key = "tmdb:" + movie.optInt("tmdb_id"), name = movie.optString("title"),
-                                year = movie.str("year"), poster = movie.str("poster"), suggested = false,
-                                overview = null, shelf = shelf,
-                                tmdbId = movie.optInt("tmdb_id").takeIf { it > 0 }, tmdbType = movie.optString("type", "movie"),
-                            ) else Meta(
-                                key = "title:" + t.optString("id"), name = candidate?.str("title") ?: cleanName(t.optString("t")),
-                                year = candidate?.str("release_date")?.take(4), poster = candidate?.str("poster"),
-                                suggested = true, overview = candidate?.str("overview"), shelf = shelf,
-                                tmdbId = candidate?.optInt("tmdb_id"), tmdbType = candidate?.str("media_type") ?: "movie",
-                                feedName = t.optString("t"),
-                            )
-                            found += Triple(t.optString("id"), tape, meta)
+            for (readFeed in feeds) {
+                val feed = JSONObject(readFeed())
+                for (t in feed.optJSONArray("titles").objs()) {
+                    // For now any TMDB suggestion is used for art (marked as a suggestion on screen).
+                    val candidate = t.optJSONObject("tmdb")?.optJSONArray("c")?.optJSONObject(0)
+                        ?.takeIf { it.optInt("tmdb_id") > 0 }
+                    val recs = t.optJSONArray("un").objs().map { null to it } +
+                        t.optJSONArray("eds").objs().flatMap { e -> e.optJSONArray("recs").objs().map { e to it } }
+                    for ((ed, rec) in recs) {
+                        for (seg in rec.optJSONArray("segs").objs()) {
+                            // Include files a web browser can't play (MKV, MPEG-2, AVI): the TV player may still manage them.
+                            val srcs = seg.optJSONArray("src").objs()
+                            for (src in srcs) {
+                                val id = src.optString("id")
+                                val d = good[id] ?: continue
+                                if (!seen.add(id)) continue
+                                val movie = d.optJSONObject("movie")
+                                val release = d.optJSONObject("release")
+                                val media = release?.str("media") ?: ed?.str("media")
+                                val year = release?.str("year") ?: ed?.str("year")
+                                val shelf = shelfName(d.str("shelf") ?: rec.str("cat"), media)
+                                val tape = Tape(
+                                    fileId = id,
+                                    label = tapeLabel(media, year, rec.str("ver"), rec.optJSONArray("notes").strings() +
+                                        listOfNotNull(release?.str("notes"))),
+                                    fileName = src.optString("n"),
+                                    archiveItem = src.optString("item"),
+                                    minutes = src.optDouble("dur").takeIf { !it.isNaN() && it > 0 }?.let { Math.round(it / 60).toInt() },
+                                    sources = orderSources(id, srcs),
+                                    media = media?.takeIf { it != "TAPE_UNSPECIFIED" },
+                                    releaseYear = year,
+                                    addedAt = d.optString("updated_at"),
+                                )
+                                val meta = if (movie != null && movie.optString("title").isNotBlank()) Meta(
+                                    key = "tmdb:" + movie.optInt("tmdb_id"), name = movie.optString("title"),
+                                    year = movie.str("year"), poster = movie.str("poster"), suggested = false,
+                                    overview = null, shelf = shelf,
+                                    tmdbId = movie.optInt("tmdb_id").takeIf { it > 0 }, tmdbType = movie.optString("type", "movie"),
+                                ) else Meta(
+                                    key = "title:" + t.optString("id"), name = candidate?.str("title") ?: cleanName(t.optString("t")),
+                                    year = candidate?.str("release_date")?.take(4), poster = candidate?.str("poster"),
+                                    suggested = true, overview = candidate?.str("overview"), shelf = shelf,
+                                    tmdbId = candidate?.optInt("tmdb_id"), tmdbType = candidate?.str("media_type") ?: "movie",
+                                    feedName = t.optString("t"),
+                                )
+                                found += Triple(t.optString("id"), tape, meta)
+                            }
                         }
                     }
                 }

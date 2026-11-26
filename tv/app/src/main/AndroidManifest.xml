@@ -6,6 +6,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application
         android:label="VHS FEVER"
+        android:largeHeap="true"
         android:icon="@drawable/banner"
         android:banner="@drawable/banner"
         android:theme="@style/Theme.VhsFeverTv"
