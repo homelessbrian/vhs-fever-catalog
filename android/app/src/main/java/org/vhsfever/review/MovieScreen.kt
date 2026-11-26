@@ -84,6 +84,9 @@ fun MovieScreen(m: AppModel, fileId: String) {
     var distributor by remember(fileId) { mutableStateOf(rel0.distributor ?: "") }
     var notes by remember(fileId) { mutableStateOf(rel0.notes ?: "") }
     var allInRelease by remember(fileId) { mutableStateOf(false) }
+    // A name typed in by hand, for things TMDB and TheTVDB don't have.
+    var ownTitle by remember(fileId) { mutableStateOf(current?.takeIf { it.isManual }?.title ?: "") }
+    var ownYear by remember(fileId) { mutableStateOf(current?.takeIf { it.isManual }?.year ?: "") }
     // Episode picker: which show it is open for, and that show's episodes.
     var pickerShow by remember(fileId) { mutableStateOf<Movie?>(null) }
     var pickerFrom by remember(fileId) { mutableStateOf<String?>(null) }   // result row it opened from
@@ -182,13 +185,16 @@ fun MovieScreen(m: AppModel, fileId: String) {
                     Text(chosen?.heading ?: "Nothing chosen", color = C.text, fontWeight = FontWeight.SemiBold)
                     chosen?.episode?.let { Text(it.label + (it.airDate?.let { d -> " · aired $d" } ?: ""), color = C.gold, fontSize = 13.sp) }
                     Text(when {
-                        chosen == null -> "Pick one below, or leave unmatched"
+                        chosen == null -> "Pick one below, or name it yourself"
+                        chosen?.isNoMatch == true -> "Nothing matches — the suggestion won’t come back"
+                        chosen?.isManual == true -> "Your own name — not from TMDB"
                         chosen?.type == "tv" && chosen?.episode == null -> "Whole show — tap it below to pick the episode"
                         else -> "Tap a result below to change it"
                     }, color = C.muted, fontSize = 12.sp)
                     if (chosen?.source == "tvdb") Text("From TheTVDB", color = C.muted, fontSize = 11.sp)
                 }
-                if (chosen != null) Text("Clear", color = C.muted, modifier = Modifier.clickable { chosen = null }.padding(6.dp))
+                if (chosen != null && chosen?.isNoMatch != true) Text("Clear", color = C.muted,
+                    modifier = Modifier.clickable { chosen = Movie.noMatch(); ownTitle = ""; ownYear = "" }.padding(6.dp))
             }
             f.tv?.let { h ->
                 val bits = listOfNotNull(h.show, listOfNotNull(h.season?.let { "Season $it" }, h.episode?.let { "Episode $it" }).joinToString(" ").ifEmpty { null },
@@ -247,7 +253,7 @@ fun MovieScreen(m: AppModel, fileId: String) {
                         val det = details[mv.key]
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             Text(if (mv.source == "tvdb") "TheTVDB ↗" else "TMDB ↗", color = C.gold, modifier = Modifier.clickable {
-                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(mv.pageUrl))) })
+                                mv.pageUrl?.let { u -> ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) } })
                             (det?.imdbId ?: mv.imdbId)?.let { id -> Text("IMDb ↗", color = C.gold, modifier = Modifier.clickable {
                                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.imdb.com/title/$id/"))) }) }
                             det?.runtime?.let { Text("$it min", color = C.muted) }
@@ -283,6 +289,30 @@ fun MovieScreen(m: AppModel, fileId: String) {
                         onSeason = { season = it }, onPick = { e -> pick(pickerShow!!, e) },
                         onTvdb = if (Tvdb.available && pickerShow!!.source == "tmdb") ({ tryTvdb(pickerShow!!, rowKey) }) else null,
                         onClose = { pickerShow = null })
+                }
+            }
+
+            SectionLabel("Not on TMDB or TheTVDB? Name it yourself", C.gold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(ownTitle, { ownTitle = it; if (chosen?.isManual == true) chosen = Movie.manual(it, ownYear, chosen!!.type) },
+                    label = { Text("Title") }, placeholder = { Text("e.g. Rodeo Bloopers") }, singleLine = true,
+                    colors = fieldColors(), shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(2f))
+                OutlinedTextField(ownYear, { v -> ownYear = v.filter(Char::isDigit).take(4)
+                        if (chosen?.isManual == true) chosen = Movie.manual(ownTitle, ownYear, chosen!!.type) },
+                    label = { Text("Year") }, singleLine = true, colors = fieldColors(), shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { chosen = Movie.noMatch() }, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).height(46.dp)) {
+                    Text(if (chosen?.isNoMatch == true) "✓ No match" else "No match", color = C.text)
+                }
+                Button(onClick = { chosen = Movie.manual(ownTitle, ownYear, if (type == "movie") "movie" else "tv") },
+                    enabled = ownTitle.isNotBlank(), shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = C.good, contentColor = Color(0xFF0D2416)),
+                    modifier = Modifier.weight(1f).height(46.dp)) {
+                    Text(if (chosen?.isManual == true) "✓ Using this name" else "Use this name", fontWeight = FontWeight.Bold)
                 }
             }
 

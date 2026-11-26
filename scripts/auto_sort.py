@@ -104,7 +104,7 @@ INSTRUCTIONAL = re.compile(r"\b(?:instructional|how[\s-]to|reupholster\w*|repair
                            r"exercises?|fitness|yoga|cooking|cook-?up|recipes?|guide to|tips|self[- ]help|"
                            r"for beginners|step by step|course|technique)\b", I)
 SPORTS = re.compile(r"\b(?:football|soccer|baseball|basketball|hockey|golf|wrestling|wwf|wcw|wwe|boxing|nfl|nba|nhl|"
-                    r"mlb|world cup|super bowl|olympics?|grand prix|nascar|cricket|rugby|tennis|skating|on ice|"
+                    r"mlb|world cup|super bowl|olympics?|grand prix|nascar|cricket|rugby|tennis|skating|on ice|rodeos?|bull riding|"
                     r"best (?:goals|tries)|greatest (?:goals|plays)|season review|highlights)\b", I)
 # Made for a business, school, hospital or agency, not for a store shelf:
 # training, safety, health, product and sales tapes ("industrial" / "ephemeral" films).
@@ -119,6 +119,40 @@ DOCUMENTARY = re.compile(r"\b(?:documentar\w*|reporting|history of|the story of|
                          r"national geographic|nova|aerial|planets?|ufos?|travel(?:s|ogue)?|cruises?|biography|"
                          r"special report|expedition|explor\w+|frontline|natives?|tribes?|civilizations?|"
                          r"the (?:real|true) story|inside the|the world of|secrets of)\b", I)
+# Kinds you'd see on a thrift-store shelf. Each is checked before the broader kind it overlaps.
+INFOMERCIAL = re.compile(r"\b(?:infomercials?|paid programming|time[\s-]?shares?|video brochure|as seen on tv)\b", I)
+TV_SPECIAL = re.compile(r"\b(?:(?:christmas|holiday|halloween|easter|thanksgiving|valentine'?s|new year'?s) special|"
+                        r"tv special|television special|awards? (?:show|ceremony)|academy awards|oscars|emmys?|grammys?|"
+                        r"golden globes|telethon|mini[\s-]?series|pageant)\b", I)
+KARAOKE = re.compile(r"\bkaraoke\b", I)
+KIDS_LEARNING = re.compile(r"\b(?:sing[\s._-]*alongs?|baby (?:einstein|genius|mozart|bach|songs)|preschool|toddlers?|"
+                           r"learn(?:ing)? (?:the |your )?(?:abcs?|alphabet|numbers|colou?rs|shapes|to count))\b", I)
+KIDS_SHOW = re.compile(r"\b(?:sesame street|barney|teletubbies|power rangers|mister rogers|mr\.? rogers|blue'?s clues|"
+                       r"thomas the tank|wiggles|shining time|lamb ?chop|reading rainbow|captain kangaroo|"
+                       r"pee[\s-]?wee'?s playhouse|muppet babies|care bears|my little pony|he[\s-]?man|thundercats|"
+                       r"teenage mutant ninja turtles|tmnt|smurfs|fraggle rock|kids'? show)\b", I)
+STANDUP = re.compile(r"\b(?:stand[\s-]?up|comedy (?:special|concert|jam|club|hour|central presents)|comedians?|"
+                     r"def comedy jam|live comedy|comic relief)\b", I)
+RELIGIOUS = re.compile(r"\b(?:sermons?|church|bible|gospel|jesus|christ|christian|ministr(?:y|ies)|veggie ?tales|worship|"
+                       r"evangel\w*|revival|crusade|pastor|prayer|praise|salvation|god'?s|torah|scripture)\b", I)
+BLOOPER_WORDS = re.compile(r"\b(?:bloopers?|follies|outtakes?|funn(?:y|iest)|crazy|wild(?:est)?|wrecks?|crashes|"
+                           r"greatest (?:hits|plays|moments)|best of|highlights)\b", I)
+FUNNY_VIDEOS = re.compile(r"\b(?:funniest|blooper (?:tape|reel|collection|show)|(?:tv|television|commercial) bloopers|"
+                          r"bloopers (?:and|&) practical jokes|practical jokes|pranks?|candid camera|caught on (?:tape|video))\b", I)
+RODEO = re.compile(r"\b(?:rodeo|bull riding|pbr|bronc)\b", I)
+RECITAL = re.compile(r"\b(?:recitals?|graduation|commencement|school play|dance (?:recital|competition|show)|"
+                     r"talent show|christmas pageant|spring concert|band concert|choir concert)\b", I)
+SCHOOL = re.compile(r"\b(?:driver'?s? (?:ed|education|training)|educational films?|for (?:schools|classrooms)|"
+                    r"classroom (?:film|video)|school (?:film|video)|filmstrip|coronet|encyclopa?edia britannica films?)\b", I)
+WORKOUT = re.compile(r"\b(?:workouts?|work out|aerobics?|fitness|tae[\s-]?bo|yoga|pilates|jazzercise|calisthenics|"
+                     r"buns of steel|abs of steel|sweatin'?|step (?:aerobics|workout|class)|callanetics|exercise (?:video|tape|program))\b", I)
+HOBBY = re.compile(r"\b(?:(?:golf|tennis|bowling|guitar|piano|drum|banjo|fishing|fly fishing|hunting|painting|quilting|"
+                   r"knitting|crochet|woodworking|woodcarving|magic|card|dance|dancing|ballroom) (?:lessons?|instruction|tips|"
+                   r"techniques?|made easy|basics|secrets|tricks|for beginners)|learn (?:to|how to) play|bob ross|"
+                   r"joy of painting|magic tricks|card tricks)\b", I)
+TRAVEL = re.compile(r"\b(?:travel(?:s|ogue)?|vacation guide|tour of|scenic|scenery|destinations?|cruises?|fireplace|"
+                    r"aquariums?|yule log|relaxation|nature sounds|ambien(?:ce|t))\b", I)
+TV_MOVIE = re.compile(r"\b(?:made[\s-]for[\s-](?:tv|television)|tv movie|movie of the week|telefilm)\b", I)
 COMMERCIAL_REEL = re.compile(r"^\s*(?:tv |television )?(?:commercials?|ads|adverts)\b(?: from)?", I)
 NEWS = re.compile(r"\b(?:news(?:cast)?|bulletins?|news coverage|evening report|current affairs)\b", I)
 HOME_VIDEO = re.compile(r"\bhome (?:movies?|videos? of)\b|\bfamily (?:videos?|movies?|footage|vacation)\b|"
@@ -348,6 +382,9 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
             and not SCREENER.search(name) and not COMMERCIAL_BREAK.search(text):
         kind = "promo_or_bump"
         why.append("station ID, bumper, continuity or promo")
+    elif INFOMERCIAL.search(text) and (dur or 0) >= 5 * 60:
+        kind = "infomercial"
+        why.append("infomercial or sales tape (long ad, timeshare or product pitch)")
     elif (has_ad_words or cols & {"vhscommercials", "classic_tv_commercials", "classic_tv_commercials_emperor"}) \
             and ((dur or 0) <= 90 * 60 or COMMERCIAL_REEL.search(name) or COMMERCIAL_REEL.search(page)):
         if COMMERCIAL_BREAK.search(text) or (airing and (dur or 0) > 60 and has_ad_words):
@@ -369,21 +406,58 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
     elif TRAILER.search(name) or ("vhstrailers" in cols and (dur or 0) < 600):
         kind = "trailer"
         why.append("trailer or preview")
+    elif TV_SPECIAL.search(name) and (dur or 0) >= 10 * 60:
+        kind = "tv_special"
+        why.append("TV special, award show or miniseries")
     elif it.get("episode") is not None or it.get("content_hint") == "tv_episode" or it.get("series_title"):
         kind = "tv_episode"
         why.append("TV episode number or show name in file name")
+    elif (dur or 0) >= 3 * 60 and BLOOPER_WORDS.search(text) and (RODEO.search(text) or SPORTS.search(text)
+                                                               or "vhssports" in cols):
+        kind = "sports_bloopers"
+        why.append("sports bloopers or highlights tape")
+    elif (dur or 0) >= 3 * 60 and FUNNY_VIDEOS.search(text):
+        kind = "bloopers"
+        why.append("funny videos, bloopers or pranks tape")
     elif EXTRA.search(name):
         kind = "extra"
         why.append("bonus material (behind the scenes, animatics, ...)")
+    elif KARAOKE.search(text):
+        kind = "karaoke"
+        why.append("karaoke tape")
+    elif (dur or 0) >= 3 * 60 and KIDS_LEARNING.search(text):
+        kind = "kids_learning"
+        why.append("kids' learning or sing-along tape")
+    elif (dur or 0) >= 3 * 60 and KIDS_SHOW.search(text):
+        kind = "kids_show"
+        why.append("kids' show")
+    elif (dur or 0) >= 5 * 60 and STANDUP.search(text):
+        kind = "standup"
+        why.append("stand-up comedy")
+    elif (dur or 0) >= 3 * 60 and RELIGIOUS.search(text):
+        kind = "religious"
+        why.append("religious or church tape")
     elif MUSIC.search(text) or "vhsconcerts_music" in cols:
         kind = "music"
         why.append("concert or music video")
+    elif (dur or 0) >= 60 and RECITAL.search(text):
+        kind = "recital"
+        why.append("recital, graduation or school event")
     elif (dur or 0) >= 60 and (HOME_VIDEO.search(text) or FOUND_TAPE.search(title)):
         kind = "home_video"
         why.append("home movie or found family footage")
+    elif (dur or 0) >= 3 * 60 and SCHOOL.search(text):
+        kind = "school"
+        why.append("school or classroom film")
     elif (dur or 0) >= 3 * 60 and EDUCATIONAL.search(text):
         kind = "educational"
         why.append("made for a business, school or hospital (training, safety, health or product tape)")
+    elif (dur or 0) >= 3 * 60 and WORKOUT.search(text):
+        kind = "workout"
+        why.append("workout or fitness tape")
+    elif (dur or 0) >= 3 * 60 and HOBBY.search(text):
+        kind = "hobby"
+        why.append("hobby or sports lessons")
     elif (dur or 0) >= 3 * 60 and ("vhsinstructionals" in cols or INSTRUCTIONAL.search(text)):
         kind = "instructional"
         why.append("how-to, exercise or educational tape")
@@ -393,9 +467,15 @@ def detect_kind(rec: dict[str, Any], src: dict[str, Any], item: dict[str, Any], 
     elif (dur or 0) >= 60 and ("vhsnews" in cols or NEWS.search(text)):
         kind = "news"
         why.append("news broadcast")
+    elif (dur or 0) >= 3 * 60 and TRAVEL.search(text):
+        kind = "travel"
+        why.append("travel or scenery tape")
     elif (dur or 0) >= 15 * 60 and DOCUMENTARY.search(text):
         kind = "documentary"
-        why.append("documentary or travel film")
+        why.append("documentary or nature film")
+    elif (dur or 0) >= 40 * 60 and TV_MOVIE.search(text):
+        kind = "tv_movie"
+        why.append("made-for-TV movie")
     elif dur is not None and dur >= 40 * 60:
         kind = "movie"
         why.append("feature length")
@@ -445,7 +525,13 @@ MIN_LEN = {"movie": 15 * 60, "short": 3 * 60, "tv_episode": 4 * 60, "tv_recordin
            # Kept for the ad list and the retro TV guide, so a working one is good as what it is.
            "promo_or_bump": 3, "trailer": 20, "tape_opening": 20,
            "instructional": 3 * 60, "sports": 3 * 60, "news": 60, "home_video": 60,
-           "educational": 3 * 60, "documentary": 15 * 60}
+           "educational": 3 * 60, "documentary": 15 * 60,
+           # Thrift-store shelf kinds.
+           "tv_movie": 40 * 60, "direct_to_video": 40 * 60, "foreign_film": 40 * 60, "classic_film": 40 * 60,
+           "kids_show": 4 * 60, "animated_feature": 40 * 60, "kids_learning": 3 * 60, "tv_special": 10 * 60,
+           "workout": 3 * 60, "hobby": 3 * 60, "travel": 3 * 60, "sports_bloopers": 3 * 60, "standup": 5 * 60,
+           "bloopers": 3 * 60, "karaoke": 2 * 60, "religious": 3 * 60, "infomercial": 3 * 60, "school": 3 * 60,
+           "recital": 60}
 GOOD_KINDS = set(MIN_LEN)
 CODEC_WORRY = re.compile(r"may not play on TV|can't stream this file type")
 
@@ -459,7 +545,7 @@ TV_SOURCED = {"tv_recording", "commercial", "commercial_compilation", "promo_or_
 
 
 # Kinds that are known from what the name or page says, even with no title match.
-SELF_EVIDENT = {"commercial", "commercial_compilation", "promo_or_bump", "trailer", "tape_opening", "home_video"}
+SELF_EVIDENT = {"commercial", "commercial_compilation", "promo_or_bump", "trailer", "tape_opening", "home_video", "recital"}
 
 
 def identity(kind: dict[str, Any], title: dict[str, Any] | None, rec: dict[str, Any]) -> tuple[str | None, str]:
@@ -562,7 +648,7 @@ def decide(kind: dict[str, Any], src: dict[str, Any], probe: dict[str, Any], dur
 def shelf_for(fmt: dict[str, Any], kind: str) -> tuple[str | None, str]:
     if kind == "tape_opening":
         return "vhs_opening_or_previews", "tape opening or previews"
-    if kind == "home_video":
+    if kind in {"home_video", "recital"}:
         return "home_video", "home movie"
     if kind in {"commercial", "commercial_compilation", "promo_or_bump", "trailer", "clip", "extra"}:
         return "not_catalog", "not a full program"

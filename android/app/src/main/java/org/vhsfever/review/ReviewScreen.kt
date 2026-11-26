@@ -222,10 +222,16 @@ private fun MovieLine(m: AppModel, f: FileItem, onFix: () -> Unit) {
             (movie?.poster ?: movie?.episode?.still)?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
         }
         Column(Modifier.weight(1f)) {
-            Text(movie?.heading ?: f.titleName, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (movie == null || movie.isNoMatch) f.titleName else movie.heading, color = C.text, fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val sub = listOfNotNull(
-                if (confirmed) "confirmed" else if (movie != null) "suggested" else "not matched",
+                when {
+                    movie?.isNoMatch == true -> "no match (your call)"
+                    movie?.isManual == true -> "your own name"
+                    confirmed -> "confirmed"
+                    movie != null -> "suggested"
+                    else -> "not matched"
+                },
                 movie?.episode?.label, m.releaseFor(f).year?.let { "tape $it" }, mins(f.durationSec))
             Text(sub.joinToString(" · "), color = if (confirmed) C.good else C.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -248,9 +254,15 @@ private fun BucketGrid(m: AppModel, f: FileItem) {
         Spacer(Modifier.weight(1f))
         Text("→ " + m.shelfName(m.shelfFor(f)), color = C.blue, fontSize = 11.sp, maxLines = 1)
     }
-    Grid(BUCKETS.map { it.id to it.label }, columns = 4) { id, label ->
-        Cell(label, selected = id == current, guess = picked == null && id == robotKind, onClick = { m.setBucket(f, id) })
+    var more by remember(f.id) { mutableStateOf(false) }
+    // 3 fixed rows, then a row with what this file needs (your pick, the robot's guess, recent picks) and "More…".
+    val shown = QUICK_BUCKETS + extraBuckets(picked, robotKind, m.recentKinds)
+    Grid(shown.map { it to bucketLabel(it) } + (MORE to "More…"), columns = 4) { id, label ->
+        if (id == MORE) Cell(label, selected = false, guess = false, onClick = { more = true }, color = C.blue)
+        else Cell(label, selected = id == current, guess = picked == null && id == robotKind, onClick = { m.setBucket(f, id) })
     }
+    if (more) AllBuckets(current, if (picked == null) robotKind else null,
+        onPick = { m.setBucket(f, it); more = false }, onClose = { more = false })
     val custom = m.shelves.filter { !it.builtIn }
     if (custom.isNotEmpty()) {
         val shelf = m.decisionFor(f)?.shelf
@@ -258,6 +270,26 @@ private fun BucketGrid(m: AppModel, f: FileItem) {
             Cell(label, selected = shelf == id, guess = false, onClick = { m.toggleCustomShelf(f, id) }, color = C.blue)
         }
     }
+}
+
+private const val MORE = "__more__"
+
+/** Every kind, in shelf groups. One tap picks it and closes. */
+@Composable
+private fun AllBuckets(current: String?, robotKind: String?, onPick: (String) -> Unit, onClose: () -> Unit) {
+    AlertDialog(onDismissRequest = onClose, containerColor = C.panel,
+        title = { Text("What is it?", color = C.text) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                BUCKET_GROUPS.forEach { (group, buckets) ->
+                    SectionLabel(group)
+                    Grid(buckets.map { it.id to it.label }, columns = 2) { id, label ->
+                        Cell(label, selected = id == current, guess = id == robotKind, onClick = { onPick(id) }, height = 40.dp)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close", color = C.muted) } })
 }
 
 @Composable

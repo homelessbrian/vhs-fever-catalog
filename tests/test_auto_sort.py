@@ -165,7 +165,7 @@ class PatternsFromRealPages(unittest.TestCase):
 
     def test_new_buckets(self):
         self.assertEqual(sort_one("Callanetics.mov", 3560, item=page("Callanetics", 2, ["vhsinstructionals"]))["kind"],
-                         "instructional")
+                         "workout")
         self.assertEqual(sort_one("Soccer's Hard Men (1992 UK VHS).mp4", 4600)["kind"], "sports")
         self.assertEqual(sort_one("CBS 2 10PM News 21 Nov 2001.mp4", 1200,
                                   item=page("WBBM Channel 2 CBS News at 10", 2, ["vhsnews"]))["kind"], "news")
@@ -188,6 +188,31 @@ class PatternsFromRealPages(unittest.TestCase):
         self.assertEqual(k("TV Commercials from May-June 2006, on KIRO 7 (CBS) in Seattle, WA • VHS 60 FPS.mp4", 7200),
                          "commercial_compilation")
         self.assertEqual(k("TV Programming from March 2003 on ABC • VHS 60 FPS.mp4", 7200), "tv_recording")
+
+    def test_thrift_store_shelf_kinds(self):
+        k = lambda n, d=1800: sort_one(n, d, item=page(n, 1))["kind"]
+        self.assertEqual(k("1992 VHS • Rodeo Bloopers and Wrecks 60 FPS.mp4"), "sports_bloopers")
+        self.assertEqual(k("1990 VHS • NFL Follies Goes Hollywood.mp4"), "sports_bloopers")
+        self.assertEqual(k("America's Funniest Home Videos Volume 2 (1991 VHS).mp4"), "bloopers")
+        self.assertEqual(k("Tae Bo Basic Workout (1998 VHS).mp4", 2800), "workout")
+        self.assertEqual(k("Golf Lessons with Arnold Palmer (1988 VHS).mp4"), "hobby")
+        self.assertEqual(k("Barney - Waiting for Santa (1990 VHS).mp4", 2700), "kids_show")
+        self.assertEqual(k("Wee Sing Sing-Along (1986 VHS).mp4"), "kids_learning")
+        self.assertEqual(k("Learn the ABCs with Bert (1989 VHS).mp4"), "kids_learning")
+        self.assertEqual(k("Karaoke Hits Volume 3 (1995 VHS).mp4"), "karaoke")
+        self.assertEqual(k("Eddie Murphy Raw stand-up (1987 VHS).mp4", 5400), "standup")
+        self.assertEqual(k("VeggieTales - Where's God When I'm S-Scared (1993 VHS).mp4"), "religious")
+        self.assertEqual(k("Hawaii Travelogue (1987 VHS).mp4"), "travel")
+        self.assertEqual(k("Video Fireplace (1985 VHS).mp4", 3600), "travel")
+        self.assertEqual(k("Westwood Timeshare Video Brochure (1994 VHS).mp4", 900), "infomercial")
+        self.assertEqual(k("Drivers Ed - Signal 30 (1959).mp4", 1500), "school")
+        self.assertEqual(k("Emily's Dance Recital June 1996.mp4", 3600), "recital")
+        self.assertEqual(k("A Garfield Christmas Special (1987 VHS).mp4", 1440), "tv_special")
+        self.assertEqual(k("Bridge Across Time - made for TV movie (1985 VHS).mp4", 5400), "tv_movie")
+        # ABC the network is not a kids' learning tape
+        self.assertNotEqual(k("ABC Afterschool Special - The Bully (1985 VHS).mp4", 2700), "kids_learning")
+        # a rodeo tape with no blooper words is sports, not a movie
+        self.assertEqual(k("1989 VHS • Flip Side of Rodeo 60 FPS.mp4", 2530), "sports")
 
     def test_one_collection_as_plain_text(self):
         r = sort_one("Bambi (1989 VHS).mp4", 4200, item=dict(page("Bambi"), collection="vhsvault"), title=MATCHED)

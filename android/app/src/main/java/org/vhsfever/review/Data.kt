@@ -82,24 +82,40 @@ data class Movie(
     val imdbId: String? = null,
     val tooNew: Boolean = false,
     val episode: Episode? = null,   // set when this is one episode of a show
-    val source: String = "tmdb",    // tmdb | tvdb
+    val source: String = "tmdb",    // tmdb | tvdb | manual (named by the reviewer) | none (reviewer said no match)
     val tvdbId: Int? = null,
 ) {
     val isEpisode get() = episode != null
+    /** The reviewer said nothing on TMDB or TheTVDB matches this file. */
+    val isNoMatch get() = source == "none"
+    /** The reviewer typed the name in themselves. */
+    val isManual get() = source == "manual"
     /** Shown name: "Show (1994)", or "Show · S02E15 · Episode name". */
-    val heading get() = title + (year?.let { " ($it)" } ?: "")
+    val heading get() = if (isNoMatch) "No match" else title + (year?.let { " ($it)" } ?: "")
     val pageUrl get() = when {
+        isNoMatch || isManual -> null
         source == "tvdb" && tvdbId != null -> episode?.url ?: "https://thetvdb.com/dereferrer/series/$tvdbId"
         episode?.url != null && source == "tmdb" -> episode.url
         else -> "https://www.themoviedb.org/$type/$tmdbId"
     }
-    val key get() = "$source:${if (source == "tvdb") tvdbId else tmdbId}"
+    val key get() = when (source) {
+        "tvdb" -> "tvdb:$tvdbId"
+        "manual", "none" -> "$source:$title:$year"
+        else -> "$source:$tmdbId"
+    }
 
     fun toJson(): JSONObject = JSONObject().put("tmdb_id", tmdbId).put("type", type).put("title", title)
         .put("year", year).put("poster", poster).put("imdb_id", imdbId).put("source", source)
         .put("tvdb_id", tvdbId).put("episode", episode?.toJson())
 
     companion object {
+        /** "Nothing matches": saved as a real choice so the robot's suggestion stops coming back. */
+        fun noMatch() = Movie(0, "movie", "", null, null, source = "none")
+
+        /** A name the reviewer typed in for something that isn't on TMDB or TheTVDB. */
+        fun manual(title: String, year: String?, type: String = "movie") =
+            Movie(0, type, title.trim(), year?.trim()?.ifBlank { null }, null, source = "manual")
+
         fun fromJson(o: JSONObject?): Movie? = o?.let {
             Movie(it.optInt("tmdb_id"), it.optString("type", "movie"), it.optString("title"),
                 it.optStringOrNull("year"), it.optStringOrNull("poster"), null, it.optStringOrNull("imdb_id"),
@@ -157,15 +173,41 @@ data class FileDecision(
 /** The kinds of video found so far. Same ids the auto-sort uses. */
 data class Bucket(val id: String, val label: String)
 
-val BUCKETS = listOf(
-    Bucket("movie", "Movie"), Bucket("tv_episode", "TV episode"), Bucket("tv_recording", "Off-air TV"),
-    Bucket("short", "Short / cartoon"), Bucket("documentary", "Documentary"), Bucket("music", "Music"),
-    Bucket("instructional", "How-to"), Bucket("educational", "Educational / industrial"),
-    Bucket("sports", "Sports"), Bucket("news", "News"), Bucket("home_video", "Home video"),
-    Bucket("extra", "Bonus / extra"), Bucket("tape_opening", "Tape opening"), Bucket("trailer", "Trailer"),
-    Bucket("commercial", "Commercial"), Bucket("commercial_compilation", "Ad reel"), Bucket("promo_or_bump", "Promo / bump"),
-    Bucket("clip", "Clip / piece"),
+/** Every kind, grouped the way you'd find them on a thrift-store shelf. Shown in full under "More…". */
+val BUCKET_GROUPS: List<Pair<String, List<Bucket>>> = listOf(
+    "Movies" to listOf(Bucket("movie", "Movie"), Bucket("tv_movie", "Made-for-TV movie"),
+        Bucket("direct_to_video", "Direct-to-video"), Bucket("foreign_film", "Foreign film"), Bucket("classic_film", "Classic film")),
+    "Kids" to listOf(Bucket("short", "Short / cartoon"), Bucket("kids_show", "Kids’ show"),
+        Bucket("animated_feature", "Animated movie"), Bucket("kids_learning", "Kids’ learning")),
+    "TV" to listOf(Bucket("tv_episode", "TV episode"), Bucket("tv_recording", "Off-air TV"),
+        Bucket("tv_special", "TV special / miniseries")),
+    "Fitness & how-to" to listOf(Bucket("instructional", "How-to"), Bucket("workout", "Workout"), Bucket("hobby", "Hobby lessons")),
+    "Real life" to listOf(Bucket("documentary", "Documentary / nature"), Bucket("travel", "Travel / scenery"),
+        Bucket("news", "News"), Bucket("sports", "Sports"), Bucket("sports_bloopers", "Sports bloopers"),
+        Bucket("standup", "Stand-up comedy"), Bucket("bloopers", "Funny videos")),
+    "Music" to listOf(Bucket("music", "Music"), Bucket("karaoke", "Karaoke")),
+    "Faith & info" to listOf(Bucket("religious", "Religious"), Bucket("infomercial", "Infomercial / sales"),
+        Bucket("educational", "Training / industrial"), Bucket("school", "School film")),
+    "Personal" to listOf(Bucket("home_video", "Home video"), Bucket("recital", "Recital / event")),
+    "Tape bits" to listOf(Bucket("extra", "Bonus / extra"), Bucket("tape_opening", "Tape opening"), Bucket("trailer", "Trailer"),
+        Bucket("commercial", "Commercial"), Bucket("commercial_compilation", "Ad reel"),
+        Bucket("promo_or_bump", "Promo / bump"), Bucket("clip", "Clip / piece")),
 )
+
+val BUCKETS: List<Bucket> = BUCKET_GROUPS.flatMap { it.second }
+
+/** Always on the review screen (3 rows of 4). Everything else is one tap away under "More…". */
+val QUICK_BUCKETS = listOf("movie", "tv_episode", "tv_recording", "short", "kids_show", "music",
+    "instructional", "sports", "home_video", "commercial", "tape_opening", "trailer")
+
+/**
+ * The 4th row: whatever this file needs that isn't already up top (your pick, the robot's
+ * guess), then the kinds you picked most recently, then "More…" in the last spot.
+ */
+fun extraBuckets(picked: String?, robot: String?, recent: List<String>, slots: Int = 3): List<String> =
+    (listOfNotNull(picked, robot) + recent)
+        .filter { it != "unknown" && it !in QUICK_BUCKETS && BUCKETS.any { b -> b.id == it } }
+        .distinct().take(slots)
 
 fun bucketLabel(id: String?) = BUCKETS.firstOrNull { it.id == id }?.label ?: id?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "?"
 
@@ -175,7 +217,7 @@ val FORMATS = listOf("VHS" to "VHS", "DVD" to "DVD", "BLU-RAY" to "Blu-ray", "TV
 /** Which shelf a kind of video goes on, given its format. */
 fun shelfForBucket(kind: String?, format: String?): String = when (kind) {
     "tape_opening" -> "vhs_opening_or_previews"
-    "home_video" -> "home_video"
+    "home_video", "recital" -> "home_video"
     "commercial", "commercial_compilation", "promo_or_bump", "trailer", "clip", "extra" -> "not_catalog"
     "tv_recording" -> "tv_recording"
     else -> when (format?.uppercase()) {

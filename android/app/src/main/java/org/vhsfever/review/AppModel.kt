@@ -361,8 +361,14 @@ class AppModel(private val ctx: Context) {
 
     private fun isCustomShelf(id: String?) = id != null && customShelves.any { it.id == id }
 
+    /** Kinds picked lately, newest first: they get the spare spots on the review screen. */
+    var recentKinds by mutableStateOf(prefs.getString("recent_kinds", "").orEmpty().split(',').filter { it.isNotBlank() })
+        private set
+
     /** One tap on "What is it?": saves the kind and moves the file to the matching shelf. */
     fun setBucket(f: FileItem, kind: String) {
+        recentKinds = (listOf(kind) + recentKinds).distinct().take(8)
+        prefs.edit().putString("recent_kinds", recentKinds.joinToString(",")).apply()
         update(f.id, "Changed kind") {
             it.copy(kind = kind, shelf = if (isCustomShelf(it.shelf)) it.shelf else shelfForBucket(kind, formatFor(f)))
         }
