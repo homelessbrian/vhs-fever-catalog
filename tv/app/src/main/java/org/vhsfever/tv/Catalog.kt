@@ -50,8 +50,8 @@ data class Title(
         posterIsSuggestion = if (poster != null) posterIsSuggestion else !confirmed,
         overview = overview ?: a.overview,
         year = year ?: a.year,
-        backdrop = a.backdrop,
-        genres = a.genres,
+        backdrop = backdrop ?: a.backdrop,
+        genres = genres.ifEmpty { a.genres },
     )
 }
 
@@ -65,46 +65,40 @@ data class Catalog(val titles: List<Title>) {
             .map { g -> g to titles.filter { g in it.genres } }
             .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first })
 
-    val shelves: List<Pair<String, List<Title>>>
-        get() = SHELF_ORDER.mapNotNull { s -> titles.filter { it.shelf == s }.takeIf { it.isNotEmpty() }?.let { s to it } } +
-            titles.filter { it.shelf !in SHELF_ORDER }.groupBy { it.shelf }.toList()
-
     companion object {
-        val SHELF_ORDER = listOf("VHS Tapes", "DVDs", "Other Releases", "TV Recordings", "Openings & Previews", "Extras")
+        /** Everything on the shelves is a VHS movie now. */
+        const val SHELF = "VHS Movies"
 
-        fun shelfName(id: String?, media: String?): String = when {
-            id == "vhs_opening_or_previews" -> "Openings & Previews"
-            id == "other_media_release" -> "Other Releases"
-            id == "tv_recording" -> "TV Recordings"
-            id == "not_catalog" -> "Extras"
-            media == "DVD" -> "DVDs"
-            else -> "VHS Tapes"
-        }
-
-        /** Builds the shelf from the catalog feed and the saved review decisions. */
+        /** Builds the shelf from the movie list and the saved review decisions. */
         fun build(feedText: String, decisionsText: String): Catalog = build(listOf { feedText }, decisionsText)
 
         /**
-         * Builds the shelf from several catalog feeds (the older catalog and every batch so far)
-         * and the saved review decisions. Feeds are read one at a time to keep memory low on the TV;
-         * a file that shows up in more than one feed is only added once.
+         * Builds the shelf from the movie list and the saved review decisions. A file is on the
+         * shelf when Brian marked it good, or when the bot is sure about it ("ok") and Brian
+         * hasn't marked it bad. Several lists can be given (tests use this); a file in more
+         * than one is only added once.
          */
         fun build(feeds: List<() -> String>, decisionsText: String): Catalog {
             val decisions = JSONObject(decisionsText).optJSONObject("files") ?: JSONObject()
             val good = HashMap<String, JSONObject>()
+            val bad = HashSet<String>()
             for (k in decisions.keys()) {
                 val d = decisions.optJSONObject(k) ?: continue
-                if (d.optString("status") == "good") good[k] = d
+                when (d.optString("status")) { "good" -> good[k] = d; "bad" -> bad += k }
             }
             val found = mutableListOf<Triple<String, Tape, Meta>>()
             val seen = HashSet<String>()
 
             for (readFeed in feeds) {
                 val feed = JSONObject(readFeed())
+                val listDate = feed.optString("generated_at")
                 for (t in feed.optJSONArray("titles").objs()) {
                     // For now any TMDB suggestion is used for art (marked as a suggestion on screen).
                     val candidate = t.optJSONObject("tmdb")?.optJSONArray("c")?.optJSONObject(0)
                         ?.takeIf { it.optInt("tmdb_id") > 0 }
+                    // The movie the bot is sure about, with its genres.
+                    val botMovie = t.optJSONObject("movie")?.takeIf { it.optInt("tmdb_id") > 0 }
+                    val feedGenres = t.optJSONArray("genres").strings()
                     val recs = t.optJSONArray("un").objs().map { null to it } +
                         t.optJSONArray("eds").objs().flatMap { e -> e.optJSONArray("recs").objs().map { e to it } }
                     for ((ed, rec) in recs) {
@@ -113,13 +107,17 @@ data class Catalog(val titles: List<Title>) {
                             val srcs = seg.optJSONArray("src").objs()
                             for (src in srcs) {
                                 val id = src.optString("id")
-                                val d = good[id] ?: continue
+                                // The Archive's own copy is only a backup of the original, not a tape of its own.
+                                val hasOriginal = srcs.any { it.optString("role") != "archive_derivative" }
+                                val botSure = src.optBoolean("ok") && botMovie != null &&
+                                    !(src.optString("role") == "archive_derivative" && hasOriginal)
+                                val d = good[id] ?: (if (botSure && id !in bad) JSONObject() else null) ?: continue
                                 if (!seen.add(id)) continue
                                 val movie = d.optJSONObject("movie")
                                 val release = d.optJSONObject("release")
                                 val media = release?.str("media") ?: ed?.str("media")
                                 val year = release?.str("year") ?: ed?.str("year")
-                                val shelf = shelfName(d.str("shelf") ?: rec.str("cat"), media)
+                                val shelf = SHELF
                                 val tape = Tape(
                                     fileId = id,
                                     label = tapeLabel(media, year, rec.str("ver"), rec.optJSONArray("notes").strings() +
@@ -130,13 +128,21 @@ data class Catalog(val titles: List<Title>) {
                                     sources = orderSources(id, srcs),
                                     media = media?.takeIf { it != "TAPE_UNSPECIFIED" },
                                     releaseYear = year,
-                                    addedAt = d.optString("updated_at"),
+                                    addedAt = d.optString("updated_at").ifBlank { listDate },
                                 )
                                 val meta = if (movie != null && movie.optString("title").isNotBlank()) Meta(
                                     key = "tmdb:" + movie.optInt("tmdb_id"), name = movie.optString("title"),
                                     year = movie.str("year"), poster = movie.str("poster"), suggested = false,
                                     overview = null, shelf = shelf,
                                     tmdbId = movie.optInt("tmdb_id").takeIf { it > 0 }, tmdbType = movie.optString("type", "movie"),
+                                    genres = movie.optJSONArray("genres").strings().ifEmpty {
+                                        if (botMovie?.optInt("tmdb_id") == movie.optInt("tmdb_id")) feedGenres else emptyList() },
+                                ) else if (botMovie != null) Meta(
+                                    key = "tmdb:" + botMovie.optInt("tmdb_id"), name = botMovie.str("title") ?: t.optString("t"),
+                                    year = botMovie.str("year"), poster = botMovie.str("poster"), suggested = false,
+                                    overview = botMovie.str("overview"), shelf = shelf,
+                                    tmdbId = botMovie.optInt("tmdb_id"), tmdbType = "movie",
+                                    genres = feedGenres, backdrop = botMovie.str("backdrop"),
                                 ) else Meta(
                                     key = "title:" + t.optString("id"), name = candidate?.str("title") ?: cleanName(t.optString("t")),
                                     year = candidate?.str("release_date")?.take(4), poster = candidate?.str("poster"),
@@ -173,6 +179,8 @@ data class Catalog(val titles: List<Title>) {
                     tmdbId = (metas.firstOrNull { !it.suggested && it.tmdbId != null } ?: metas.firstOrNull { it.tmdbId != null })?.tmdbId,
                     tmdbType = (metas.firstOrNull { !it.suggested && it.tmdbId != null } ?: metas.firstOrNull { it.tmdbId != null })?.tmdbType ?: "movie",
                     confirmed = metas.any { !it.suggested },
+                    genres = metas.firstOrNull { it.genres.isNotEmpty() }?.genres ?: emptyList(),
+                    backdrop = metas.firstNotNullOfOrNull { it.backdrop },
                     addedAt = list.maxOf { it.first.addedAt },
                     searchName = searchQuery(metas.firstNotNullOfOrNull { it.feedName } ?: best.name).first,
                     // Tape years are release years of the tape, not the film, so they are not used here.
@@ -187,6 +195,8 @@ data class Catalog(val titles: List<Title>) {
             val suggested: Boolean, val overview: String?, val shelf: String,
             val tmdbId: Int? = null, val tmdbType: String = "movie",
             val feedName: String? = null,
+            val genres: List<String> = emptyList(),
+            val backdrop: String? = null,
         )
 
         fun tapeLabel(media: String?, year: String?, version: String?, notes: List<String>): String {

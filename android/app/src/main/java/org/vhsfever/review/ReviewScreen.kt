@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -31,7 +30,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -66,8 +64,8 @@ import coil.compose.AsyncImage
 
 /**
  * One file, everything on one screen, no scrolling:
- * video · file line · robot line · movie line · "What is it?" grid · format row · Bad / Good.
- * Bad swaps the grid for the reasons; one tap on a reason saves and moves on.
+ * video · file line · bot line · the movie (poster, genres, story) · Bad / Good.
+ * Bad swaps the movie card for the reasons; one tap on a reason saves and moves on.
  */
 @Composable
 fun ReviewScreen(m: AppModel, fileId: String) {
@@ -75,7 +73,7 @@ fun ReviewScreen(m: AppModel, fileId: String) {
     val d = m.decisionFor(f)
     var picking by remember(fileId) { mutableStateOf(false) }      // showing the bad reasons
     var notes by remember(fileId) { mutableStateOf(d?.notes ?: "") }
-    var extras by remember(fileId) { mutableStateOf(false) }       // tags & notes sheet
+    var editNotes by remember(fileId) { mutableStateOf(false) }
     var otherReason by remember(fileId) { mutableStateOf<String?>(null) }
 
     fun goNext(onlyUnreviewed: Boolean = true) {
@@ -97,15 +95,11 @@ fun ReviewScreen(m: AppModel, fileId: String) {
             FileLine(m, f)
             // While a newer list is coming in, the robot's call here may be out of date: don't offer it.
             if (m.updating == null) m.robotFor(f)?.let { g -> RobotLine(g, d?.status, d?.robot) { m.agreeWithRobot(f.id); goNext() } }
-            MovieLine(m, f) { m.open(Screen.MovieEdit(f.id)) }
-            // The grid takes what's left; on a very small phone it can scroll on its own.
+            // The card takes what's left; on a very small phone it can scroll on its own.
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (picking) BadReasons(m, f, onPick = { saveBad(listOf(it), "") }, onOther = { otherReason = "" },
                     onCancel = { picking = false })
-                else {
-                    BucketGrid(m, f)
-                    FormatRow(m, f)
-                }
+                else MovieCard(m, f) { m.open(Screen.MovieEdit(f.id)) }
             }
         }
         // ---- bottom bar
@@ -129,12 +123,7 @@ fun ReviewScreen(m: AppModel, fileId: String) {
                 val (i, n) = remember(f.id, m.files) { m.siblingsCount(f) }
                 Text(if (n > 1) "$i of $n" else "", color = C.muted, fontSize = 12.sp)
                 Spacer(Modifier.weight(1f))
-                val extrasLabel = buildString {
-                    append("Tags · Notes")
-                    val c = (d?.tags?.size ?: 0) + if (notes.isNotBlank()) 1 else 0
-                    if (c > 0) append(" ($c)")
-                }
-                SmallLink(extrasLabel, C.gold) { extras = true }
+                SmallLink(if (notes.isNotBlank()) "Notes (1)" else "Notes", C.gold) { editNotes = true }
                 if (m.lastUndoLabel != null) SmallLink("Undo", C.gold) { m.undoLast()?.let { id -> m.replaceTop(Screen.Review(id)) } }
                 Spacer(Modifier.weight(1f))
                 // In "To review", Skip goes to the next file that still needs a decision.
@@ -142,10 +131,18 @@ fun ReviewScreen(m: AppModel, fileId: String) {
             }
         }
     }
-    if (extras) TagsAndNotes(m, f, notes, onNotes = { notes = it }, onDone = {
-        if (notes != (m.decisionFor(f)?.notes ?: "")) m.update(f.id) { it.copy(notes = notes) }
-        extras = false
-    })
+    if (editNotes) {
+        var text by remember { mutableStateOf(notes) }
+        AlertDialog(onDismissRequest = { editNotes = false }, containerColor = C.panel,
+            title = { Text("Notes", color = C.text) },
+            text = { OutlinedTextField(text, { text = it }, colors = fieldColors(), placeholder = { Text("Timestamps, quality, anything to remember") },
+                modifier = Modifier.fillMaxWidth().height(120.dp)) },
+            confirmButton = { TextButton(onClick = {
+                notes = text; editNotes = false
+                if (notes != (m.decisionFor(f)?.notes ?: "")) m.update(f.id) { it.copy(notes = notes) }
+            }) { Text("Save", color = C.gold) } },
+            dismissButton = { TextButton(onClick = { editNotes = false }) { Text("Cancel", color = C.muted) } })
+    }
     otherReason?.let { start ->
         var text by remember { mutableStateOf(start) }
         AlertDialog(onDismissRequest = { otherReason = null }, containerColor = C.panel,
@@ -178,8 +175,7 @@ private fun FileLine(m: AppModel, f: FileItem) {
         }
         val warn = listOfNotNull(
             m.foreignReason(f)?.let { "Non-English? $it" },
-            m.splitReason(f)?.let { "Split: $it" },
-            f.versionLabel?.let { "“Version $it”" }, f.partLabel,
+            f.versionLabel?.let { "“Version $it”" }, f.releaseYear?.let { "$it tape" }, mins(f.durationSec),
             when (d?.status) { "good" -> "Marked good"; "bad" -> "Marked bad: " + (d.reasons + listOfNotNull(d.otherReason.ifBlank { null })).joinToString(", "); else -> null },
         )
         if (warn.isNotEmpty()) Text(warn.joinToString(" · "), color = if (d?.status == "good") C.good else C.warn, fontSize = 12.sp,
@@ -187,21 +183,16 @@ private fun FileLine(m: AppModel, f: FileItem) {
     }
 }
 
-/** What the auto-sort thinks, in one line, with one-tap Agree. */
+/** What the bot thinks, in one line, with one-tap Agree when it's sure. */
 @Composable
 fun RobotLine(g: RobotGuess, myStatus: String?, myRobot: String?, onAgree: () -> Unit) {
     val color = when (g.verdict) { "good" -> C.good; "bad" -> C.bad; else -> C.warn }
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.panel).border(1.dp, color, RoundedCornerShape(12.dp))
         .padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(buildString {
-                append("Robot: "); append(g.label)
-                if (g.verdict == "good") append(if (g.confidence == "high") " (sure)" else " (fairly sure)")
-                append(" · "); append(g.kindLabel)
-                if (g.format != "unknown") { append(" · "); append(g.format) }
-                when (g.commercialsInside) { "true" -> append(" · ads in it"); "likely" -> append(" · ads likely") }
-            }, color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            g.why.firstOrNull()?.let { Text(it, color = C.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Text("Bot: " + g.label, color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val why = if (g.verdict == "good") g.formatClues.firstOrNull() else g.why.firstOrNull()
+            why?.let { Text(it, color = C.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         if (myStatus == null && g.verdict in setOf("good", "bad")) Button(onClick = onAgree, shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = Color(0xFF111111)),
@@ -212,93 +203,32 @@ fun RobotLine(g: RobotGuess, myStatus: String?, myRobot: String?, onAgree: () ->
     }
 }
 
-/** The matched movie or show in one row; tap to fix it. */
+/** The movie this file is: poster, name, genres and the story. Tap to pick a different one. */
 @Composable
-private fun MovieLine(m: AppModel, f: FileItem, onFix: () -> Unit) {
+private fun MovieCard(m: AppModel, f: FileItem, onFix: () -> Unit) {
     val (movie, confirmed) = m.movieFor(f)
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.panel).clickable(onClick = onFix)
-        .padding(horizontal = 8.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(30.dp, 45.dp).clip(RoundedCornerShape(4.dp)).background(C.panel2)) {
-            (movie?.poster ?: movie?.episode?.still)?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
+    val genres = m.genresFor(f)
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.panel).clickable(onClick = onFix).padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(84.dp, 126.dp).clip(RoundedCornerShape(6.dp)).background(C.panel2)) {
+            movie?.poster?.let { AsyncImage(model = it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
         }
-        Column(Modifier.weight(1f)) {
-            Text(if (movie == null || movie.isNoMatch) f.titleName else movie.heading, color = C.text, fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val sub = listOfNotNull(
-                when {
-                    movie?.isNoMatch == true -> "no match (your call)"
-                    movie?.isManual == true -> "your own name"
-                    confirmed -> "confirmed"
-                    movie != null -> "suggested"
-                    else -> "not matched"
-                },
-                movie?.episode?.label, m.releaseFor(f).year?.let { "tape $it" }, mins(f.durationSec))
-            Text(sub.joinToString(" · "), color = if (confirmed) C.good else C.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Text("Fix", color = C.gold, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-    }
-}
-
-/** "What is it?": every kind of video found so far, plus the user's own shelves. One tap saves it. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun BucketGrid(m: AppModel, f: FileItem) {
-    val picked = m.decisionFor(f)?.kind
-    val current = m.kindFor(f)
-    val robotKind = m.robotFor(f)?.kind
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        SectionLabel("What is it?")
-        Spacer(Modifier.width(8.dp))
-        Text(if (picked != null) "picked" else if (current != null) "robot’s guess" else "pick one",
-            color = if (picked != null) C.good else C.muted, fontSize = 11.sp)
-        Spacer(Modifier.weight(1f))
-        Text("→ " + m.shelfName(m.shelfFor(f)), color = C.blue, fontSize = 11.sp, maxLines = 1)
-    }
-    var more by remember(f.id) { mutableStateOf(false) }
-    // 3 fixed rows, then a row with what this file needs (your pick, the robot's guess, recent picks) and "More…".
-    val shown = QUICK_BUCKETS + extraBuckets(picked, robotKind, m.recentKinds)
-    Grid(shown.map { it to bucketLabel(it) } + (MORE to "More…"), columns = 4) { id, label ->
-        if (id == MORE) Cell(label, selected = false, guess = false, onClick = { more = true }, color = C.blue)
-        else Cell(label, selected = id == current, guess = picked == null && id == robotKind, onClick = { m.setBucket(f, id) })
-    }
-    if (more) AllBuckets(current, if (picked == null) robotKind else null,
-        onPick = { m.setBucket(f, it); more = false }, onClose = { more = false })
-    val custom = m.shelves.filter { !it.builtIn }
-    if (custom.isNotEmpty()) {
-        val shelf = m.decisionFor(f)?.shelf
-        Grid(custom.map { it.id to it.name }, columns = 4) { id, label ->
-            Cell(label, selected = shelf == id, guess = false, onClick = { m.toggleCustomShelf(f, id) }, color = C.blue)
-        }
-    }
-}
-
-private const val MORE = "__more__"
-
-/** Every kind, in shelf groups. One tap picks it and closes. */
-@Composable
-private fun AllBuckets(current: String?, robotKind: String?, onPick: (String) -> Unit, onClose: () -> Unit) {
-    AlertDialog(onDismissRequest = onClose, containerColor = C.panel,
-        title = { Text("What is it?", color = C.text) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                BUCKET_GROUPS.forEach { (group, buckets) ->
-                    SectionLabel(group)
-                    Grid(buckets.map { it.id to it.label }, columns = 2) { id, label ->
-                        Cell(label, selected = id == current, guess = id == robotKind, onClick = { onPick(id) }, height = 40.dp)
-                    }
-                }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(if (movie == null || movie.isNoMatch) f.titleName else movie.heading, color = C.text, fontSize = 16.sp,
+                fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(when {
+                movie?.isNoMatch == true -> "No match (your call)"
+                movie?.isManual == true -> "Your own name"
+                confirmed -> "You confirmed this"
+                movie != null && f.botMovie != null && movie.tmdbId == f.botMovie.tmdbId -> "The bot is sure"
+                movie != null -> "The bot’s best guess — check it"
+                else -> "Not matched yet — tap to find it"
+            }, color = if (confirmed || (f.botMovie != null && movie?.tmdbId == f.botMovie.tmdbId)) C.good else C.warn, fontSize = 12.sp)
+            if (genres.isNotEmpty()) Text(genres.joinToString(" · "), color = C.gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            (movie?.overview ?: f.botMovie?.overview ?: f.guess?.overview)?.let {
+                Text(it, color = C.muted, fontSize = 12.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
             }
-        },
-        confirmButton = { TextButton(onClick = onClose) { Text("Close", color = C.muted) } })
-}
-
-@Composable
-private fun FormatRow(m: AppModel, f: FileItem) {
-    val current = m.formatFor(f)
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        FORMATS.forEach { (id, label) ->
-            Cell(label, selected = current == id, guess = false, onClick = { m.setFormat(f, id) }, color = C.blue,
-                modifier = Modifier.weight(1f), height = 32.dp)
+            Text("Change movie ›", color = C.gold, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
     }
 }
@@ -343,38 +273,6 @@ private fun Cell(label: String, selected: Boolean, guess: Boolean, onClick: () -
         .clickable(onClick = onClick).padding(horizontal = 3.dp), contentAlignment = Alignment.Center) {
         Text(label, color = if (selected) Color(0xFF1A1206) else C.text, fontSize = 12.sp, lineHeight = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 2)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun TagsAndNotes(m: AppModel, f: FileItem, notes: String, onNotes: (String) -> Unit, onDone: () -> Unit) {
-    var newTag by remember { mutableStateOf<String?>(null) }
-    ModalBottomSheet(onDismissRequest = onDone, containerColor = C.panel) {
-        Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionLabel("Tags")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val mine = m.decisionFor(f)?.tags ?: emptyList()
-                m.tags.forEach { t -> Chip("#$t", t in mine, { m.update(f.id) { x -> x.copy(tags = if (t in x.tags) x.tags - t else x.tags + t) } }, C.good) }
-                Chip("+ New tag", false, { newTag = "" })
-            }
-            OutlinedTextField(value = notes, onValueChange = onNotes, label = { Text("Notes") },
-                placeholder = { Text("Timestamps, quality, anything to remember") }, colors = fieldColors(),
-                shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(110.dp))
-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = C.gold, contentColor = Color(0xFF1A1206))) { Text("Done", fontWeight = FontWeight.Bold) }
-        }
-    }
-    newTag?.let { t ->
-        var text by remember { mutableStateOf(t) }
-        AlertDialog(onDismissRequest = { newTag = null }, containerColor = C.panel,
-            title = { Text("New tag", color = C.text) },
-            text = { OutlinedTextField(text, { text = it }, singleLine = true, colors = fieldColors(), placeholder = { Text("e.g. Disney, Christmas") }) },
-            confirmButton = { TextButton(onClick = {
-                val clean = text.trim()
-                if (clean.isNotEmpty()) { m.addTag(clean); m.update(f.id) { it.copy(tags = (it.tags + clean).distinct()) } }
-                newTag = null }) { Text("Add", color = C.gold) } },
-            dismissButton = { TextButton(onClick = { newTag = null }) { Text("Cancel", color = C.muted) } })
     }
 }
 

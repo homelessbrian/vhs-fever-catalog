@@ -28,9 +28,6 @@ jobs:
         working-directory: android
         env:
           TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
-          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
-          TVDB_PIN: ${{ secrets.TVDB_PIN }}
-          BUILD_BRANCH: ${{ github.ref_name }}
         run: gradle --no-daemon testDebugUnitTest assembleRelease
       - name: Name the app file
         run: cp android/app/build/outputs/apk/release/app-release.apk "vhs-fever-review-${{ github.run_number }}.apk"

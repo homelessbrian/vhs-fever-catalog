@@ -8,18 +8,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Downloads the catalog feeds and Brian's review decisions from GitHub (cached on the TV).
+ * Downloads the movie list and Brian's review decisions from GitHub (cached on the TV).
  *
- * Two feeds are read: the older catalog, and every batch so far combined. Files approved
- * from either one show up on the shelf.
+ * The one movie list is published by the "Find VHS movies" bot on the movies-data branch.
  */
 class Repo(private val ctx: Context) {
     private val repo = BuildConfig.REPO
     private val feeds = listOf(
-        // Older catalog (from before batches).
-        "https://raw.githubusercontent.com/$repo/catalog-model-data/reviewer-feed.json" to "reviewer-feed.json",
-        // Every batch so far, combined (the same list the phone review app uses).
-        "https://raw.githubusercontent.com/$repo/batch-data/latest/reviewer-feed.json" to "batch-feed.json",
+        "https://raw.githubusercontent.com/$repo/movies-data/reviewer-feed.json" to "movies-feed.json",
     )
     // The contents API is never stale; raw.githubusercontent can lag a few minutes behind a save.
     private val decisionsApi = "https://api.github.com/repos/$repo/contents/review/decisions.json?ref=review-data"

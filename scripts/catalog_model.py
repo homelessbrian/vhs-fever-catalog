@@ -1319,6 +1319,7 @@ def main() -> None:
     src.add_argument("--fetch-from-inventory", help="latest.jsonl; re-read those items live from the Archive (with checksums)")
     src.add_argument("--identifiers", help="text file, one Archive identifier per line (# for notes); read live")
     ap.add_argument("--cache-dir", help="where to cache Archive metadata responses")
+    ap.add_argument("--max-age-days", type=float, default=14, help="re-download a saved page once it is this old")
     ap.add_argument("--output-dir")
     args = ap.parse_args()
     if args.feed_from:
@@ -1335,7 +1336,7 @@ def main() -> None:
     elif args.identifiers:
         with open(args.identifiers, encoding="utf-8") as fh:
             idents = [x.strip() for x in fh if x.strip() and not x.lstrip().startswith("#")]
-        items = fetch_items(idents, args.cache_dir)
+        items = fetch_items(idents, args.cache_dir, max_age_days=args.max_age_days)
     elif args.fetch_from_inventory:
         idents = [i["identifier"] for i in items_from_inventory(_read_jsonl(args.fetch_from_inventory))]
         items = fetch_items(idents, args.cache_dir)

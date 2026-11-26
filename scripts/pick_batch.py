@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pick the next batch of Archive pages to run, never repeating a page.
+"""Pick the next batch of Archive pages for the movie bot, never repeating a page.
 
 Reads the VHS Vault list (auto-sort-data/new-items.jsonl) and, with
 --more-items, the list of finds from outside the Vault (more-items.jsonl,
@@ -8,6 +8,9 @@ found through Vault uploaders, tape keywords and TV/commercial collections).
 page that is already in the catalog or in any earlier batch list
 (data/batches/*.txt). Writes the next numbered batch file.
 
+  --kind vhs_movies (default): pages that could hold a full-length VHS movie:
+                  English, not ads/TV/openings/how-to, not DVD or Blu-ray,
+                  0.15-20 GB; outside the Vault only tapes or Vault uploaders
   --kind movies : pages that look like full movies or kids' tapes, English,
                   VHS/DVD in the name, 0.25-15 GB
   --kind ads    : pages that look like commercials, breaks, promos or
@@ -35,12 +38,26 @@ def already_picked(batches_dir: Path) -> set[str]:
     return seen
 
 
+NOT_MOVIE_COLLECTIONS = {"vhsopenings", "vhsinstructionals", "vhscommercials", "vhsnews", "vhssports",
+                         "vhsconcerts_music"}
+
+
 def wanted(r: dict, kind: str) -> bool:
     if r.get("in_catalog") or r.get("not_english"):
         return False
     cols = set(r.get("collections") or [])
     title = r.get("title") or ""
     gb = int(r.get("size_bytes") or 0) / 1e9
+    if kind == "vhs_movies":
+        if r.get("kind_guess") != "movie_or_unknown" or cols & NOT_MOVIE_COLLECTIONS:
+            return False
+        if NOT_A_MOVIE.search(title) or not 0.15 <= gb <= 20:
+            return False
+        if r.get("format_guess") in {"DVD", "BLU-RAY", "TV", "WEB"}:
+            return False
+        if "found_by" in r:
+            return bool(r.get("found_by_uploader") or r.get("format_guess") in {"VHS", "BETAMAX"})
+        return True
     if kind == "movies":
         if r.get("kind_guess") != "movie_or_unknown" or cols & {"vhsopenings", "vhsinstructionals"}:
             return False
@@ -68,7 +85,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--new-items", help="VHS Vault list (new-items.jsonl); needed unless --from more")
     ap.add_argument("--batches-dir", default="data/batches")
-    ap.add_argument("--kind", choices=["all", "movies", "ads"], default="all")
+    ap.add_argument("--kind", choices=["vhs_movies", "all", "movies", "ads"], default="vhs_movies")
     ap.add_argument("--size", type=int, default=500)
     ap.add_argument("--github-output", help="file to write batch=<name> to (GitHub Actions)")
     ap.add_argument("--more-items", help="finds from outside the VHS Vault (more-items.jsonl)")
@@ -108,7 +125,8 @@ def main() -> None:
         return
     n = 1 + max([int(m.group(1)) for f in bdir.glob("batch-*.txt") if (m := re.match(r"batch-(\d+)", f.stem))] or [0])
     out = bdir / f"batch-{n:03d}.txt"
-    label = {"movies": "pages that look like full movies or kids' tapes, English names, VHS/DVD in the name, 0.25-15 GB",
+    label = {"vhs_movies": "pages that could hold a full-length VHS movie (English, 0.15-20 GB), newest first",
+             "movies": "pages that look like full movies or kids' tapes, English names, VHS/DVD in the name, 0.25-15 GB",
              "ads": "pages that look like commercials, ad breaks, promos or TV recordings with their ads in, English",
              "all": "pages not read yet (English, up to 20 GB each), newest first"}[a.kind]
     where = {"vault": "VHS Vault", "more": "outside-the-Vault", "both": "VHS Vault and outside-the-Vault"}[a.source]

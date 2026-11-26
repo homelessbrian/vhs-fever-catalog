@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""Keeps only full-length VHS movies, and builds the one movie list.
+
+Two steps, run by the "Find VHS movies" workflow:
+
+  keep-long   After the Archive pages are read: throws away every recording
+              shorter than 40 minutes, split into pieces, taped off TV, a tape
+              opening, or a DVD/Blu-ray. Only what's left is matched on TMDB
+              and checked for sound, so the bot doesn't waste time on clips.
+
+  finish      After the auto-sort: keeps only files it calls a movie on VHS
+              that play, adds a clean name, year and TMDB genres, and writes
+              the list both apps read (reviewer-feed.json), plus the details
+              the review app shows (auto-sort.jsonl, audio-checks.jsonl).
+
+A movie goes straight onto the shelves ("bot sure") only when TMDB found one
+clear match whose running time fits the file, the file is clearly VHS, and it
+plays with sound and picture. Everything else waits in the review app.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.parse
+import urllib.request
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+MIN_SECONDS = 40 * 60
+DROP_CATEGORIES = {"tv_recording", "vhs_opening_or_previews", "other_media_release"}
+MODEL_FILES = ("archive-items", "recordings", "editions", "titles", "artwork")
+
+TMDB = "https://api.themoviedb.org/3"
+IMG = "https://image.tmdb.org/t/p/"
+GENRE_NAMES = {"Science Fiction": "Sci-Fi", "TV Movie": "TV Movie"}
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    with path.open(encoding="utf-8") as fh:
+        return [json.loads(x) for x in fh if x.strip()]
+
+
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    with path.open("w", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+# --------------------------------------------------------------------------
+# Trimming the catalog model down to some recordings
+# --------------------------------------------------------------------------
+def is_long_candidate(rec: dict[str, Any]) -> bool:
+    return ((rec.get("duration_seconds") or 0) >= MIN_SECONDS
+            and (rec.get("part_count") or 1) == 1
+            and rec.get("catalog_category") not in DROP_CATEGORIES)
+
+
+def trim_model(model: dict[str, list[dict[str, Any]]], keep_recs: set[str]) -> dict[str, list[dict[str, Any]]]:
+    """Keeps only the given recordings, and the editions, titles, pages and
+    artwork that go with them."""
+    recs = [r for r in model["recordings"] if r["recording_id"] in keep_recs]
+    editions = []
+    for e in model["editions"]:
+        ids = [x for x in e["recording_ids"] if x in keep_recs]
+        if ids:
+            editions.append(dict(e, recording_ids=ids))
+    kept_eds = {e["edition_suggestion_id"] for e in editions}
+    titles = []
+    for t in model["titles"]:
+        eds = [x for x in t.get("edition_suggestion_ids") or [] if x in kept_eds]
+        un = [x for x in t.get("unassigned_recording_ids") or [] if x in keep_recs]
+        if eds or un:
+            titles.append(dict(t, edition_suggestion_ids=eds, unassigned_recording_ids=un))
+    pages = {a for r in recs for a in r.get("archive_identifiers") or []}
+    items = [i for i in model["archive-items"] if i["archive_identifier"] in pages]
+    art = [a for a in model["artwork"] if a.get("recording_id") in keep_recs]
+    return {"archive-items": items, "recordings": recs, "editions": editions, "titles": titles, "artwork": art}
+
+
+def load_model(d: Path) -> dict[str, list[dict[str, Any]]]:
+    return {n: read_jsonl(d / f"{n}.jsonl") for n in MODEL_FILES}
+
+
+def save_model(d: Path, model: dict[str, list[dict[str, Any]]], extra_summary: dict[str, Any]) -> None:
+    d.mkdir(parents=True, exist_ok=True)
+    for n in MODEL_FILES:
+        write_jsonl(d / f"{n}.jsonl", model[n])
+    # Files the movie list doesn't use are removed so nothing stale is left around.
+    for n in ("archive-files.jsonl", "legacy-program-map.jsonl"):
+        (d / n).unlink(missing_ok=True)
+    summary = {"archive_pages": len(model["archive-items"]), "recordings": len(model["recordings"]),
+               "titles": len(model["titles"]), **extra_summary}
+    (d / "catalog-model.summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+
+
+def keep_long(model_dir: Path) -> dict[str, Any]:
+    model = load_model(model_dir)
+    total_pages = len(model["archive-items"])
+    total = len(model["recordings"])
+    keep = {r["recording_id"] for r in model["recordings"] if is_long_candidate(r)}
+    trimmed = trim_model(model, keep)
+    summary = {"pages_read": total_pages, "recordings_read": total, "long_enough": len(keep)}
+    save_model(model_dir, trimmed, summary)
+    return summary
+
+
+# --------------------------------------------------------------------------
+# TMDB details (genres, running time, art) for matched movies
+# --------------------------------------------------------------------------
+def tmdb_details(ids: list[int], cache: dict[str, Any], token: str | None, delay: float = 0.05) -> int:
+    """Fills cache[str(id)] for every id not looked up yet. Returns lookups made."""
+    calls = 0
+    for i in ids:
+        if str(i) in cache or not token:
+            continue
+        url = f"{TMDB}/movie/{i}?" + urllib.parse.urlencode({"language": "en-US"})
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+        d = None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    d = json.load(r)
+                break
+            except Exception:  # noqa: BLE001 - retry, then leave it for the next run
+                time.sleep(2 * (attempt + 1))
+        calls += 1
+        time.sleep(delay)
+        if d is None:
+            continue
+        cache[str(i)] = {
+            "tmdb_id": i, "title": d.get("title"), "year": (d.get("release_date") or "")[:4] or None,
+            "genres": [GENRE_NAMES.get(g["name"], g["name"]) for g in d.get("genres") or [] if g.get("name")],
+            "runtime": d.get("runtime") or None,
+            "poster": IMG + "w342" + d["poster_path"] if d.get("poster_path") else None,
+            "backdrop": IMG + "w780" + d["backdrop_path"] if d.get("backdrop_path") else None,
+            "overview": (d.get("overview") or "")[:600] or None,
+        }
+    return calls
+
+
+# --------------------------------------------------------------------------
+# Picking the movies
+# --------------------------------------------------------------------------
+def best_candidate(title: dict[str, Any] | None) -> tuple[dict[str, Any], str | None]:
+    tm = (title or {}).get("tmdb") or {}
+    cands = tm.get("candidates") or []
+    return (cands[0] if cands else {}), tm.get("confidence")
+
+
+TAPED_OFF_TV = re.compile(
+    r"\bS\d{1,2}\s?E\d{1,3}\b|\bep(?:isode)?s?\.?\s*\d|\bfull episodes?\b|\bepisodes\b|\btv series\b|"
+    r"\(\s*(?:19|20)\d\d\s*,\s*tv\s*\)|\bprogrammes?\b|\brecordings?\b|\bshows\b|\btaped\b|\boff[- ]air\b|"
+    r"\b(?:bbc ?(?:one|two|1|2|3|4)?|itv|cbeebies|cbbc|citv|channel ?[45]|nickelodeon|nick jr|syfy|sci-?fi channel|"
+    r"hbo|showtime|cinemax|tnt|tbs|usa network|cartoon network|disney channel|abc family|fox kids|kids ?wb|"
+    r"pbs|cbs|nbc|wgn|mtv|vh1|comedy central|amc|tcm)\b|\b(?:abc|ch\.?|channel) ?\d{1,2}\b|\bnight movie\b", re.I)
+
+
+def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None) -> str | None:
+    if ((title or {}).get("tmdb") or {}).get("status") == "skipped_not_english":
+        return "not in English"
+    if TAPED_OFF_TV.search(row.get("name") or "") or TAPED_OFF_TV.search((title or {}).get("display_title") or ""):
+        return "taped off TV or a TV episode"
+    if row["kind"] != "movie":
+        return "not a movie (" + row["kind"] + ")"
+    if row["format"] != "VHS":
+        return "not VHS (" + row["format"] + ")"
+    if (row.get("duration_seconds") or 0) < MIN_SECONDS:
+        return "shorter than 40 minutes"
+    if row["verdict"] == "bad":
+        return "doesn't play (" + (row.get("reason") or "bad") + ")"
+    cand, conf = best_candidate(title)
+    if conf in {"sure", "likely"} and cand.get("media_type") == "tv":
+        return "TMDB says it's a TV show"
+    return None
+
+
+def bot_sure(row: dict[str, Any], title: dict[str, Any] | None) -> list[str]:
+    """Why the bot can't put this movie on the shelf by itself (empty = sure)."""
+    cand, conf = best_candidate(title)
+    worries = []
+    if conf != "sure" or cand.get("media_type") != "movie":
+        worries.append({"likely": "TMDB match is likely but not certain",
+                        "several": "several possible TMDB matches",
+                        "weak": "only weak TMDB matches",
+                        None: "not looked up on TMDB"}.get(conf, "no TMDB match"))
+    if row["format_confidence"] != "high":
+        worries.append("not clear it's a VHS tape")
+    if row["verdict"] != "good":
+        worries.append("; ".join(row.get("verdict_why") or []) or "sound or picture not checked")
+    return worries
+
+
+TAPE_WORDS = re.compile(
+    r"\b(?:vhs(?:rip)?|dvd|betamax|ntsc|pal|secam|full(?: movie| vhs| tape)?|video release|fan ?made|screener|"
+    r"uk|us|usa|aus?|nz|canadian|australian|american|british|rip|tape|capture|upscaled|hq)\b", re.I)
+# A year after the name ("Snoopy Come Home 1996"), never one that starts it ("2001 A Space Odyssey").
+LATE_YEAR = re.compile(r"(?<=\S)\s+(?:19|20)\d\d(?:\s*-\s*(?:19|20)\d\d)?\b")
+
+
+def clean_title(text: str) -> str:
+    """'19b. Thomas and His Friends Get Along (US VHS) ([2000]).mp4' -> 'Thomas and His Friends Get Along'."""
+    raw = (text or "").strip()
+    t = re.sub(r"\.(mp4|m4v|mkv|avi|mpe?g|mov|ogv|webm|ts|wmv)$", "", raw, flags=re.I)
+    if t.count(".") >= 2 and " " not in t:
+        t = t.replace(".", " ")
+    t = t.replace("_", " ")
+    t = re.sub(r"\([^)]*\)|\[[^\]]*\]|\{[^}]*\}", " ", t)
+    t = re.sub(r"^\s*(?:\d{1,3}[a-z]?\.?|S\d{1,2})\s+-?\s*", "", t, flags=re.I)   # "02 ", "19b. ", "S5 - "
+    t = TAPE_WORDS.sub(" ", t)
+    t = LATE_YEAR.sub(" ", t)
+    pieces = [x.strip() for x in t.split(" - ")]
+    if len(pieces) >= 3 and all(len(x.split()) <= 2 for x in pieces):
+        t = " ".join(pieces)                     # "Inspector - Gadget - Beats - The - Trap"
+    t = re.sub(r"\s+", " ", t).strip(" -_.,:;&")
+    m = re.match(r"^(.*), (The|A|An)$", t)
+    if m:
+        t = f"{m.group(2)} {m.group(1)}"
+    return t or raw
+
+
+def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_path: Path | None,
+           pages_read: int | None) -> dict[str, Any]:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import catalog_model  # noqa: E402
+
+    model = load_model(model_dir)
+    titles = {t["title_suggestion_id"]: t for t in model["titles"]}
+    rows = read_jsonl(sort_path)
+    rows_by_rec: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        rows_by_rec.setdefault(r["recording_id"], []).append(r)
+
+    # A recording is kept when its original file (or, without one, any file) passes.
+    keep_recs: set[str] = set()
+    dropped: Counter[str] = Counter()
+    for rid, group in rows_by_rec.items():
+        group.sort(key=lambda r: (r.get("role") != "original", r["verdict"] == "bad"))
+        why = why_not_kept(group[0], titles.get(group[0].get("title_suggestion_id")))
+        if why is None:
+            keep_recs.add(rid)
+        else:
+            dropped[re.sub(r" \(.*", "", why)] += 1
+
+    # Genres and art for every movie TMDB matched with some confidence.
+    cache: dict[str, Any] = {}
+    if cache_path and cache_path.is_file():
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    want = sorted({c["tmdb_id"] for rid in keep_recs for r in rows_by_rec[rid][:1]
+                   for c, conf in [best_candidate(titles.get(r.get("title_suggestion_id")))]
+                   if c.get("media_type") == "movie" and c.get("tmdb_id") and conf in {"sure", "likely", "several"}})
+    calls = tmdb_details(want, cache, os.environ.get("TMDB_API_READ_ACCESS_TOKEN"))
+
+    # The bot's call per file: "good" only when it's sure, otherwise "review".
+    sure_files: set[str] = set()
+    out_rows = []
+    for rid in keep_recs:
+        for r in rows_by_rec[rid]:
+            if r["verdict"] == "bad":
+                out_rows.append(r)
+                continue
+            worries = bot_sure(r, titles.get(r.get("title_suggestion_id")))
+            if worries:
+                r = dict(r, verdict="review", confidence="low", verdict_why=worries)
+            else:
+                sure_files.add(r["file_id"])
+            out_rows.append(r)
+    out_rows.sort(key=lambda r: (r.get("title") or "").casefold())
+
+    trimmed = trim_model(model, keep_recs)
+    out.mkdir(parents=True, exist_ok=True)
+    save_model(out, trimmed, {"vhs_movies": len(keep_recs)})
+    feed = catalog_model.build_reviewer_feed(str(out))
+
+    # Clean names, genres, and which files the bot is sure about.
+    genre_count: Counter[str] = Counter()
+    sure_titles = 0
+    for t in feed["titles"]:
+        src_title = titles.get(t["id"]) or {}
+        cand, conf = best_candidate(src_title)
+        info = cache.get(str(cand.get("tmdb_id"))) if cand.get("media_type") == "movie" else None
+        files = [x for r in t["un"] + [r for e in t["eds"] for r in e["recs"]] for s in r["segs"] for x in s["src"]]
+        any_sure = False
+        for x in files:
+            if x["id"] in sure_files:
+                x["ok"] = True
+                any_sure = True
+        t["raw"] = t["t"]
+        if any_sure and info:
+            t["t"] = info["title"] or cand.get("title") or clean_title(t["t"])
+            t["movie"] = info
+            t["genres"] = info["genres"]
+            sure_titles += 1
+            genre_count.update(info["genres"] or ["No genre on TMDB"])
+        else:
+            t["t"] = clean_title(t["t"])
+            if info:
+                t["guess"] = info    # TMDB's best guess, for the review screen; not confirmed
+            t["genres"] = []
+    feed["titles"].sort(key=lambda t: t["t"].casefold())
+    feed["summary"] = {
+        "pages_read": pages_read, "vhs_movies": len(feed["titles"]), "bot_sure": sure_titles,
+        "waiting_for_review": len(feed["titles"]) - sure_titles,
+        "files": len(out_rows), "genres": dict(genre_count.most_common()),
+        "left_out": dict(dropped.most_common()), "tmdb_detail_lookups": calls,
+    }
+    (out / "reviewer-feed.json").write_text(json.dumps(feed, ensure_ascii=False, separators=(",", ":")),
+                                            encoding="utf-8")
+    write_jsonl(out / "auto-sort.jsonl", out_rows)
+    keep_files = {r["file_id"] for r in out_rows}
+    write_jsonl(out / "audio-checks.jsonl", [a for a in read_jsonl(audio_path) if a.get("file_id") in keep_files])
+    if cache_path:
+        (out / "tmdb-movies.json").write_text(json.dumps(cache, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    (out / "summary.json").write_text(json.dumps(feed["summary"], indent=2, ensure_ascii=False) + "\n")
+    return feed["summary"]
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = ap.add_subparsers(dest="step", required=True)
+    k = sub.add_parser("keep-long", help="drop everything under 40 minutes, split, TV, openings, DVD/Blu-ray")
+    k.add_argument("--model-dir", required=True)
+    f = sub.add_parser("finish", help="keep only VHS movies and write the movie list")
+    f.add_argument("--model-dir", required=True)
+    f.add_argument("--auto-sort", required=True)
+    f.add_argument("--audio", required=True)
+    f.add_argument("--output-dir", required=True)
+    f.add_argument("--tmdb-cache", help="earlier tmdb-movies.json (genres already looked up)")
+    f.add_argument("--pages-read", type=int)
+    a = ap.parse_args()
+    if a.step == "keep-long":
+        s = keep_long(Path(a.model_dir))
+    else:
+        s = finish(Path(a.model_dir), Path(a.auto_sort), Path(a.audio), Path(a.output_dir),
+                   Path(a.tmdb_cache) if a.tmdb_cache else None, a.pages_read)
+    s["built_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    print(json.dumps(s, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

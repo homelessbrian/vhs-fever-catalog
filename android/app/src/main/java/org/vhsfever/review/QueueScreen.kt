@@ -22,9 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,7 +83,7 @@ fun ListStatusBar(m: AppModel) {
     if (updating == null && err == null) return
     Row(Modifier.fillMaxWidth().background(if (updating != null) C.blueBg else C.warnBg).padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Text(updating?.let { "⟳ $it Robot calls shown may be old until it’s done." } ?: err!!, color = if (updating != null) C.blue else C.warn,
+        Text(updating?.let { "⟳ $it" } ?: err!!, color = if (updating != null) C.blue else C.warn,
             fontSize = 12.sp, modifier = Modifier.weight(1f))
         if (updating == null) Text("Retry", color = C.gold, fontWeight = FontWeight.Bold, fontSize = 13.sp,
             modifier = Modifier.clickable { m.reloadCatalog() }.padding(start = 10.dp))
@@ -94,9 +92,9 @@ fun ListStatusBar(m: AppModel) {
 
 @Composable
 fun QueueScreen(m: AppModel) {
-    val list = remember(m.files, m.decisions, m.audio, m.mode, m.shelfFilter, m.tagFilter, m.soundOnly, m.search, m.englishOnly, m.foreign, m.wholeOnly, m.split, m.robot, m.robotFilter, m.kindFilter) { m.queue() }
-    var confirmAll by remember { mutableStateOf(false) }
-    val (good, bad, total) = remember(m.files, m.decisions, m.audio, m.englishOnly, m.foreign, m.wholeOnly, m.split) { m.progress() }
+    val list = remember(m.files, m.decisions, m.audio, m.mode, m.search, m.englishOnly, m.foreign, m.robot) { m.queue() }
+    val counts = remember(m.files, m.decisions, m.robot, m.englishOnly, m.foreign) { QueueMode.entries.associateWith { m.count(it) } }
+    val (good, bad, total) = remember(m.files, m.decisions, m.audio, m.englishOnly, m.foreign) { m.progress() }
     Column(Modifier.fillMaxSize()) {
         ListStatusBar(m)
         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -105,9 +103,8 @@ fun QueueScreen(m: AppModel) {
                     modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(C.gold).padding(horizontal = 7.dp, vertical = 3.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Review", color = C.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(if (m.source == "main") "Main catalog" else "New pages" + (m.listInfo?.let { " · $it" } ?: m.batchName?.let { " · $it" } ?: ""),
-                        color = C.muted, fontSize = 12.sp)
+                    Text("Movie review", color = C.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    m.listInfo?.let { Text(it, color = C.muted, fontSize = 12.sp) }
                 }
                 IconButton(onClick = { m.open(Screen.Settings) }) { Icon(Icons.Filled.Settings, "Settings", tint = C.text) }
             }
@@ -133,48 +130,21 @@ fun QueueScreen(m: AppModel) {
                 placeholder = { Text("Search movies, filenames, Archive IDs") },
                 colors = fieldColors(), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QueueMode.entries.forEach { q -> Chip(q.label, m.mode == q, { m.mode = q }) }
+                QueueMode.entries.forEach { q -> Chip("${q.label} · ${counts[q] ?: 0}", m.mode == q, { m.mode = q }) }
                 Chip("English only", m.englishOnly, { m.changeEnglishOnly(!m.englishOnly) }, C.good)
-                Chip("Whole videos only", m.wholeOnly, { m.changeWholeOnly(!m.wholeOnly) }, C.good)
-                Chip("Sound problems", m.soundOnly, { m.soundOnly = !m.soundOnly }, C.warn)
             }
-            if (m.robot.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val counts = remember(m.robot) { m.robot.values.groupingBy { it.verdict }.eachCount() }
-                Chip("Robot: any", m.robotFilter == null, { m.robotFilter = null }, C.gold)
-                Chip("Robot says good · ${counts["good"] ?: 0}", m.robotFilter == "good", { m.robotFilter = if (m.robotFilter == "good") null else "good" }, C.good)
-                Chip("Robot says bad · ${counts["bad"] ?: 0}", m.robotFilter == "bad", { m.robotFilter = if (m.robotFilter == "bad") null else "bad" }, C.bad, Color(0xFF2A0C08))
-                Chip("Robot unsure · ${counts["review"] ?: 0}", m.robotFilter == "review", { m.robotFilter = if (m.robotFilter == "review") null else "review" }, C.warn, Color(0xFF2A1A06))
-            }
-            if (m.robot.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val kinds = remember(m.files, m.robot, m.decisions) {
-                    m.files.asSequence().filter { !it.isCopy }.groupingBy { m.kindFor(it) }.eachCount()
-                }
-                Chip("Any kind", m.kindFilter == null, { m.kindFilter = null }, C.gold)
-                BUCKETS.forEach { b ->
-                    val n = kinds[b.id] ?: 0
-                    if (n > 0 || m.kindFilter == b.id) Chip("${b.label} · $n", m.kindFilter == b.id,
-                        { m.kindFilter = if (m.kindFilter == b.id) null else b.id }, C.gold)
-                }
-            }
-            if (m.englishOnly && m.foreign.isNotEmpty()) Text("${m.foreign.size} files that look non-English are hidden. Tap “English only” to show them.",
+            if (m.mode == QueueMode.SURE) Text("The bot put these on the TV shelves by itself. Look one over any time, or mark it bad to take it off.",
                 color = C.muted, fontSize = 12.sp)
-            if (m.wholeOnly && m.split.isNotEmpty()) Text("${m.split.size} files that are pieces of a split video are hidden. Tap “Whole videos only” to show them.",
+            if (m.englishOnly && m.foreign.isNotEmpty()) Text("${m.foreign.size} files that look non-English are hidden.",
                 color = C.muted, fontSize = 12.sp)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Any shelf", m.shelfFilter == null, { m.shelfFilter = null }, C.blue, Color(0xFF0E2238))
-                m.shelves.forEach { s -> Chip(s.name, m.shelfFilter == s.id, { m.shelfFilter = if (m.shelfFilter == s.id) null else s.id }, C.blue, Color(0xFF0E2238)) }
-            }
-            if (m.tags.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                m.tags.forEach { t -> Chip("#$t", m.tagFilter == t, { m.tagFilter = if (m.tagFilter == t) null else t }, C.good) }
-            }
         }
         if (m.loadStatus.isNotEmpty()) Text(m.loadStatus, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
         val rows = remember(list) {
-            val counts = list.groupingBy { it.titleId }.eachCount()
-            val out = ArrayList<Any>(list.size + counts.size)
+            val n = list.groupingBy { it.titleId }.eachCount()
+            val out = ArrayList<Any>(list.size + n.size)
             var last = ""
             for (f in list) {
-                if (f.titleId != last) { out.add(Header(f.titleId, f.titleName, counts[f.titleId] ?: 0)); last = f.titleId }
+                if (f.titleId != last) { out.add(Header(f.titleId, f.titleName, n[f.titleId] ?: 0)); last = f.titleId }
                 out.add(f)
             }
             out
@@ -193,32 +163,13 @@ fun QueueScreen(m: AppModel) {
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp))
                 }
             }
-            if (list.isEmpty() && m.files.isNotEmpty()) item { Text("Nothing here. Try another filter.", color = C.muted, modifier = Modifier.padding(24.dp)) }
-        }
-        val agreeable = list.count { m.decisionFor(it)?.status == null && m.robotFor(it)?.verdict.let { v -> v == "good" || v == "bad" } }
-        if (m.robotFilter in setOf("good", "bad") && agreeable > 0) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { confirmAll = true }) { Text("Agree with the robot on all $agreeable shown", color = C.gold, fontWeight = FontWeight.SemiBold) }
-        }
-        if (m.lastBulk.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Agreed on ${m.lastBulk.size} files", color = C.muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = { m.undoBulk() }) { Text("Undo", color = C.gold) }
+            if (list.isEmpty() && m.files.isNotEmpty()) item { Text("Nothing here.", color = C.muted, modifier = Modifier.padding(24.dp)) }
         }
         val first = list.firstOrNull { m.decisionFor(it)?.status == null }
         if (first != null) Button(onClick = { m.open(Screen.Review(first.id)) }, shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = C.gold, contentColor = Color(0xFF1A1206)),
-            modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp)) { Text("Start reviewing · next unreviewed file", fontWeight = FontWeight.Bold) }
+            modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp)) { Text("Start reviewing", fontWeight = FontWeight.Bold) }
         }
-    }
-    if (confirmAll) {
-        val target = list
-        val n = target.count { m.decisionFor(it)?.status == null && m.robotFor(it)?.verdict.let { v -> v == "good" || v == "bad" } }
-        AlertDialog(onDismissRequest = { confirmAll = false }, containerColor = C.panel,
-            title = { Text("Agree on $n files?", color = C.text) },
-            text = { Text("Each one gets the robot's call (" + (if (m.robotFilter == "bad") "bad, with its reason" else "good") +
-                "). You can undo this right after, or change any file later. These don't count toward the robot's fair test.",
-                color = C.muted) },
-            confirmButton = { TextButton(onClick = { m.agreeWithRobotAll(target); confirmAll = false }) { Text("Agree on $n", color = C.gold) } },
-            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text("Cancel", color = C.muted) } })
     }
 }
 
@@ -234,9 +185,8 @@ private fun FileRow(m: AppModel, f: FileItem) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(f.name, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                m.kindFor(f)?.let { Tag(bucketLabel(it)) }
-                val rel = m.releaseFor(f)
-                if (rel.media != null) Tag("${rel.media} ${rel.year ?: ""}".trim(), if (rel.media == "VHS") C.blueBg else C.panel2, if (rel.media == "VHS") C.blue else C.text)
+                f.releaseYear?.let { Tag("$it VHS", C.blueBg, C.blue) }
+                m.genresFor(f).firstOrNull()?.let { Tag(it) }
                 soundLabel(sound?.verdict)?.takeIf { sound?.verdict in SOUND_PROBLEMS }?.let { Tag(it, C.warnBg, C.warn) }
                 when (d?.status) {
                     "good" -> Tag("Good", Color(0xFF1F3D27), Color(0xFFA8E6B4))
@@ -244,12 +194,11 @@ private fun FileRow(m: AppModel, f: FileItem) {
                 }
                 if (d?.status == null) m.robotFor(f)?.let { g ->
                     when (g.verdict) {
-                        "good" -> Tag("Robot: good", C.panel2, C.good)
-                        "bad" -> Tag("Robot: " + (g.reason ?: "bad"), C.panel2, C.bad)
-                        else -> Tag("Robot: unsure", C.panel2, C.warn)
+                        "good" -> Tag("Bot sure", C.panel2, C.good)
+                        "bad" -> Tag("Bot: " + (g.reason ?: "bad"), C.panel2, C.bad)
+                        else -> Tag("Bot not sure", C.panel2, C.warn)
                     }
                 }
-                f.partLabel?.let { Tag(it) }
             }
         }
     }

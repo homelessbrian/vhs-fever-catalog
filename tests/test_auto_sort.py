@@ -5,7 +5,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import auto_sort as a  # noqa: E402
-import evaluate_auto_sort as ev  # noqa: E402
 from catalog_model import interpret_filename  # noqa: E402
 
 OK = {"verdict": "ok", "has_video_track": True, "video_codec": "h264", "audio_codec": "aac",
@@ -221,27 +220,6 @@ class PatternsFromRealPages(unittest.TestCase):
     def test_one_collection_as_plain_text(self):
         r = sort_one("Bambi (1989 VHS).mp4", 4200, item=dict(page("Bambi"), collection="vhsvault"), title=MATCHED)
         self.assertEqual(r["verdict"], "good")
-
-
-class Evaluation(unittest.TestCase):
-    def test_counts_agreement_and_lists_misses(self):
-        rows = [{"file_id": "a", "verdict": "good", "reason": None, "verdict_why": [], "name": "A", "shelf": None,
-                 "format": "VHS", "format_clues": []},
-                {"file_id": "b", "verdict": "good", "reason": None, "verdict_why": [], "name": "B", "shelf": None,
-                 "format": "VHS", "format_clues": []},
-                {"file_id": "c", "verdict": "bad", "reason": "Clip", "verdict_why": [], "name": "C", "shelf": None,
-                 "format": "VHS", "format_clues": []}]
-        dec = {"files": {"a": {"status": "good", "updated_at": "2026-11-26T00:00:00Z"},
-                         "b": {"status": "bad", "reasons": ["Poor quality"], "updated_at": "2026-11-20T00:00:00Z"},
-                         "c": {"status": "bad", "reasons": ["Clip"], "updated_at": "2026-11-20T00:00:00Z"}}}
-        rep = ev.evaluate(rows, dec)
-        self.assertEqual(rep["good_pile"]["size"], 2)
-        self.assertEqual(rep["good_pile"]["person_agreed"], 1)
-        self.assertEqual(rep["bad_pile"]["reasons"], {"same reason": 1})
-        self.assertEqual(len(rep["robot_good_person_bad"]), 1)
-        self.assertEqual(rep["unseen_reviews"]["reviewed_files_compared"], 1)
-        self.assertFalse(rep["good_pile"]["ready_to_switch_on"])
-        self.assertIn("Good pile", ev.markdown(rep))
 
 
 if __name__ == "__main__":

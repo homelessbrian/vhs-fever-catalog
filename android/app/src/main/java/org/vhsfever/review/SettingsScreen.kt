@@ -99,58 +99,13 @@ fun SettingsScreen(m: AppModel, installApk: (File) -> Unit) {
             }
 
             Card {
-                SectionLabel("Your shelves", C.blue)
-                Text("Every file sits on one shelf. Add your own to sort things your way.", color = C.muted, fontSize = 13.sp)
-                BUILT_IN_SHELVES.forEach { Text(it.name, color = C.muted) }
-                m.customShelves.forEach { s ->
-                    var editing by remember(s.id) { mutableStateOf(false) }
-                    var name by remember(s.id) { mutableStateOf(s.name) }
-                    if (editing) Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(name, { name = it }, singleLine = true, colors = fieldColors(), modifier = Modifier.weight(1f))
-                        TextButton(onClick = { m.renameShelf(s.id, name); editing = false }) { Text("Save", color = C.gold) }
-                    } else Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(s.name, color = C.text, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { editing = true }) { Text("Rename", color = C.gold) }
-                        TextButton(onClick = { m.deleteShelf(s.id) }) { Text("Delete", color = C.bad) }
-                    }
-                }
-                AddRow("New shelf name") { m.addShelf(it) }
-            }
-
-            Card {
-                SectionLabel("Your tags", C.good)
-                Text("Tags are extra labels — a file can have as many as you like.", color = C.muted, fontSize = 13.sp)
-                if (m.tags.isEmpty()) Text("No tags yet", color = C.muted)
-                m.tags.forEach { t ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("#$t", color = C.text, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { m.deleteTag(t) }) { Text("Delete", color = C.bad) }
-                    }
-                }
-                AddRow("New tag") { m.addTag(it) }
-            }
-
-            Card {
-                SectionLabel("Catalog")
-                Text("What to review", color = C.text, fontSize = 14.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("New pages (all batches)", m.source == "latest", { m.changeSource("latest") })
-                    Chip("Main catalog", m.source == "main", { m.changeSource("main") })
-                }
-                Text("Your reviews are kept for both; switching only changes which files are listed.", color = C.muted, fontSize = 12.sp)
-                Text("${m.files.size} files loaded · ${m.audio.size} sound checks · ${m.robot.size} robot guesses", color = C.muted, fontSize = 13.sp)
-                TextButton(onClick = { m.reloadCatalog() }) { Text("Reload catalog from GitHub", color = C.gold) }
+                SectionLabel("Movie list")
+                m.listInfo?.let { Text(it, color = C.text, fontSize = 14.sp) }
+                val movies = m.files.map { it.titleId }.distinct().size
+                Text("$movies movies · ${m.files.size} files · ${m.audio.size} sound checks", color = C.muted, fontSize = 13.sp)
+                Text("Only full-length VHS movies are listed. The bot adds more as it reads new Archive pages.", color = C.muted, fontSize = 12.sp)
+                TextButton(onClick = { m.reloadCatalog() }) { Text("Reload the list from GitHub", color = C.gold) }
             }
         }
-    }
-}
-
-@Composable
-private fun AddRow(placeholder: String, onAdd: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(text, { text = it }, singleLine = true, placeholder = { Text(placeholder) }, colors = fieldColors(),
-            modifier = Modifier.weight(1f))
-        TextButton(onClick = { onAdd(text); text = "" }, enabled = text.isNotBlank()) { Text("Add", color = C.gold) }
     }
 }

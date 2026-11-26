@@ -285,8 +285,8 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
     val rows = remember(catalog) {
         buildList {
             add("New Arrivals" to catalog.newArrivals.take(16))
-            for ((g, list) in catalog.genreShelves.take(3)) add(g to list)
-            for ((shelf, list) in catalog.shelves) add(shelf to list)
+            // Every genre gets its own shelf, biggest first.
+            for ((g, list) in catalog.genreShelves) add(g to list)
         }.filter { it.second.isNotEmpty() }
     }
     val restoreRow = rows.indexOfFirst { r -> r.second.any { it.key == restoreKey } }
