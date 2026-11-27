@@ -15,7 +15,14 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -62,6 +69,8 @@ class PlayerActivity : ComponentActivity() {
     private var subRefs = listOf<Pair<Tracks.Group, Int>>()
     /** A key whose press we used (e.g. to bring up the deck), so its release doesn't also press a button. */
     private var swallowUp = -1
+    /** Which loading screen this movie gets: the rewinding tape or the tape going into the VCR. */
+    private val look = LoadingLook.entries.random()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,7 +104,7 @@ class PlayerActivity : ComponentActivity() {
             useController = false
             keepScreenOn = true
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)  // our own animations instead (Loading.kt)
             isFocusable = false
         }
         frame = FrameLayout(this).apply {
@@ -112,7 +121,13 @@ class PlayerActivity : ComponentActivity() {
         val deck = ComposeView(this).apply {
             setContent {
                 StoreTheme {
+                  Box(Modifier.fillMaxSize()) {
                     VcrOverlay(vcr, actions())
+                    // full screen until the first picture, then a small tape whenever it stops to load more
+                    val starting = !vcr.started && !vcr.gaveUp
+                    val cover by animateFloatAsState(if (starting) 1f else 0f, tween(if (starting) 0 else 450), label = "loading")
+                    if (cover > 0f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = cover }) { LoadingScreen(look) }
+                    else if (vcr.loading && !vcr.ended && !vcr.stopped && !vcr.gaveUp) BufferingTape()
                     // the tape counter
                     LaunchedEffect(Unit) {
                         while (true) {
@@ -127,6 +142,7 @@ class PlayerActivity : ComponentActivity() {
                             delay(5000); vcr.visible = false
                         }
                     }
+                  }
                 }
             }
         }
@@ -140,8 +156,11 @@ class PlayerActivity : ComponentActivity() {
             override fun onPlayerError(error: PlaybackException) {
                 tryNext("${error.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' ')}")
             }
+            override fun onRenderedFirstFrame() { vcr.started = true }
             override fun onTracksChanged(tracks: Tracks) {
                 readTracks(tracks)
+                // a tape with sound but no picture never draws a first frame
+                if (tracks.groups.isNotEmpty() && tracks.groups.none { it.type == C.TRACK_TYPE_VIDEO }) vcr.started = true
                 if (videoCheckDone || tracks.groups.isEmpty()) return
                 val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
                 if (video.isEmpty()) return
@@ -255,6 +274,11 @@ class PlayerActivity : ComponentActivity() {
         val down = e.action == KeyEvent.ACTION_DOWN
         val code = e.keyCode
         if (!down && code == swallowUp) { swallowUp = -1; return true }
+        // While the loading screen covers everything, Back leaves and the other keys wait.
+        if (!vcr.started && !vcr.gaveUp) {
+            if (code == KeyEvent.KEYCODE_BACK && down && e.repeatCount == 0) finish()
+            return true
+        }
         fun used(block: () -> Unit): Boolean { if (down) { if (e.repeatCount == 0) swallowUp = code; block() }; return true }
         when (code) {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK ->
@@ -288,6 +312,7 @@ class PlayerActivity : ComponentActivity() {
     private fun start(i: Int, resume: Boolean, fromMs: Long = 0L) {
         index = i
         videoCheckDone = false
+        vcr.started = false
         player.setMediaItem(MediaItem.fromUri(urls[i]))
         val pos = if (resume) prefs.getLong(fileId, 0L) else fromMs
         if (pos > 0) player.seekTo(pos)
@@ -305,6 +330,7 @@ class PlayerActivity : ComponentActivity() {
             if (pos > 0) player.seekTo(pos)
         } else {
             player.stop()
+            vcr.gaveUp = true
             showBanner("This tape won’t play on this TV.\n\n" + problems.joinToString("\n"))
             vcr.show("eject")
         }

@@ -207,8 +207,9 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
                     },
                     onCurtainReset = { prefs.edit().remove("curtain_pin").apply(); curtainPin = null; Curtain.open = false })
             }
-            else -> Text(status, modifier = Modifier.align(Alignment.Center).padding(48.px),
+            status.startsWith("Couldn’t") -> Text(status, modifier = Modifier.align(Alignment.Center).padding(48.px),
                 style = TextStyle(fontFamily = Type.Barlow, fontSize = 26.fs, color = Ink.Cream, textAlign = TextAlign.Center))
+            else -> ShelvesLoading()
         }
         val u = update
         if (u is Updater.State.Downloading) UpdateBadge("Downloading update… ${u.percent}%", Modifier.align(Alignment.BottomEnd))

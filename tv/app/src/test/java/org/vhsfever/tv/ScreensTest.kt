@@ -174,6 +174,21 @@ abstract class ScreensBase(private val tag: String) {
     @Test fun player() = player("5-player", null)
     @Test fun playerAspectMenu() = player("5-player-aspect", VcrMenu.Aspect)
 
+    // The loading animations (Loading.kt)
+    @Test fun loadingRewind() { show { LoadingScreen(LoadingLook.Rewind) }; shot("6-loading-rewind") }
+    @Test fun loadingDeck() { show { LoadingScreen(LoadingLook.Deck) }; shot("6-loading-deck") }
+    @Test fun loadingShelves() { show { ShelvesLoading() }; shot("6-loading-shelves") }
+    @Test fun buffering() {
+        show {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(androidx.compose.ui.graphics.Color(0xFF2B1446), androidx.compose.ui.graphics.Color(0xFFE0703A))))) {
+                VcrOverlay(VcrState("Night of the Creeps").apply { visible = false }, VcrActions())
+                BufferingTape()
+            }
+        }
+        shot("6-buffering")
+    }
+
     @Test fun detailThreeQuarter() = detail("Bug", 24f, "2-detail-34")
     @Test fun detailSpine() = detail("Bug", 90f, "2-detail-spine")
     @Test fun detailLongText() = detail("Monsters", 24f, "2-detail-long", longText = true)
