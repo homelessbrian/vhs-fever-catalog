@@ -135,8 +135,8 @@ private fun BackStudio(b: BackText, color: Color, modifier: Modifier = Modifier)
         colorFilter = ColorFilter.tint(color), contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,
         modifier = modifier.size(52.px, 16.px))
     else art?.studio?.let {
-        Text(it.uppercase(), modifier = modifier.width(70.px), maxLines = 2, overflow = TextOverflow.Ellipsis,
-            style = monoStyle(color))
+        FitText(it.uppercase(), style = monoStyle(color), maxLines = 2, minScale = 0.6f, wordsWhole = true,
+            modifier = modifier.width(84.px))
     }
 }
 
@@ -147,7 +147,7 @@ private fun BackInfoRow(b: BackText, ink: Color, modifier: Modifier = Modifier, 
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.px)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.px)) {
                 BackRating(b, ink)
-                Text(b.facts, style = monoStyle(ink), maxLines = 1)
+                FitText(b.facts, style = monoStyle(ink), minScale = 0.6f)
             }
             Text(b.tapeText, style = monoStyle(ink.alpha(0.7f)), maxLines = 1, overflow = TextOverflow.Ellipsis)
             BackStudio(b, ink)
@@ -181,7 +181,7 @@ private fun ColumnScope.BackOverview(b: BackText, color: Color, maxLines: Int = 
 @Composable
 private fun BackClassic(b: BackText, c: BoxColors) {
     Column(Modifier.fillMaxSize().background(Paper).padding(10.px), verticalArrangement = Arrangement.spacedBy(6.px)) {
-        b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c1), maxLines = 2, minScale = 0.7f, modifier = Modifier.fillMaxWidth()) }
+        b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c1), maxLines = 2, minScale = 0.55f, modifier = Modifier.fillMaxWidth()) }
         Row(Modifier.fillMaxWidth().background(c.c2).padding(3.px), horizontalArrangement = Arrangement.spacedBy(3.px)) {
             BackPic(b.pic(0), Modifier.weight(1.85f).height(66.px), Paper)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.px)) {
@@ -211,7 +211,7 @@ private fun BackBigStill(b: BackText, c: BoxColors) {
         }
         Column(Modifier.fillMaxSize().padding(start = 10.px, end = 10.px, top = 4.px, bottom = 10.px),
             verticalArrangement = Arrangement.spacedBy(6.px)) {
-            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c3, 11f), maxLines = 2, minScale = 0.7f, modifier = Modifier.fillMaxWidth()) }
+            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c3, 11f), maxLines = 2, minScale = 0.55f, modifier = Modifier.fillMaxWidth()) }
             BackOverview(b, Color(0xFFDDD5BF), 10)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.px)) {
                 BackPic(b.pic(1), Modifier.weight(1f).height(40.px), c.c3)
@@ -231,7 +231,7 @@ private fun BackColorBand(b: BackText, c: BoxColors) {
         Column(Modifier.fillMaxWidth().background(c.c1).padding(10.px), verticalArrangement = Arrangement.spacedBy(4.px)) {
             FitText(b.name, style = titleStyle(Paper, 24f), maxLines = 2, minScale = 0.5f, wordsWhole = true,
                 modifier = Modifier.fillMaxWidth())
-            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c3, 10f), maxLines = 2, minScale = 0.7f, modifier = Modifier.fillMaxWidth()) }
+            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c3, 10f), maxLines = 2, minScale = 0.55f, modifier = Modifier.fillMaxWidth()) }
         }
         if (b.pictures.isNotEmpty()) Row(Modifier.fillMaxWidth().background(c.c2).padding(2.px), horizontalArrangement = Arrangement.spacedBy(2.px)) {
             for (i in 0..2) BackPic(b.pic(i), Modifier.weight(1f).height(42.px))
@@ -251,14 +251,14 @@ private fun BackFilmStrip(b: BackText, c: BoxColors) {
     Row(Modifier.fillMaxSize().background(c.c2)) {
         Column(Modifier.weight(1f).fillMaxHeight().padding(start = 9.px, end = 7.px, top = 10.px, bottom = 10.px),
             verticalArrangement = Arrangement.spacedBy(6.px)) {
-            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c3, 11f), maxLines = 3, minScale = 0.65f, modifier = Modifier.fillMaxWidth()) }
+            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c3, 11f), maxLines = 3, minScale = 0.55f, modifier = Modifier.fillMaxWidth()) }
             FitText(b.name, style = titleStyle(Paper, 16f), maxLines = 2, minScale = 0.55f, wordsWhole = true, modifier = Modifier.fillMaxWidth())
             BackOverview(b, Color(0xFFE6DEC9), 14)
             Box(Modifier.fillMaxWidth().height(1.px).background(c.c3))
             BackCredits(b, c.c3, Paper, stacked = true)
             Column(verticalArrangement = Arrangement.spacedBy(4.px)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.px)) {
-                    BackRating(b, Paper); Text(b.facts, style = monoStyle(Paper), maxLines = 1)
+                    BackRating(b, Paper); FitText(b.facts, style = monoStyle(Paper), minScale = 0.55f)
                 }
                 BackStudio(b, Paper)
                 Barcode(b.barcode, Modifier.size(52.px, 20.px))
@@ -296,7 +296,7 @@ private fun BackSnapshots(b: BackText, c: BoxColors) {
         Box(Modifier.fillMaxWidth().height(6.px).background(c.c1))
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.px, vertical = 8.px), verticalArrangement = Arrangement.spacedBy(5.px)) {
             FitText(b.name, style = titleStyle(c.c1, 20f), maxLines = 2, minScale = 0.55f, wordsWhole = true, modifier = Modifier.fillMaxWidth())
-            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c2, 9.5f), maxLines = 2, minScale = 0.7f, modifier = Modifier.fillMaxWidth()) }
+            b.tagline?.let { FitText(it.uppercase(), style = tagStyle(c.c2, 9.5f), maxLines = 2, minScale = 0.55f, modifier = Modifier.fillMaxWidth()) }
             BoxWithConstraints(Modifier.fillMaxWidth().height(100.px)) {
                 val pw = maxWidth * 0.46f
                 PhotoPrint(b.pic(0), pw, -5f, Modifier.offset(x = 2.px, y = 3.px))
