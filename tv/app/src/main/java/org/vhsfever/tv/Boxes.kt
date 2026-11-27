@@ -187,8 +187,8 @@ private fun SpineCap(dvd: Boolean, height: Dp, big: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(if (dvd) "DVD" else "VHS", style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold,
             fontSize = (if (big) (if (dvd) 11 else 16) else 9).fs, letterSpacing = (if (big) 2f else 1f).fs, color = Color(0xFF111111)))
-        if (big && !dvd) Text("HI-FI · STEREO", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Type.Mono,
-            fontSize = 6.fs, letterSpacing = 0.5f.fs, color = Color(0xFF3A3A3A)))
+        if (big && !dvd) Text("HI-FI", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Type.Mono,
+            fontSize = 7.fs, letterSpacing = 1.5f.fs, color = Color(0xFF3A3A3A)))
     }
     Box(Modifier.fillMaxWidth().height(if (big) 4.px else 2.px).background(Ink.Gold))
 }
