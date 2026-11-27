@@ -23,7 +23,7 @@ class WearTest {
         val counts = keys.map { WearPlan.plan(it, WearFace.Front).size }
         assertTrue(counts.count { it <= 1 } >= 10)
         assertTrue(counts.count { it >= 4 } >= 20)
-        assertTrue(counts.all { it <= 9 })
+        assertTrue(counts.all { it <= 12 })
     }
 
     @Test fun spinesGetSpineWearOnly() {

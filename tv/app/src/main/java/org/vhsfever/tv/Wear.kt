@@ -35,7 +35,8 @@ sealed class WearMark {
     data class Edge(val edge: Int, val from: Float, val to: Float, override val s: Float, val seed: Int) : WearMark()
     /** A fold line pressed into the card. */
     data class Crease(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val bend: Float, override val s: Float) : WearMark()
-    data class Scratch(val x1: Float, val y1: Float, val x2: Float, val y2: Float, override val s: Float) : WearMark()
+    /** A few fine scratches together, around ([x], [y]), running roughly at [angle]. */
+    data class Scratch(val x: Float, val y: Float, val len: Float, val angle: Float, override val s: Float, val seed: Int) : WearMark()
     /** Sun fading coming in from one edge. */
     data class Fade(val edge: Int, val reach: Float, override val s: Float) : WearMark()
     /** What's left of a rental sticker that was peeled off: a torn scrap, or just the glue mark. */
@@ -74,26 +75,25 @@ object WearPlan {
         // Corners: always the most worn part of a box. More of them on a well-loved one.
         val corners = (0..3).shuffled(r).take(
             when { cond < 0.3f -> r.nextInt(0, 2); cond < 0.75f -> r.nextInt(1, 3); else -> r.nextInt(2, 5) })
-        val cornerSize = if (face == WearFace.Spine) 0.22f else 0.07f
-        for (c in corners) {
-            // a spine only has top and bottom ends to wear
-            out += WearMark.Corner(c, cornerSize * f(0.6f, 1.4f), str(), r.nextInt())
+        val cornerSize = if (face == WearFace.Spine) 0.3f else 0.13f
+        for (c in corners) out += WearMark.Corner(c, cornerSize * f(0.6f, 1.5f), str(), r.nextInt())
+
+        // White showing along the folds: on every box that's been rented more than a few times.
+        val edges = when { cond < 0.3f -> 0; cond < 0.75f -> r.nextInt(1, 3); else -> r.nextInt(2, 4) }
+        for (e in (if (face == WearFace.Spine) listOf(1, 3) else listOf(0, 1, 2, 3)).shuffled(r).take(edges)) {
+            val from = f(0f, 0.45f)
+            out += WearMark.Edge(e, from, (from + f(0.3f, 0.8f)).coerceAtMost(1f), str(), r.nextInt())
         }
 
         // Then a few other things, a different handful on every box.
         val pool = when (face) {
-            WearFace.Front -> listOf("edge", "edge", "crease", "scratch", "sticker", "tape", "smudge", "scratch")
-            WearFace.Back -> listOf("edge", "edge", "crease", "sticker", "smudge", "scratch")
-            WearFace.Spine -> listOf("edge", "rub", "rub", "scratch")
+            WearFace.Front -> listOf("crease", "scratch", "sticker", "tape", "smudge")
+            WearFace.Back -> listOf("crease", "sticker", "smudge", "scratch")
+            WearFace.Spine -> listOf("rub", "scratch")
         }
         val extra = when { cond < 0.3f -> r.nextInt(0, 2); cond < 0.75f -> r.nextInt(1, 3); else -> r.nextInt(2, 4) }
-        val picked = pool.shuffled(r).distinct().take(extra)
+        val picked = pool.shuffled(r).take(extra)
         for (kind in picked) out += when (kind) {
-            "edge" -> {
-                val from = f(0f, 0.5f)
-                WearMark.Edge(if (face == WearFace.Spine) listOf(1, 3).random(r) else r.nextInt(4),
-                    from, (from + f(0.25f, 0.7f)).coerceAtMost(1f), str(), r.nextInt())
-            }
             "crease" -> {
                 // across a corner, like the box was bent in a return slot
                 val c = r.nextInt(4)
@@ -106,10 +106,7 @@ object WearPlan {
                 }
                 WearMark.Crease(x1, y1, x2, y2, f(-0.03f, 0.03f), str(0.6f))
             }
-            "scratch" -> {
-                val x = f(0.1f, 0.9f); val y = f(0.1f, 0.9f); val len = f(0.08f, 0.3f); val ang = f(0f, 6.283f)
-                WearMark.Scratch(x, y, x + len * kotlin.math.cos(ang), y + len * kotlin.math.sin(ang), str(0.4f))
-            }
+            "scratch" -> WearMark.Scratch(f(0.15f, 0.85f), f(0.1f, 0.9f), f(0.08f, 0.18f), f(0f, 3.14f), str(0.4f), r.nextInt())
             "sticker" -> {
                 val top = r.nextBoolean()
                 WearMark.Sticker(f(0.06f, 0.6f), if (top) f(0.03f, 0.18f) else f(0.72f, 0.86f), f(0.22f, 0.34f), f(0.08f, 0.12f),
@@ -170,16 +167,32 @@ fun DrawScope.drawWear(marks: List<WearMark>) {
         is WearMark.Rub -> {
             val r = Random(m.seed)
             val y0 = h * m.from; val y1 = h * m.to
-            drawRect(Card.copy(alpha = 0.08f * m.s), Offset(0f, y0), Size(w, y1 - y0))
-            repeat(40) {
+            repeat(5) {
+                val c = Offset(w * (0.2f + r.nextFloat() * 0.6f), y0 + r.nextFloat() * (y1 - y0))
+                val rad = w * (0.5f + r.nextFloat() * 0.6f)
+                drawCircle(Brush.radialGradient(listOf(Card.copy(alpha = 0.2f * m.s), Color.Transparent), center = c, radius = rad),
+                    radius = rad, center = c)
+            }
+            // rubbed along its length, from sliding in and out of the shelf
+            repeat(16) {
+                val x = w * (0.08f + r.nextFloat() * 0.84f)
                 val y = y0 + r.nextFloat() * (y1 - y0)
-                val x = r.nextFloat() * w * 0.5f
-                drawLine(Card.copy(alpha = (0.1f + r.nextFloat() * 0.25f) * m.s), Offset(x, y),
-                    Offset((x + w * (0.3f + r.nextFloat() * 0.7f)).coerceAtMost(w), y), strokeWidth = 0.5f + r.nextFloat() * u * 0.02f)
+                drawLine(Card.copy(alpha = (0.15f + r.nextFloat() * 0.3f) * m.s), Offset(x, y),
+                    Offset(x + (r.nextFloat() - 0.5f) * w * 0.1f, (y + (y1 - y0) * (0.05f + r.nextFloat() * 0.2f)).coerceAtMost(y1)),
+                    strokeWidth = maxOf(0.6f, w * 0.02f), cap = StrokeCap.Round)
             }
         }
-        is WearMark.Scratch -> drawLine(Card.copy(alpha = 0.3f * m.s), Offset(w * m.x1, h * m.y1), Offset(w * m.x2, h * m.y2),
-            strokeWidth = maxOf(0.8f, u * 0.006f), cap = StrokeCap.Round)
+        is WearMark.Scratch -> {
+            val r = Random(m.seed)
+            repeat(2 + r.nextInt(4)) {
+                val a = m.angle + (r.nextFloat() - 0.5f) * 0.35f
+                val l = u * m.len * (0.4f + r.nextFloat() * 0.8f)
+                val x = w * m.x + (r.nextFloat() - 0.5f) * u * 0.12f
+                val y = h * m.y + (r.nextFloat() - 0.5f) * u * 0.12f
+                drawLine(Card.copy(alpha = (0.25f + r.nextFloat() * 0.3f) * m.s), Offset(x, y),
+                    Offset(x + l * kotlin.math.cos(a), y + l * kotlin.math.sin(a)), strokeWidth = maxOf(0.6f, u * 0.004f), cap = StrokeCap.Round)
+            }
+        }
         is WearMark.Crease -> {
             val p = Path().apply {
                 moveTo(w * m.x1, h * m.y1)
@@ -205,15 +218,19 @@ fun DrawScope.drawWear(marks: List<WearMark>) {
             if (m.scrap) {
                 // a torn scrap still stuck on: straight along the bottom, ripped along the top
                 val p = Path().apply {
+                    // left edge, bottom edge, then the rip back across the top and down the right
+                    val right = x0 + sw * (0.5f + r.nextFloat() * 0.5f)
+                    val tearTop = y0 + sh * (0.1f + r.nextFloat() * 0.3f)
                     moveTo(x0, y0 + sh)
-                    lineTo(x0 + sw * (0.55f + r.nextFloat() * 0.45f), y0 + sh)
-                    var x = x0 + sw * (0.55f + r.nextFloat() * 0.4f)
-                    lineTo(x, y0 + sh * (0.3f + r.nextFloat() * 0.4f))
-                    val steps = 7
-                    for (i in 1..steps) {
-                        x -= (x - x0) / (steps - i + 1)
-                        lineTo(x, y0 + sh * (r.nextFloat() * 0.6f))
+                    lineTo(right, y0 + sh)
+                    var y = y0 + sh
+                    while (y > tearTop + sh * 0.12f) { y -= sh * 0.12f; lineTo(right + (r.nextFloat() - 0.5f) * sw * 0.05f, y) }
+                    var x = right
+                    while (x > x0 + sw * 0.05f) {
+                        x -= sw * 0.06f
+                        lineTo(x, tearTop + (r.nextFloat() - 0.4f) * sh * 0.22f)
                     }
+                    lineTo(x0, tearTop)
                     close()
                 }
                 drawPath(p, Card.copy(alpha = 0.9f * minOf(1f, m.s + 0.3f)))
@@ -224,35 +241,37 @@ fun DrawScope.drawWear(marks: List<WearMark>) {
             val r = Random(m.seed)
             val along = if (m.edge == 0 || m.edge == 2) w else h
             val a0 = along * m.from; val a1 = along * m.to
-            val depth = u * 0.03f
+            val depth = u * 0.035f
             // a faint pale line where the fold has rubbed, then flecks of white card
-            line(m.edge, a0, a1, 0f, Card.copy(alpha = 0.25f * m.s), maxOf(0.8f, u * 0.008f))
-            val n = (12 + (a1 - a0) / u * 30).toInt()
+            line(m.edge, a0, a1, 0f, Card.copy(alpha = 0.45f * m.s), maxOf(1f, u * 0.014f))
+            val n = (20 + (a1 - a0) / u * 60).toInt()
             repeat(n) {
                 val p = a0 + r.nextFloat() * (a1 - a0)
                 val len = u * (0.005f + r.nextFloat() * 0.035f)
                 val inset = r.nextFloat() * r.nextFloat() * depth
-                line(m.edge, p, (p + len).coerceAtMost(a1), inset, Card.copy(alpha = (0.35f + r.nextFloat() * 0.55f) * m.s),
-                    maxOf(0.6f, u * (0.003f + r.nextFloat() * 0.01f)))
+                line(m.edge, p, (p + len).coerceAtMost(a1), inset, Card.copy(alpha = (0.5f + r.nextFloat() * 0.5f) * m.s),
+                    maxOf(0.8f, u * (0.005f + r.nextFloat() * 0.014f)))
             }
         }
         is WearMark.Corner -> {
             val r = Random(m.seed)
             val c = when (m.corner) { 0 -> Offset(0f, 0f); 1 -> Offset(w, 0f); 2 -> Offset(w, h); else -> Offset(0f, h) }
             val rad = u * m.size
-            drawCircle(Brush.radialGradient(listOf(Card.copy(alpha = 0.65f * m.s), Card.copy(alpha = 0.2f * m.s), Color.Transparent),
+            // rubbed pale, worn right through to the card at the tip
+            drawCircle(Brush.radialGradient(listOf(Card.copy(alpha = 0.55f * m.s), Card.copy(alpha = 0.18f * m.s), Color.Transparent),
                 center = c, radius = rad), radius = rad, center = c)
+            drawCircle(Brush.radialGradient(listOf(Card.copy(alpha = 0.95f * m.s), Card.copy(alpha = 0.6f * m.s), Color.Transparent),
+                center = c, radius = rad * 0.38f), radius = rad * 0.38f, center = c)
             // ragged flecks running off along both sides of the corner
             val dx = if (c.x == 0f) 1f else -1f; val dy = if (c.y == 0f) 1f else -1f
-            repeat(10) {
+            repeat(18) {
                 val alongX = r.nextBoolean()
-                val d = rad * (0.4f + r.nextFloat() * 1.6f)
-                val off = r.nextFloat() * rad * 0.18f
+                val d = rad * (0.2f + r.nextFloat() * 1.5f)
+                val off = r.nextFloat() * r.nextFloat() * rad * 0.25f
                 val p = if (alongX) Offset(c.x + dx * d, c.y + dy * off) else Offset(c.x + dx * off, c.y + dy * d)
-                drawCircle(Card.copy(alpha = (0.3f + r.nextFloat() * 0.6f) * m.s), radius = maxOf(0.6f, u * (0.002f + r.nextFloat() * 0.008f)), center = p)
+                drawCircle(Card.copy(alpha = (0.4f + r.nextFloat() * 0.6f) * m.s),
+                    radius = maxOf(0.7f, u * (0.003f + r.nextFloat() * 0.012f)), center = p)
             }
-            // the very tip worn right through
-            drawCircle(Card.copy(alpha = 0.85f * m.s), radius = maxOf(1f, rad * 0.18f), center = c)
         }
     }
 }
