@@ -33,7 +33,7 @@ class HolidaysTest {
         assertEquals(listOf("Thanksgiving"), names("2026-11-26"))
         assertEquals(listOf("Christmas"), names("2026-11-27"))
         assertEquals(listOf("Christmas"), names("2026-12-03"))
-        assertEquals(listOf<String>(), names("2027-11-01"))
+        assertEquals(listOf("Thanksgiving"), names("2027-11-25"))
         assertEquals(listOf("Christmas"), names("2027-11-26"))   // Thanksgiving 2027 is Nov 25
         // between Christmas and New Year's both are up; the nearer one leads
         assertEquals(listOf("Christmas", "New Year's"), names("2026-12-27"))
