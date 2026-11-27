@@ -97,8 +97,10 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
     fun shelfTitles(name: String): List<Title> = when (name) {
         MANAGERS_PICKS -> managerPicks
         CULT_CLASSICS -> cultClassics
-        else -> Holidays.ALL.firstOrNull { it.name == name }?.let { h -> titles.filter { Holidays.matches(it, h) } }
-            ?: titles.filter { it.section == name }
+        else -> {
+            val h: Holiday? = Holidays.ALL.firstOrNull { it.name == name }
+            if (h != null) titles.filter { t -> Holidays.matches(t, h) } else titles.filter { t -> t.section == name }
+        }
     }
 
     /** The displays at the front of the store right now: holidays first, then Manager's Picks and Cult Classics. */

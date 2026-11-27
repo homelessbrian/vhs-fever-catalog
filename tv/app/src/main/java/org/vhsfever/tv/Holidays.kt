@@ -60,7 +60,7 @@ object Holidays {
                 "christmas morning", "christmas lights", "nativity of jesus", "christmas elf"),
             // plain "Santa" would catch Santa Fe and Santa Monica
             words("christmas", "x-?mas", "santa claus", "santa'?s", "the santa clause", "scrooge", "grinch", "yuletide",
-                "rudolph the red-nosed")),
+                "rudolph the red-nosed"),
             opens = { y -> thanksgiving(y).plusDays(1) }),
     )
 
