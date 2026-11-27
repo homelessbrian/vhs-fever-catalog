@@ -498,11 +498,11 @@ private fun KidRating(k: Sleeve, th: KidsTheme, color: Color) {
 /** 15 · Sunny yellow with a scribbled crayon edge and chunky round letters. */
 @Composable
 private fun Crayon(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().background(Sunny)) {
-    Band(k, 0.36f, Modifier.drawBehind { scribble(th.trimColor, k.u(this), atTop = false) }, arrange = Arrangement.SpaceBetween) {
+    Band(k, 0.36f, Modifier.clipToBounds().drawBehind { scribble(th.trimColor, k.u(this), atTop = false) }, arrange = Arrangement.SpaceBetween) {
         KidTag(k, th); Studio(k, th.ink, k.kid(th, th.ink, 4.6f))
     }
     Poster(k)
-    Band(k, 0.64f, Modifier.drawBehind { scribble(th.ink, k.u(this), atTop = true) }) {
+    Band(k, 0.64f, Modifier.clipToBounds().drawBehind { scribble(th.ink, k.u(this), atTop = true) }) {
         KidRating(k, th, th.ink); Text(k.short, style = k.kid(th, th.ink, 5f)); Push()
         Text("HI-FI", style = k.kid(th, th.accent.let(::deepen), 4.6f))
     }
@@ -586,7 +586,7 @@ private fun Starburst(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().
 /** 20 · Sky-blue bands with puffy clouds and a little sun for the VHS tag. */
 @Composable
 private fun CloudySky(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().background(SkyTop)) {
-    Band(k, 0.36f, Modifier.background(Brush.verticalGradient(listOf(SkyTop, SkyLow))).drawBehind { clouds(k.u(this), atTop = false) },
+    Band(k, 0.36f, Modifier.background(Brush.verticalGradient(listOf(SkyTop, SkyLow))).drawBehind { clouds(k.u(this), atTop = false, r = 3.2f) },
         arrange = Arrangement.SpaceBetween) {
         Box(Modifier.size((8.4f * k.s).px).clip(CircleShape).background(Sunny), contentAlignment = Alignment.Center) {
             Text("VHS", style = k.kid(th, th.tagFg, 2.9f))
@@ -594,7 +594,7 @@ private fun CloudySky(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().
         Studio(k, SkyInk, k.kid(th, SkyInk, 4.4f))
     }
     Poster(k)
-    Band(k, 0.64f, Modifier.background(Brush.verticalGradient(listOf(SkyLow, SkyTop))).drawBehind { clouds(k.u(this), atTop = true) }) {
+    Band(k, 0.64f, Modifier.background(Brush.verticalGradient(listOf(SkyLow, SkyTop))).drawBehind { clouds(k.u(this), atTop = true, r = 3.2f) }) {
         KidRating(k, th, Color.White); Text(k.short, style = k.kid(th, Color.White, 5f)); Push()
         Text("HI-FI", style = k.kid(th, SkyInk, 4.6f))
     }

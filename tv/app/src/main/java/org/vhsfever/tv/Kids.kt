@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -133,13 +134,13 @@ internal fun DrawScope.scribble(color: Color, u: Float, atTop: Boolean, inset: F
     val p = Path().apply {
         moveTo(0f, y0)
         var x = 0f
-        while (x < size.width) {
+        while (x < size.width + period) {
             quadraticBezierTo(x + period / 4, y0 - amp * 2, x + period / 2, y0)
             quadraticBezierTo(x + period * 3 / 4, y0 + amp * 2, x + period, y0)
             x += period
         }
     }
-    drawPath(p, color, style = Stroke(width = maxOf(1f, 0.6f * u), cap = StrokeCap.Round))
+    clipRect { drawPath(p, color, style = Stroke(width = maxOf(1f, 0.6f * u), cap = StrokeCap.Round)) }
 }
 
 /** Six rainbow stripes filling the area, top to bottom (or flipped). */
@@ -160,15 +161,19 @@ internal fun DrawScope.checker(u: Float, dark: Color = Color(0xFF111111)) {
     }
 }
 
-/** Puffy cloud scallops along an edge. */
-internal fun DrawScope.clouds(u: Float, atTop: Boolean, color: Color = Color.White, r: Float = 2.6f) {
+/** Puffy clouds along an edge: overlapping big and small puffs, kept inside the area. */
+internal fun DrawScope.clouds(u: Float, atTop: Boolean, color: Color = Color.White, r: Float = 3f) {
     val rr = r * u
-    val y = if (atTop) 0f else size.height
-    var x = rr * 0.4f; var i = 0
-    while (x < size.width + rr) {
-        val big = if (i % 2 == 0) 1f else 0.72f
-        drawCircle(color, rr * big, Offset(x, y + (if (atTop) -1 else 1) * rr * 0.25f))
-        x += rr * 1.45f; i++
+    val edge = if (atTop) 0f else size.height
+    val dir = if (atTop) 1f else -1f
+    clipRect {
+        var x = -rr * 0.3f; var i = 0
+        while (x < size.width + rr) {
+            val big = if (i % 2 == 0) 1f else 0.7f
+            drawCircle(color, rr * big, Offset(x, edge + dir * rr * 0.15f))
+            x += rr * 1.15f; i++
+        }
+        drawRect(color, Offset(0f, if (atTop) 0f else size.height - rr * 0.3f), Size(size.width, rr * 0.3f))
     }
 }
 
@@ -227,7 +232,9 @@ fun kidsBackLayout(t: Title): Int = Math.floorMod(lookKey(t).hashCode() * 17 + 3
 @Composable
 internal fun KidsBack(b: BackText, c: BoxColors, th: KidsTheme, layout: Int) {
     val unit = Ui.unit * androidx.compose.ui.platform.LocalDensity.current.density
-    Box(Modifier.fillMaxSize().background(th.bg)) {
+    Box(Modifier.fillMaxSize().background(th.bg).drawBehind {
+        if (th.trim == KidsTrim.Confetti) confetti(unit * 1.4f, listOf(Color.White, Sunny, th.tagFg), 0.05f, 0.95f, 0)
+    }) {
         Column(Modifier.fillMaxSize()) {
             KidsStrip(th, top = true)
             Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 11.px, vertical = 9.px),
@@ -244,7 +251,6 @@ internal fun KidsBack(b: BackText, c: BoxColors, th: KidsTheme, layout: Int) {
         Box(Modifier.fillMaxSize().drawBehind {
             when (th.trim) {
                 KidsTrim.Stitch -> stitch(th.trimColor, unit, 4.5f)
-                KidsTrim.Confetti -> { confetti(unit * 1.4f, listOf(Color.White, Sunny, th.tagFg), 0.05f, 0.95f, 0) }
                 else -> Unit
             }
         })
@@ -261,7 +267,7 @@ private fun KidsStrip(th: KidsTheme, top: Boolean) {
         KidsTrim.Scribble -> Box(Modifier.fillMaxWidth().height(7.px).drawBehind {
             scribble(th.trimColor, unit * 1.3f, atTop = !top, inset = 2.4f); scribble(th.ink.alpha(0.6f), unit, atTop = !top, inset = 4.6f)
         })
-        KidsTrim.Clouds -> Box(Modifier.fillMaxWidth().height(9.px).drawBehind { clouds(unit, atTop = !top, r = 4f) })
+        KidsTrim.Clouds -> Box(Modifier.fillMaxWidth().height(10.px).drawBehind { clouds(unit, atTop = !top, r = 5f) })
         KidsTrim.Stitch -> Spacer(Modifier.height(5.px))
         KidsTrim.Confetti -> Spacer(Modifier.height(4.px))
     }
@@ -324,10 +330,10 @@ private fun ColumnScope.KidsBackPictures(b: BackText, th: KidsTheme) {
     KidsInfo(b, th)
 }
 
-/** 2 · A big rounded picture with the title on a tilted tag; Starburst boxes get their burst too. */
+/** 2 · A big rounded picture with the title on a tilted tag, then the story; Starburst boxes get their burst too. */
 @Composable
 private fun ColumnScope.KidsBackBigPicture(b: BackText, th: KidsTheme) {
-    Box(Modifier.fillMaxWidth().height(108.px)) {
+    Box(Modifier.fillMaxWidth().height(100.px)) {
         KidsPic(b.pic(0), Modifier.fillMaxSize(), round = 10.px)
         if (th.burst) {
             Box(Modifier.align(Alignment.TopEnd).offset(6.px, (-6).px).size(52.px).rotate(10f).clip(StarburstShape).background(Sunny),
@@ -343,10 +349,7 @@ private fun ColumnScope.KidsBackBigPicture(b: BackText, th: KidsTheme) {
     }
     Spacer(Modifier.height(4.px))
     KidsTagline(b, th)
-    KidsStory(b, th, 9)
-    if (b.pictures.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.px)) {
-        for (i in 1..2) KidsPic(b.pic(i), Modifier.weight(1f).height(36.px))
-    }
+    KidsStory(b, th)
     KidsInfo(b, th)
 }
 
@@ -418,7 +421,7 @@ private fun SpineTrim(th: KidsTheme, unit: Float, m: Float, top: Boolean) {
         KidsTrim.Scribble -> Box(Modifier.fillMaxWidth().height((6 * m).px).drawBehind {
             scribble(th.trimColor, unit * 1.2f * m, atTop = true, inset = 3f)
         })
-        KidsTrim.Clouds -> Box(Modifier.fillMaxWidth().height((8 * m).px).drawBehind { clouds(unit * m, atTop = !top, r = 4f) })
+        KidsTrim.Clouds -> Box(Modifier.fillMaxWidth().height((10 * m).px).drawBehind { clouds(unit * m, atTop = !top, r = 5f) })
         else -> Unit
     }
 }
@@ -428,7 +431,7 @@ private fun SpineTrim(th: KidsTheme, unit: Float, m: Float, top: Boolean) {
 private fun KidsSpineTitle(t: Title, th: KidsTheme, titleSize: Int) {
     if (t.art?.titleLogo != null) { SpineTitle(t, 0.84f, titleSize, 2); return }
     val shadow = if (th.ink == Color.White) Shadow(Color(0x99000000), Offset(0f, 2f), 2f) else null
-    FitText(coverText(t).uppercase(), modifier = Modifier.sideways(), maxLines = 2, minScale = 0.4f,
+    FitText(coverText(t).uppercase(), modifier = Modifier.sideways(), maxLines = 2, minScale = 0.35f, wordsWhole = true,
         textAlign = TextAlign.Center, align = Alignment.Center,
         style = th.type(th.ink, titleSize * 0.95f).copy(shadow = shadow))
 }
