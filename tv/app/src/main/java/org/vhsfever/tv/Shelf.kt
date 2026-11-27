@@ -272,18 +272,24 @@ fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) 
             val s = density * unit
             drawOnto(shape.corners(angle.value, grow.value, lift.value, face).scaled(s))
         } }
+        // Each face's printing is kept as a finished picture (graphicsLayer), so while the box turns and lifts only
+        // that picture is moved, instead of the poster, title and wear being drawn again on every frame.
         if (sides) {
             Box(faceMod(1).size(depth.px, h.px)) {
-                ShelfSpine(t, depth.px, h.px, dvd, vhsWidth / 86f)
-                Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.alpha(0.3f)) })
+                Box(Modifier.fillMaxSize().graphicsLayer()) {
+                    ShelfSpine(t, depth.px, h.px, dvd, vhsWidth / 86f)
+                    Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.alpha(0.3f)) })
+                }
             }
             Box(faceMod(2).size(depth.px, h.px)) {
-                ShelfSpine(t, depth.px, h.px, dvd, vhsWidth / 86f)
-                Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.alpha(0.3f)) })
+                Box(Modifier.fillMaxSize().graphicsLayer()) {
+                    ShelfSpine(t, depth.px, h.px, dvd, vhsWidth / 86f)
+                    Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.alpha(0.3f)) })
+                }
             }
         }
         Box(faceMod(0).size(w.px, h.px)) {
-            BoxFront(t, scale = vhsWidth / 86f, modifier = Modifier.fillMaxSize(), dvd = dvd)
+            BoxFront(t, scale = vhsWidth / 86f, modifier = Modifier.fillMaxSize().graphicsLayer(), dvd = dvd)
             // the front darkens a touch as it turns from the light
             Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.alpha(abs(angle.value) / 90f * 0.5f)) })
         }

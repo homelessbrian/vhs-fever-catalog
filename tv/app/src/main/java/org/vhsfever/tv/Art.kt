@@ -40,6 +40,8 @@ data class Art(
     val recs: List<Int> = emptyList(),      // TMDB "people also liked", best first
     val similar: List<Int> = emptyList(),   // TMDB "similar", best first
     val matchChecked: Boolean = true,       // false for art saved before the similar-movie info was looked up
+    val tags: List<String> = emptyList(),   // TMDB's theme tags by name, lower case ("christmas", "halloween"…)
+    val tagsChecked: Boolean = true,        // false for art saved before the tag names were kept
 ) {
     fun toJson(): JSONObject = JSONObject().put("poster", poster).put("backdrop", backdrop).put("overview", overview)
         .put("year", year).put("genres", JSONArray(genres)).put("tagline", tagline).put("cast", JSONArray(cast))
@@ -47,7 +49,7 @@ data class Art(
         .put("studioLogo", studioLogo).put("titleLogo", titleLogo).put("stills", JSONArray(stills)).put("imdbId", imdbId)
         .put("collection", collection ?: 0)
         .put("id", id ?: 0).put("people", JSONArray(people)).put("keywords", JSONArray(keywords))
-        .put("recs", JSONArray(recs)).put("similar", JSONArray(similar))
+        .put("recs", JSONArray(recs)).put("similar", JSONArray(similar)).put("tags", JSONArray(tags))
 
     companion object {
         fun fromJson(o: JSONObject) = Art(
@@ -59,6 +61,7 @@ data class Art(
             id = o.optInt("id").takeIf { it > 0 }, people = o.optJSONArray("people").list(),
             keywords = o.optJSONArray("keywords").ints(), recs = o.optJSONArray("recs").ints(),
             similar = o.optJSONArray("similar").ints(), matchChecked = o.has("recs"),
+            tags = o.optJSONArray("tags").list(), tagsChecked = o.has("tags"),
         )
     }
 }
@@ -87,8 +90,8 @@ class ArtRepo(ctx: Context) {
      */
     suspend fun loadAll(titles: List<Title>, onArt: (String, Art) -> Unit) = withContext(Dispatchers.IO) {
         if (!available) return@withContext
-        // art saved before collections or similar-movie info were looked up is fetched again (the old art shows meanwhile)
-        val todo = titles.filter { cached(it).let { a -> a == null || !a.collectionChecked || !a.matchChecked } }
+        // art saved before collections, similar-movie info or tag names were looked up is fetched again (the old art shows meanwhile)
+        val todo = titles.filter { cached(it).let { a -> a == null || !a.collectionChecked || !a.matchChecked || !a.tagsChecked } }
         if (todo.isEmpty()) return@withContext
         val gate = Semaphore(4)
         var sinceSave = 0
@@ -145,6 +148,8 @@ class ArtRepo(ctx: Context) {
             // movies keep their tags under "keywords", TV under "results"
             keywords = o.optJSONObject("keywords")?.let { k -> k.optJSONArray("keywords") ?: k.optJSONArray("results") }
                 .objs().mapNotNull { it.optInt("id").takeIf { n -> n > 0 } },
+            tags = o.optJSONObject("keywords")?.let { k -> k.optJSONArray("keywords") ?: k.optJSONArray("results") }
+                .objs().mapNotNull { it.s("name")?.lowercase() },
             recs = o.optJSONObject("recommendations")?.optJSONArray("results").objs().mapNotNull { it.optInt("id").takeIf { n -> n > 0 } },
             similar = o.optJSONObject("similar")?.optJSONArray("results").objs().mapNotNull { it.optInt("id").takeIf { n -> n > 0 } },
         )

@@ -134,11 +134,22 @@ fun TapeVideo(tape: Tape, onShowing: (Boolean) -> Unit, onPosition: (Long) -> Un
 
 /** Scan lines, phosphor stripes, a rolling bar and a vignette, laid over a picture to make it look like an old tube. */
 @Composable
-fun CrtGlass(modifier: Modifier = Modifier, k: Float = 1f) {
+fun CrtGlass(modifier: Modifier = Modifier, k: Float = 1f, moving: Boolean = true) {
+    if (!moving) { CrtGlassDrawing(modifier, k, { 70f }, { 0f }); return }
     val anim = rememberInfiniteTransition(label = "glass")
     val roll by anim.animateFloat(-60f, 200f, infiniteRepeatable(tween(3600, easing = LinearEasing)), label = "roll")
     val drift by anim.animateFloat(0f, 6f, infiniteRepeatable(tween(250, easing = LinearEasing)), label = "drift")
+    CrtGlassDrawing(modifier, k, { roll }, { drift })
+}
+
+/**
+ * The glass itself. [moving] off keeps it still: the store's TVs sit in the middle of the shelves, and a glass
+ * that moves every frame makes the TV redraw the whole store 60 times a second, which slows the remote down.
+ */
+@Composable
+private fun CrtGlassDrawing(modifier: Modifier, k: Float, rollAt: () -> Float, driftAt: () -> Float) {
     Box(modifier.fillMaxSize().drawBehind {
+        val roll = rollAt(); val drift = driftAt()
         val u = 1.5f * k
         var x = 0f
         val cols = listOf(Color(0x14FF0000), Color(0x1400FF00), Color(0x140000FF))

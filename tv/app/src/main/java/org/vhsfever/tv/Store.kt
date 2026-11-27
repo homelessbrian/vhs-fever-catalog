@@ -172,7 +172,7 @@ fun StoreScreen(
             Section.Home -> HomeContent(catalog, restoreKey, onOpen, onSection)
             Section.Browse -> GridContent("Browse All", "Every tape in the store", catalog.titles, restoreKey, onOpen)
             Section.Genres -> GenresContent(catalog, onSection)
-            is Section.Genre -> ShelfPage(section.name, catalog.titles.filter { it.section == section.name }, restoreKey, onOpen)
+            is Section.Genre -> ShelfPage(section.name, catalog.shelfTitles(section.name), restoreKey, onOpen)
             Section.NewArrivals -> GridContent("New Arrivals", "Newest tapes marked good", catalog.newArrivals, restoreKey, onOpen)
             Section.Watchlist -> GridContent("My Watchlist", "Tapes you saved for later",
                 catalog.titles.filter { it.key in watchlist }, restoreKey, onOpen,
@@ -281,7 +281,7 @@ private fun HeroPhoto(playing: Title?) {
             TrailerVideo(trailerKeys ?: emptyList(), onShowing = { trailerShowing = it }, onTime = {},
                 onFailed = { trailerShowing = false; trailerFailed = true })
             if (tape != null) TapeVideo(tape, onShowing = { tapeShowing = it }, onPosition = {})
-            CrtGlass(k = 0.8f)
+            CrtGlass(k = 0.8f, moving = false)
             Text("PLAY ▶", modifier = Modifier.padding(start = 10.px, top = 6.px),
                 style = TextStyle(fontFamily = Type.Vt, fontSize = 18.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f)))
         }
@@ -291,6 +291,16 @@ private fun HeroPhoto(playing: Title?) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.72f to Color(0x00080B22), 1f to Ink.Navy)))
     }
 }
+
+/*
+ * The highlighted movie is read here, not in the page: moving along a shelf then redraws only the store photo
+ * and the info beside it, instead of every box on screen.
+ */
+@Composable
+private fun HeroPhotoOf(hero: HeroState) = HeroPhoto(hero.playing)
+
+@Composable
+private fun HeroInfoOf(hero: HeroState, label: () -> String?) = HeroInfo(hero.highlighted, label())
 
 /** The movie the remote is on, and (once the remote settles on it) the one playing on the store TV. */
 @Stable
@@ -357,8 +367,11 @@ private fun HeroInfo(t: Title?, label: String?) {
 @Composable
 private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -> Unit, onSection: (Section) -> Unit) {
     val first = remember { FocusRequester() }
-    val rows = remember(catalog) {
+    val holidays = remember(catalog) { catalog.holidayShelves() }
+    val rows = remember(catalog, holidays) {
         buildList {
+            // holiday displays go at the front of the store while they're up
+            for ((h, list) in holidays) add(h.name to list)
             add("New Arrivals" to catalog.newArrivals.take(16))
             // Every genre gets its own shelf, biggest first.
             for ((g, list) in catalog.genreShelves) add(g to list)
@@ -380,11 +393,11 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
     val listState = rememberLazyListState()
     LaunchedEffect(focusRow) { if (focusRow >= 0) runCatching { listState.animateScrollToItem(focusRow) } }
     val rowsTop by animateDpAsState(if (collapsed) 352.px else 452.px, label = "rowsTop")
-    val genres = catalog.genreShelves.map { it.first }.take(8)
+    val genres = holidays.map { it.first.name } + catalog.genreShelves.map { it.first }.take(8)
 
     Box(Modifier.fillMaxSize()) {
-        HeroPhoto(hero.playing)
-        HeroInfo(hero.highlighted, rows.getOrNull(heroRow)?.first)
+        HeroPhotoOf(hero)
+        HeroInfoOf(hero) { rows.getOrNull(heroRow)?.first }
         AnimatedVisibility(!collapsed && genres.isNotEmpty(), enter = fadeIn(), exit = fadeOut(),
             modifier = Modifier.offset(0.px, 352.px)) {
             LazyRow(Modifier.fillMaxWidth().padding(start = 232.px).clipToBounds().focusRestorer(),
@@ -487,7 +500,9 @@ private fun BoxGrid(titles: List<Title>, restoreKey: String?, onOpen: (Title) ->
 @Composable
 private fun GridShelf(content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().height(232.px).shelfWall().padding(bottom = 4.px), contentAlignment = Alignment.BottomCenter) { content() }
+        // tall enough for a highlighted box to grow and lift without its top going past the shelf above
+        // (the grid cuts off anything that pokes above its top edge)
+        Box(Modifier.fillMaxWidth().height(262.px).shelfWall().padding(bottom = 4.px), contentAlignment = Alignment.BottomCenter) { content() }
         ShelfLip(null, Modifier.fillMaxWidth())
     }
 }
@@ -517,8 +532,8 @@ private fun ShelfPage(genre: String, titles: List<Title>, restoreKey: String?, o
     }
     val hero = rememberHero(titles.firstOrNull { it.key == restoreKey } ?: titles.firstOrNull()) { around(titles, it) }
     Box(Modifier.fillMaxSize()) {
-        HeroPhoto(hero.playing)
-        HeroInfo(hero.highlighted, "$genre  ·  ${titles.size} ${if (titles.size == 1) "tape" else "tapes"}")
+        HeroPhotoOf(hero)
+        HeroInfoOf(hero) { "$genre  ·  ${titles.size} ${if (titles.size == 1) "tape" else "tapes"}" }
         Box(Modifier.fillMaxSize().padding(top = 352.px)) {
             if (titles.isEmpty()) Text("No tapes here yet.", modifier = Modifier.padding(start = 252.px, top = 20.px),
                 style = TextStyle(fontFamily = Type.Barlow, fontSize = 22.fs, color = Ink.Body))
@@ -533,7 +548,8 @@ private fun GenresContent(catalog: Catalog, onSection: (Section) -> Unit) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     Column(Modifier.fillMaxSize()) {
-        SectionHeader("Genres", "Pick a shelf · ${catalog.genreShelves.size}")
+        val shelves = remember(catalog) { catalog.holidayShelves().map { it.first.name to it.second } + catalog.genreShelves }
+        SectionHeader("Genres", "Pick a shelf · ${shelves.size}")
         if (catalog.genreShelves.isEmpty()) Text("Genres show up once the TMDB info has loaded.", modifier = Modifier.padding(start = 252.px),
             style = TextStyle(fontFamily = Type.Barlow, fontSize = 22.fs, color = Ink.Body))
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -542,7 +558,7 @@ private fun GenresContent(catalog: Catalog, onSection: (Section) -> Unit) {
         LazyVerticalGrid(GridCells.Fixed(cols), Modifier.fillMaxSize().padding(start = 232.px).focusRestorer(),
             contentPadding = PaddingValues(start = 20.px, end = 40.px, top = 10.px, bottom = 40.px),
             horizontalArrangement = Arrangement.spacedBy(20.px), verticalArrangement = Arrangement.spacedBy(20.px)) {
-            itemsIndexed(catalog.genreShelves, key = { _, it -> it.first }) { i, (g, list) ->
+            itemsIndexed(shelves, key = { _, it -> it.first }) { i, (g, list) ->
                 Column((if (i == 0) Modifier.focusRequester(first) else Modifier).pageItem(leftEdge = i % cols == 0, entry = i == 0)) {
                     GenreTile(g, 210, 118) { onSection(Section.Genre(g)) }
                     Text("${list.size} ${if (list.size == 1) "title" else "titles"}", modifier = Modifier.padding(top = 6.px),

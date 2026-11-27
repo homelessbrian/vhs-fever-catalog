@@ -57,7 +57,7 @@ data class Title(
     val kidsLook: Boolean = false,   // made-up box uses the kids' looks (see withKidsLooks)
 ) {
     /** The one store section this tape sits in (like a real rental store, never two). */
-    val section: String by lazy { storeSection(genres) }
+    val section: String by lazy { storeSection(genres, year) }
 
     /** Fills in TMDB art and blurb; the poster counts as confirmed only when the TMDB match is. */
     fun withArt(a: Art?): Title = if (a == null) this else copy(
@@ -77,15 +77,23 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
     val newArrivals: List<Title> by lazy { titles.sortedByDescending { it.addedAt } }
 
     /**
-     * Each store section with its titles, biggest first; movies TMDB gives no genre go on "Other", last.
-     * A movie is on one shelf only, like a real rental store.
+     * Each store section with its titles, in the store's order (see STORE_SHELVES); empty shelves are left out
+     * and movies TMDB gives no genre go on "Other", last. A movie is on one shelf only, like a real rental store.
      */
     val genreShelves: List<Pair<String, List<Title>>> by lazy {
         val bySection = titles.groupBy { it.section }
-        bySection.filterKeys { it != OTHER }.toList()
-            .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first }) +
+        STORE_SHELVES.mapNotNull { s -> bySection[s]?.let { s to it } } +
             listOfNotNull(bySection[OTHER]?.let { OTHER to it })
     }
+
+    /** The tapes on a genre shelf, or on a holiday display when [name] is a holiday. */
+    fun shelfTitles(name: String): List<Title> =
+        Holidays.ALL.firstOrNull { it.name == name }?.let { h -> titles.filter { Holidays.matches(it, h) } }
+            ?: titles.filter { it.section == name }
+
+    /** The holiday displays up right now (about 3 weeks before each holiday to a week after), nearest first. */
+    fun holidayShelves(today: java.time.LocalDate = java.time.LocalDate.now()): List<Pair<Holiday, List<Title>>> =
+        Holidays.active(today).mapNotNull { h -> titles.filter { Holidays.matches(it, h) }.takeIf { it.isNotEmpty() }?.let { h to it } }
 
     companion object {
         const val OTHER = "Other"
@@ -362,41 +370,56 @@ private fun JSONArray?.objs(): List<JSONObject> =
 private fun JSONArray?.strings(): List<String> =
     if (this == null) emptyList() else (0 until length()).mapNotNull { opt(it) as? String }
 
+/** Brian's store shelves, in the order they're stocked. A movie TMDB gives no genre goes on "Other", last. */
+val STORE_SHELVES = listOf(
+    "Action", "Adventure", "Animation", "Comedy", "Drama", "Romance", "Thriller", "Horror", "Science Fiction",
+    "Fantasy", "Mystery", "Crime", "Family", "Western", "War", "Music & Musicals", "Documentary", "Classics",
+)
+
+/** Live-action movies made before this year go on the Classics shelf. */
+const val CLASSICS_BEFORE = 1960
+
 /**
  * Where a rental store would file a movie with these TMDB genres, thinking like a Blockbuster clerk:
- * what will the customer feel watching it? TMDB tags a lot of comedies with "Sci-Fi" or "Fantasy"
- * just for the premise (Dude, Where's My Car?, Back to the Future), so those go in Comedy.
- *  - Cartoons go in Animation, kids' and family movies in Family (Home Alone, the Muppets).
- *  - Concert and band tapes go in Music; other documentaries in Documentary.
- *  - Anything scary goes in Horror, even a horror comedy.
- *  - A comedy (Comedy first, or second behind anything but Drama) goes in Comedy:
- *    action comedies, rom-coms, spoofs, stand-up specials.
- *  - Then Western, then Sci-Fi (Star Wars, Total Recall).
- *  - Crime and mysteries go in Thriller, or Action if it's an action movie, or Drama if it's a crime drama.
- *  - War movies go in Action or Drama; Adventure in Action; Romance and History in Drama.
+ * what will the customer feel watching it? One shelf only.
+ *  - Cartoons go in Animation, whatever their age.
+ *  - Other movies made before 1960 go in Classics.
+ *  - Concert tapes go in Music & Musicals; other documentaries in Documentary.
+ *  - Kids' and family movies go in Family (Home Alone, the Muppets, Mary Poppins).
+ *  - Anything scary goes in Horror, even a horror comedy or musical.
+ *  - Other musicals go in Music & Musicals (Grease, Purple Rain).
+ *  - A comedy (Comedy first, or second behind anything but Drama) goes in Comedy. TMDB tags a lot of
+ *    comedies "Sci-Fi" or "Fantasy" just for the premise (Back to the Future), so those stay in Comedy.
+ *  - Then Western, War, Science Fiction (Star Wars, Total Recall) and Fantasy (Conan, Labyrinth).
+ *  - The rest by the movie's main genre: Action, Adventure, Thriller, Mystery, Crime, Romance, Drama.
  */
-fun storeSection(genres: List<String>): String {
+fun storeSection(genres: List<String>, year: String? = null): String {
     val g = genres.map { ArtRepo.shortGenre(it) }.filter { it != "TV Movie" }
     val main = g.firstOrNull() ?: return Catalog.OTHER
     val second = g.getOrNull(1)
+    val top2 = g.take(2)
+    val made = year?.take(4)?.toIntOrNull()
     return when {
         "Animation" in g -> "Animation"
-        "Family" in g || "Kids" in g -> "Family"
-        "Music" in g && ("Documentary" in g || g == listOf("Music")) -> "Music"
+        made != null && made < CLASSICS_BEFORE -> "Classics"
+        "Music" in g && "Documentary" in g -> "Music & Musicals"
         "Documentary" in g -> "Documentary"
+        "Family" in g || "Kids" in g -> "Family"
         "Horror" in g -> "Horror"
+        "Music" in top2 -> "Music & Musicals"
         main == "Comedy" || (second == "Comedy" && main != "Drama") -> "Comedy"
         "Western" in g -> "Western"
-        "Sci-Fi" in g -> "Sci-Fi"
-        main == "Crime" || main == "Mystery" || main == "Thriller" -> when {
-            main != "Thriller" && second == "Action" -> "Action"
-            "Thriller" in g || main == "Mystery" || "Drama" !in g -> "Thriller"
-            else -> "Drama"
+        "War" in top2 || (main == "History" && "War" in g) -> "War"
+        "Sci-Fi" in g -> "Science Fiction"
+        "Fantasy" in top2 -> "Fantasy"
+        main == "Thriller" -> when (second) { "Crime" -> "Crime"; "Mystery" -> "Mystery"; else -> "Thriller" }
+        main == "Drama" -> when (second) {
+            "Romance" -> "Romance"; "Crime" -> "Crime"; "Mystery" -> "Mystery"; "Thriller" -> "Thriller"
+            "Action" -> "Action"; "Adventure" -> "Adventure"; else -> "Drama"
         }
-        main == "Fantasy" -> if ("Action" in g) "Action" else "Family"
-        main == "Adventure" -> if ("Fantasy" in g) "Family" else "Action"
-        main == "War" -> if ("Action" in g) "Action" else "Drama"
-        main == "Romance" || main == "History" -> "Drama"
-        else -> main
+        main == "History" -> "Drama"
+        main == "Music" -> "Music & Musicals"
+        main in STORE_SHELVES -> main
+        else -> Catalog.OTHER
     }
 }
