@@ -300,16 +300,40 @@ private fun JSONArray?.strings(): List<String> =
     if (this == null) emptyList() else (0 until length()).mapNotNull { opt(it) as? String }
 
 /**
- * Where a rental store would file a movie with these TMDB genres. Sections a store kept apart win
- * (a horror comedy goes in Horror, a cartoon in Animation); otherwise TMDB's first genre, which is the main one.
+ * Where a rental store would file a movie with these TMDB genres, thinking like a Blockbuster clerk:
+ * what will the customer feel watching it? TMDB tags a lot of comedies with "Sci-Fi" or "Fantasy"
+ * just for the premise (Dude, Where's My Car?, Back to the Future), so those go in Comedy.
+ *  - Cartoons go in Animation, kids' and family movies in Family (Home Alone, the Muppets).
+ *  - Concert and band tapes go in Music; other documentaries in Documentary.
+ *  - Anything scary goes in Horror, even a horror comedy.
+ *  - A comedy (Comedy first, or second behind anything but Drama) goes in Comedy:
+ *    action comedies, rom-coms, spoofs, stand-up specials.
+ *  - Then Western, then Sci-Fi (Star Wars, Total Recall).
+ *  - Crime and mysteries go in Thriller, or Action if it's an action movie, or Drama if it's a crime drama.
+ *  - War movies go in Action or Drama; Adventure in Action; Romance and History in Drama.
  */
 fun storeSection(genres: List<String>): String {
-    val g = genres.map { ArtRepo.shortGenre(it) }
-    for (s in listOf("Animation", "Documentary", "Horror", "Family", "Kids", "Western", "Sci-Fi")) if (s in g) return s
-    val main = g.firstOrNull { it != "TV Movie" } ?: return Catalog.OTHER
-    return when (main) {
-        "Mystery" -> "Thriller"
-        "History" -> "Drama"
+    val g = genres.map { ArtRepo.shortGenre(it) }.filter { it != "TV Movie" }
+    val main = g.firstOrNull() ?: return Catalog.OTHER
+    val second = g.getOrNull(1)
+    return when {
+        "Animation" in g -> "Animation"
+        "Family" in g || "Kids" in g -> "Family"
+        "Music" in g && ("Documentary" in g || g == listOf("Music")) -> "Music"
+        "Documentary" in g -> "Documentary"
+        "Horror" in g -> "Horror"
+        main == "Comedy" || (second == "Comedy" && main != "Drama") -> "Comedy"
+        "Western" in g -> "Western"
+        "Sci-Fi" in g -> "Sci-Fi"
+        main == "Crime" || main == "Mystery" || main == "Thriller" -> when {
+            main != "Thriller" && second == "Action" -> "Action"
+            "Thriller" in g || main == "Mystery" || "Drama" !in g -> "Thriller"
+            else -> "Drama"
+        }
+        main == "Fantasy" -> if ("Action" in g) "Action" else "Family"
+        main == "Adventure" -> if ("Fantasy" in g) "Family" else "Action"
+        main == "War" -> if ("Action" in g) "Action" else "Drama"
+        main == "Romance" || main == "History" -> "Drama"
         else -> main
     }
 }
