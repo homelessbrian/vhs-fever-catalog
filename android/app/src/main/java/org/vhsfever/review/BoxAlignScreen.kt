@@ -3,7 +3,11 @@ package org.vhsfever.review
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +37,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -111,47 +117,94 @@ fun BoxAlignScreen(m: AppModel, key: String) {
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (a.folds != null) "Drag the yellow lines onto the folds on each side of the spine, and the blue lines in to trim any border."
-                else "Drag the blue lines in to trim any border around the front.", color = C.muted, fontSize = 13.sp)
+            Text(if (a.folds != null) "Drag the yellow lines onto the folds on each side of the spine, and the blue lines in to trim any border. Pinch to zoom in."
+                else "Drag the blue lines in to trim any border around the front. Pinch to zoom in.", color = C.muted, fontSize = 13.sp)
             val img = bmp
             if (img == null) Text(loadError ?: "Loading the picture…", color = C.muted, fontSize = 13.sp)
             else {
                 val state = rememberUpdatedState(a)
-                Box(Modifier.fillMaxWidth().aspectRatio(img.width.toFloat() / img.height)) {
+                // zoom: 1 = whole picture; pan offset in pixels of the view
+                var zoom by remember(c.id) { mutableStateOf(1f) }
+                var pan by remember(c.id) { mutableStateOf(Offset.Zero) }
+                var viewSize by remember { mutableStateOf(IntSize.Zero) }
+                fun clampPan(p: Offset, z: Float): Offset {
+                    val w = viewSize.width.toFloat(); val h = viewSize.height.toFloat()
+                    return Offset(p.x.coerceIn(w - w * z, 0f), p.y.coerceIn(h - h * z, 0f))
+                }
+                fun zoomAround(focus: Offset, factor: Float) {
+                    val nz = (zoom * factor).coerceIn(1f, 8f)
+                    val f = nz / zoom
+                    pan = clampPan(focus - (focus - pan) * f, nz)
+                    zoom = nz
+                }
+                Box(Modifier.fillMaxWidth().aspectRatio(img.width.toFloat() / img.height).clipToBounds()
+                    .onSizeChanged { viewSize = it }) {
                     Canvas(Modifier.fillMaxSize().pointerInput(img) {
-                        detectDragGestures(
-                            onDragStart = { p ->
-                                // grab the nearest line (within a finger's width)
-                                val cur = state.value
-                                val w = size.width.toFloat(); val h = size.height.toFloat()
-                                fun dist(l: Line) = if (l.vertical) abs(p.x - valueOfLine(cur, l) * w) else abs(p.y - valueOfLine(cur, l) * h)
-                                selected = Line.entries.filter { cur.folds != null || (it != Line.FOLD_L && it != Line.FOLD_R) }
-                                    .minByOrNull(::dist)?.takeIf { dist(it) < 48.dp.toPx() }
-                            },
-                            onDrag = { change, d ->
-                                val l = selected ?: return@detectDragGestures
-                                change.consume()
-                                val delta = if (l.vertical) d.x / size.width else d.y / size.height
-                                set(l, valueOfLine(state.value, l) + delta)
-                            },
-                        )
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            // one finger near a line moves it; anywhere else it moves the picture; two fingers zoom
+                            val cur = state.value
+                            val w = size.width.toFloat(); val h = size.height.toFloat()
+                            fun screen(l: Line) = if (l.vertical) pan.x + valueOfLine(cur, l) * w * zoom
+                                else pan.y + valueOfLine(cur, l) * h * zoom
+                            fun dist(l: Line) = abs((if (l.vertical) down.position.x else down.position.y) - screen(l))
+                            val grabbed = Line.entries.filter { cur.folds != null || (it != Line.FOLD_L && it != Line.FOLD_R) }
+                                .minByOrNull(::dist)?.takeIf { dist(it) < 40.dp.toPx() }
+                            if (grabbed != null) selected = grabbed
+                            var pinching = false
+                            do {
+                                val event = awaitPointerEvent()
+                                val fingers = event.changes.count { it.pressed }
+                                if (fingers >= 2) {
+                                    pinching = true
+                                    val z = event.calculateZoom()
+                                    val p = event.calculatePan()
+                                    if (z != 1f) zoomAround(event.calculateCentroid(), z)
+                                    pan = clampPan(pan + p, zoom)
+                                } else if (fingers == 1 && !pinching) {
+                                    val ch = event.changes.first { it.pressed }
+                                    val d = ch.position - ch.previousPosition
+                                    if (grabbed != null) {
+                                        val delta = if (grabbed.vertical) d.x / (w * zoom) else d.y / (h * zoom)
+                                        set(grabbed, valueOfLine(state.value, grabbed) + delta)
+                                    } else if (zoom > 1f) pan = clampPan(pan + d, zoom)
+                                }
+                                event.changes.forEach { if (it.position != it.previousPosition) it.consume() }
+                            } while (event.changes.any { it.pressed })
+                        }
                     }) {
-                        drawImage(img, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()))
                         val w = size.width; val h = size.height
+                        val iw = w * zoom; val ih = h * zoom
+                        fun x(v: Float) = pan.x + v * iw
+                        fun y(v: Float) = pan.y + v * ih
+                        drawImage(img, dstOffset = IntOffset(pan.x.roundToInt(), pan.y.roundToInt()),
+                            dstSize = IntSize(iw.roundToInt(), ih.roundToInt()))
                         // dim what gets trimmed away
                         val dim = Color.Black.copy(alpha = 0.55f)
-                        drawRect(dim, Offset.Zero, Size(a.left * w, h))
-                        drawRect(dim, Offset(a.right * w, 0f), Size(w - a.right * w, h))
-                        drawRect(dim, Offset(a.left * w, 0f), Size((a.right - a.left) * w, a.top * h))
-                        drawRect(dim, Offset(a.left * w, a.bottom * h), Size((a.right - a.left) * w, h - a.bottom * h))
+                        drawRect(dim, Offset(x(0f), y(0f)), Size(a.left * iw, ih))
+                        drawRect(dim, Offset(x(a.right), y(0f)), Size((1 - a.right) * iw, ih))
+                        drawRect(dim, Offset(x(a.left), y(0f)), Size((a.right - a.left) * iw, a.top * ih))
+                        drawRect(dim, Offset(x(a.left), y(a.bottom)), Size((a.right - a.left) * iw, (1 - a.bottom) * ih))
                         for (l in lines) {
                             val v = valueOf(l)
                             val col = if (l == Line.FOLD_L || l == Line.FOLD_R) C.gold else C.blue
-                            val stroke = if (l == selected) 5.dp.toPx() else 2.5.dp.toPx()
-                            if (l.vertical) drawLine(col, Offset(v * w, 0f), Offset(v * w, h), stroke)
-                            else drawLine(col, Offset(0f, v * h), Offset(w, v * h), stroke)
+                            val stroke = if (l == selected) 3.dp.toPx() else 1.5.dp.toPx()
+                            if (l.vertical) drawLine(col, Offset(x(v), 0f), Offset(x(v), h), stroke)
+                            else drawLine(col, Offset(0f, y(v)), Offset(w, y(v)), stroke)
                         }
                     }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Zoom ${"%.1f".format(zoom)}×  ·  pinch, or", color = C.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    val mid = Offset(viewSize.width / 2f, viewSize.height / 2f)
+                    // zoom towards the line being moved, so it stays in view
+                    fun focus(): Offset = selected?.let { l ->
+                        if (l.vertical) Offset(pan.x + valueOf(l) * viewSize.width * zoom, mid.y)
+                        else Offset(mid.x, pan.y + valueOf(l) * viewSize.height * zoom)
+                    } ?: mid
+                    OutlinedButton(onClick = { zoomAround(focus(), 1 / 1.6f) }) { Text("−", color = C.text) }
+                    OutlinedButton(onClick = { zoomAround(focus(), 1.6f) }) { Text("+", color = C.text) }
+                    OutlinedButton(onClick = { zoom = 1f; pan = Offset.Zero }) { Text("Fit", color = C.text) }
                 }
                 // fine nudges for the line last touched
                 val sel = selected
