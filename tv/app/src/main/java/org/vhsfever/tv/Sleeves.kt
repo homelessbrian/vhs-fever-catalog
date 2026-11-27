@@ -146,14 +146,25 @@ private fun ColumnScope.Band(k: Sleeve, share: Float, modifier: Modifier = Modif
 
 @Composable
 private fun VhsTag(k: Sleeve, bg: Color = Cream, fg: Color = PaperInk) {
-    Text("VHS", style = k.bold(fg), modifier = Modifier.background(bg).padding(horizontal = (2.5f * k.s).px, vertical = (0.5f * k.s).px))
+    Label("VHS", k.bold(fg), k, Modifier.background(bg))
+}
+
+/**
+ * A printed tag (VHS, the rating, HI-FI): a fixed-height block with the word centred in it. Fonts carry extra
+ * room above and below the letters, so sizing the block from the text made it taller than the thin bands.
+ */
+@Composable
+private fun Label(text: String, style: TextStyle, k: Sleeve, modifier: Modifier, pad: Float = 2.5f) {
+    Box(modifier.height((style.fontSize.value / Ui.unit + 1.2f * k.s).px).padding(horizontal = (pad * k.s).px),
+        contentAlignment = Alignment.Center) {
+        Text(text, style = style, maxLines = 1, softWrap = false)
+    }
 }
 
 @Composable
 private fun RatingBox(k: Sleeve, color: Color = Cream) {
     k.rating?.let {
-        Text(it, style = k.bold(color, 5.6f), maxLines = 1,
-            modifier = Modifier.border((0.7f * k.s).px, color).padding(horizontal = (2f * k.s).px, vertical = (0.5f * k.s).px))
+        Label(it, k.bold(color, 5.6f), k, Modifier.border((0.7f * k.s).px, color), pad = 2f)
     }
 }
 
@@ -179,8 +190,8 @@ private fun RowScope.Push() = Spacer(Modifier.weight(1f))
 /** Thin stripes across the box, top to bottom in the order given. */
 @Composable
 private fun Stripes(k: Sleeve, colors: List<Color>) {
-    Column(Modifier.fillMaxWidth().padding(vertical = (0.6f * k.s).px), verticalArrangement = Arrangement.spacedBy((0.5f * k.s).px)) {
-        for (c in colors) Box(Modifier.fillMaxWidth().height((0.9f * k.s).px).background(c))
+    Column(Modifier.fillMaxWidth().padding(vertical = (0.4f * k.s).px), verticalArrangement = Arrangement.spacedBy((0.4f * k.s).px)) {
+        for (c in colors) Box(Modifier.fillMaxWidth().height((0.7f * k.s).px).background(c))
     }
 }
 
@@ -203,7 +214,7 @@ private fun Classic(k: Sleeve) = Column(Modifier.fillMaxSize()) {
 /** 2 · Black label bars with a two-colour rule, like the big studios' 80s sleeves. */
 @Composable
 private fun StudioHeader(k: Sleeve) = Column(Modifier.fillMaxSize().background(Color(0xFF0B0B0C))) {
-    Band(k, 0.34f, arrange = Arrangement.SpaceBetween) {
+    Band(k, 0.38f, arrange = Arrangement.SpaceBetween) {
         VhsTag(k)
         Studio(k, Cream, k.bold(Cream, 5.6f, spacing = 1f).copy(fontWeight = FontWeight.Medium))
     }
@@ -211,9 +222,9 @@ private fun StudioHeader(k: Sleeve) = Column(Modifier.fillMaxSize().background(C
     Box(Modifier.fillMaxWidth().height((0.8f * k.s).px).background(k.c.c3))
     Poster(k)
     Box(Modifier.fillMaxWidth().height((1f * k.s).px).background(k.c.c1))
-    Band(k, 0.66f) {
+    Band(k, 0.62f) {
         RatingBox(k); Info(k, text = k.short)
-        Text("HI-FI", style = k.bold(Cream, 5.2f), modifier = Modifier.background(k.c.c1).padding(horizontal = (2 * k.s).px, vertical = (0.7f * k.s).px))
+        Label("HI-FI", k.bold(Cream, 5.2f), k, Modifier.background(k.c.c1), pad = 2f)
     }
 }
 
@@ -245,11 +256,11 @@ private fun ColorFade(k: Sleeve) {
 private fun Spectrum(k: Sleeve) {
     val stripes = listOf(k.c.c1, lerp(k.c.c1, k.c.c3, 0.5f), k.c.c3)
     Column(Modifier.fillMaxSize().background(Color(0xFF0D0C0E))) {
-        Band(k, 0.34f, arrange = Arrangement.SpaceBetween) { VhsTag(k); Studio(k, Cream) }
+        Band(k, 0.42f, arrange = Arrangement.SpaceBetween) { VhsTag(k); Studio(k, Cream) }
         Stripes(k, stripes)
         Poster(k)
         Stripes(k, stripes.reversed())
-        Band(k, 0.5f) { RatingBox(k); Info(k, text = k.short); Text("HI-FI", style = k.mono(k.c.c3)) }
+        Band(k, 0.58f) { RatingBox(k); Info(k, text = k.short); Text("HI-FI", style = k.mono(k.c.c3)) }
     }
 }
 
