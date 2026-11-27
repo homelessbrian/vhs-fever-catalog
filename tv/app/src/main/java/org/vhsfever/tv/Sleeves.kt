@@ -155,8 +155,8 @@ private fun VhsTag(k: Sleeve, bg: Color = Cream, fg: Color = PaperInk) {
  * room above and below the letters, so sizing the block from the text made it taller than the thin bands.
  */
 @Composable
-private fun Label(text: String, style: TextStyle, k: Sleeve, modifier: Modifier, pad: Float = 2.5f) {
-    Box(modifier.height((style.fontSize.value / Ui.unit + 1.2f * k.s).px).padding(horizontal = (pad * k.s).px),
+private fun Label(text: String, style: TextStyle, k: Sleeve, modifier: Modifier, pad: Float = 2.5f, room: Float = 1.2f) {
+    Box(modifier.height((style.fontSize.value / Ui.unit + room * k.s).px).padding(horizontal = (pad * k.s).px),
         contentAlignment = Alignment.Center) {
         // measured at its natural height and centred on the block, letting the font's spare room spill over
         Text(text, style = style, maxLines = 1, softWrap = false, modifier = Modifier.wrapContentHeight(unbounded = true))
@@ -166,13 +166,13 @@ private fun Label(text: String, style: TextStyle, k: Sleeve, modifier: Modifier,
 @Composable
 private fun RatingBox(k: Sleeve, color: Color = Cream) {
     k.rating?.let {
-        Label(it, k.bold(color, 5.6f), k, Modifier.border((0.7f * k.s).px, color), pad = 2f)
+        Label(it, k.bold(color, 5.4f), k, Modifier.border((0.7f * k.s).px, color), pad = 2f, room = 2.4f)
     }
 }
 
 @Composable
-private fun RowScope.Info(k: Sleeve, color: Color = Cream, text: String = k.info) {
-    FitText(text, k.mono(color), Modifier.weight(1f), minScale = 0.55f, align = Alignment.CenterStart)
+private fun RowScope.Info(k: Sleeve, color: Color = Cream, text: String = k.info, align: Alignment = Alignment.CenterStart) {
+    FitText(text, k.mono(color), Modifier.weight(1f), minScale = 0.55f, align = align)
 }
 
 /** The studio: its logo printed in one colour, or its name when TMDB has no logo. */
@@ -272,7 +272,7 @@ private fun Framed(k: Sleeve) = Column(Modifier.fillMaxSize().background(k.c.c2)
     val side = (4 * k.s).px
     Band(k, 0.34f, arrange = Arrangement.SpaceBetween) {
         VhsTag(k, fg = k.c.c2)
-        Info(k, text = listOfNotNull(k.rating, k.year.takeIf { it.isNotBlank() }).joinToString(" · "))
+        Info(k, text = listOfNotNull(k.rating, k.year.takeIf { it.isNotBlank() }).joinToString(" · "), align = Alignment.CenterEnd)
     }
     Box(Modifier.padding(horizontal = side).fillMaxWidth().border((1.1f * k.s).px, Cream).padding((1.1f * k.s).px)) {
         Column { Poster(k) }
@@ -291,7 +291,7 @@ private fun BigStudio(k: Sleeve) = Column(Modifier.fillMaxSize().background(k.c.
         Studio(k, Cream, k.bold(Cream, 8.5f, Type.Anton, 1.6f).copy(fontWeight = FontWeight.Normal), logoHeight = 0.8f, logoWidth = 0.7f)
     }
     Poster(k)
-    Band(k, 0.54f) { VhsTag(k, fg = k.c.c2); RatingBox(k); Info(k) }
+    Band(k, 0.54f) { VhsTag(k, fg = k.c.c2); RatingBox(k); Info(k, text = k.short) }
 }
 
 /** 7 · A "VHS" ribbon across the top corner of the art, slim dark bands. */
