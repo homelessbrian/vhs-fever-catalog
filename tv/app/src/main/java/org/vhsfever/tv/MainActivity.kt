@@ -87,7 +87,9 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
         t.withArt(art[t.key]).let { a -> if (a.adult) a else a.copy(box = boxes[a.key] ?: a.tmdbId?.takeIf { a.tmdbType == "movie" }?.let { boxes["tmdb:$it"] }) }
             .let { a -> a.copy(
                 shots = shots[a.key] ?: a.tmdbId?.let { shots["tmdb:$it"] } ?: emptyList(),
-                colors = a.poster?.let { p -> colors[p] ?: posterColors.cached(p) },
+                // colours for a made-up spine and back: from the real box front when there is one, else the poster
+                colors = a.box?.front?.let { f -> posterColors.keyOf(f).let { k -> colors[k] ?: posterColors.cached(k) } }
+                    ?: a.poster?.let { p -> colors[p] ?: posterColors.cached(p) },
             ) }
     }, c.curtain) }
     var curtainPin by remember { mutableStateOf(prefs.getString("curtain_pin", null)) }
@@ -130,7 +132,13 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
     LaunchedEffect(raw) {
         val c = raw ?: return@LaunchedEffect
         val keys = c.titles.filter { !it.adult }.flatMap { listOfNotNull(it.key, it.tmdbId?.let { id -> "tmdb:$id" }) }.toSet()
-        runCatching { boxRepo.refresh(keys) { id, b -> scope.launch(Dispatchers.Main) { boxes[id] = b } } }
+        fun boxColors(b: BoxScan) {
+            val k = posterColors.keyOf(b.front)
+            if (colors.containsKey(k)) return
+            scope.launch { posterColors.colorsFor(b.front)?.let { colors[k] = it } }
+        }
+        boxes.values.forEach(::boxColors)
+        runCatching { boxRepo.refresh(keys) { id, b -> scope.launch(Dispatchers.Main) { boxes[id] = b; boxColors(b) } } }
         runCatching { boxRepo.refreshShots(keys) { k, f -> scope.launch(Dispatchers.Main) { shots[k] = f } } }
     }
 

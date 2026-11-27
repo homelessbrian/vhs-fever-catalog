@@ -39,12 +39,20 @@ class PosterColors(private val ctx: Context) {
 
     private val gate = Semaphore(2)
 
-    suspend fun colorsFor(poster: String): BoxColors? {
+    /** The cache key for a real box front saved on the TV (changes when the box is cut again). */
+    fun keyOf(front: File) = "box:" + front.path + "@" + front.lastModified()
+
+    /** Colours from a real VHS box front, so a made-up spine and back match the box. */
+    suspend fun colorsFor(front: File): BoxColors? = colorsFor(keyOf(front), front)
+
+    suspend fun colorsFor(poster: String): BoxColors? = colorsFor(poster, poster)
+
+    private suspend fun colorsFor(poster: String, model: Any): BoxColors? {
         cached(poster)?.let { return it }
         val c = gate.withPermit {
             withContext(Dispatchers.IO) {
                 runCatching {
-                    val req = ImageRequest.Builder(ctx).data(poster).allowHardware(false).size(96, 144).build()
+                    val req = ImageRequest.Builder(ctx).data(model).allowHardware(false).size(96, 144).build()
                     val bmp = ((ctx.imageLoader.execute(req) as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
                         ?: return@runCatching null
                     pick(Palette.from(bmp).maximumColorCount(16).generate())
