@@ -222,7 +222,7 @@ fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) 
     if (restore) LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
     val dvd = isDvd(t)
     val w = boxWidth(t, vhsWidth)
-    val depth = if (dvd) w * 0.11f else w * 0.24f
+    val depth = if (dvd) w * 0.11f else vhsWidth * 0.24f
     val anim = tween<Float>(300, easing = pop)
     val angle = animateFloatAsState(if (focused) tilt else 0f, anim, label = "tilt")
     val grow = animateFloatAsState(if (focused) 1.14f else 1f, anim, label = "grow")

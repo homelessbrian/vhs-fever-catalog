@@ -149,7 +149,7 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
     LaunchedEffect(raw) {
         val c = raw ?: return@LaunchedEffect
         fun pickColors(key: String, model: Any) {
-            if (posterColors.cached(key) != null || !extras.picking.add(key)) return
+            if (posterColors.done(key) || !extras.picking.add(key)) return
             scope.launch {
                 val got = if (model is java.io.File) posterColors.colorsFor(model) else posterColors.colorsFor(model as String)
                 if (got != null) changed()

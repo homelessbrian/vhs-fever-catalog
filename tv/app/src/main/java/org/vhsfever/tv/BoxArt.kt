@@ -22,6 +22,7 @@ data class BoxScan(
     val region: String?,
     val tapeYear: String?,
     val source: String = "videotapes.io",
+    val aspect: Float = VHS_ASPECT,   // the front's width ÷ height, so the box can take its shape
 )
 
 /**
@@ -67,8 +68,15 @@ class BoxArtRepo(private val ctx: Context) {
     private fun scan(e: Entry): BoxScan? {
         val front = local(e, "front")?.takeIf { it.exists() } ?: return null
         return BoxScan(e.sleeve, front, local(e, "spine")?.takeIf { it.exists() },
-            local(e, "back")?.takeIf { it.exists() }, e.label, e.region, e.tapeYear, e.source)
+            local(e, "back")?.takeIf { it.exists() }, e.label, e.region, e.tapeYear, e.source, aspectOf(front))
     }
+
+    /** Width ÷ height of a saved picture, read from its header only (quick, no full decode). */
+    private fun aspectOf(f: File): Float = runCatching {
+        val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(f.path, o)
+        if (o.outWidth > 0 && o.outHeight > 0) o.outWidth.toFloat() / o.outHeight else VHS_ASPECT
+    }.getOrDefault(VHS_ASPECT)
 
     /** Boxes already on the TV, by TMDB id. */
     fun cached(): Map<String, BoxScan> = runCatching {

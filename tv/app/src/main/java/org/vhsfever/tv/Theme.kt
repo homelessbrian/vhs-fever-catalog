@@ -64,7 +64,8 @@ object Type {
 }
 
 /** Box colours (body top, body bottom, accent) from the mockups, picked per title so each box keeps its colours. */
-data class BoxColors(val c1: Color, val c2: Color, val c3: Color)
+/** [top] and [bottom]: the colours along the poster's top and bottom edges, when known (for sleeves that fade into them). */
+data class BoxColors(val c1: Color, val c2: Color, val c3: Color, val top: Color? = null, val bottom: Color? = null)
 
 private val PALETTE = listOf(
     BoxColors(Color(0xFF4A4A58), Color(0xFF0B0B10), Color(0xFFE6E0CC)),

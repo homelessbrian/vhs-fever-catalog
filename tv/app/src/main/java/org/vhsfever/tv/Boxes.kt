@@ -64,7 +64,22 @@ fun isDvd(t: Title) = mediaTag(t) == "DVD"
  * Same height on the shelf, DVDs about a quarter wider.
  */
 const val DVD_WIDER = 1.25f
-fun boxWidth(t: Title, vhsWidth: Int): Int = if (isDvd(t)) Math.round(vhsWidth * DVD_WIDER) else vhsWidth
+/** Width ÷ height of a plain VHS box. */
+const val VHS_ASPECT = 86f / 152f
+
+/**
+ * Width ÷ height of this title's box front. A real box scan sets its own shape (sleeves weren't all the
+ * same width), kept within sensible limits so a badly cut scan can't make a giant box; anything outside
+ * them is squeezed a little to fit rather than having its edges cut off.
+ */
+fun frontAspect(t: Title): Float = when {
+    isDvd(t) -> VHS_ASPECT * DVD_WIDER
+    t.box != null -> t.box.aspect.coerceIn(0.53f, 0.63f)
+    else -> VHS_ASPECT
+}
+
+fun boxWidth(t: Title, vhsWidth: Int): Int =
+    if (!isDvd(t) && t.box == null) vhsWidth else Math.round(vhsWidth * frontAspect(t) / VHS_ASPECT)
 
 private val coverShadow = Shadow(Color(0xD9000000), Offset(0f, 3f), 5f)
 
@@ -84,7 +99,9 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier, dvd: Boolean
         val scan = t.box
         when {
             // the real sleeve: it has its own title and printing, so nothing is drawn over it but the shine
-            scan != null -> AsyncImage(model = scan.front, contentDescription = t.name, contentScale = ContentScale.Crop,
+            // the whole front, never cut: the box takes the scan's shape, so at most it's squeezed a touch
+            scan != null -> AsyncImage(model = scan.front, contentDescription = t.name,
+                contentScale = if (dvd) ContentScale.Crop else ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize())
             t.poster != null -> PosterSleeve(t, c, scale, dvd)
             else -> {
@@ -110,52 +127,6 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier, dvd: Boolean
                 Brush.horizontalGradient(listOf(Color(0xFF0B1030), Color(0x660B1030), Color.Transparent))))
         }
         Sheen()
-    }
-}
-
-/**
- * A TMDB poster on a VHS-sized sleeve. Posters are wider than a VHS front, so instead of cutting off
- * the sides the whole poster sits full width with printed bands above and below in its own colours,
- * the way many real rental sleeves were laid out: the VHS mark and studio up top, rating and year below.
- * A DVD case is wider than a poster, so there it just fills the case.
- */
-@Composable
-private fun PosterSleeve(t: Title, c: BoxColors, scale: Float, dvd: Boolean) {
-    // Every VHS box is the same shape (about 4 wide by 7 tall), so the poster (2:3) always leaves room for the bands.
-    if (dvd) {
-        AsyncImage(model = t.poster, contentDescription = t.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        return
-    }
-    run {
-        val art = t.art
-        val mono = TextStyle(fontFamily = Type.Mono, fontSize = (6.5f * scale).fs, letterSpacing = (0.8f * scale).fs, color = Ink.CoverCream)
-        Column(Modifier.fillMaxSize()) {
-            // top band: VHS mark and the studio
-            Row(Modifier.fillMaxWidth().weight(0.36f).background(c.c2).padding(horizontal = (5 * scale).px),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("VHS", style = mono.copy(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = (7.5f * scale).fs,
-                    color = c.c2), modifier = Modifier.background(Ink.CoverCream).padding(horizontal = (3 * scale).px))
-                if (art?.studioLogo != null) AsyncImage(model = art.studioLogo, contentDescription = art.studio,
-                    colorFilter = ColorFilter.tint(Ink.CoverCream), contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxHeight(0.62f).fillMaxWidth(0.42f))
-                else Text((art?.studio ?: "HOME VIDEO").uppercase(), style = mono, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = (4 * scale).px))
-            }
-            AsyncImage(model = t.poster, contentDescription = t.name, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-            // bottom band: a stripe of the poster's accent, then rating and year
-            Box(Modifier.fillMaxWidth().height((1.5f * scale).px).background(c.c3))
-            Row(Modifier.fillMaxWidth().weight(0.64f).background(c.c1).padding(horizontal = (5 * scale).px),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy((5 * scale).px)) {
-                art?.rating?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = mono.copy(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = (7.5f * scale).fs),
-                        modifier = Modifier.border((0.8f * scale).px, Ink.CoverCream).padding(horizontal = (2.5f * scale).px))
-                }
-                Text(listOfNotNull(yearText(t).takeIf { it.isNotBlank() }, art?.runtime?.let { "$it MIN" }).joinToString(" · "),
-                    style = mono, maxLines = 1, modifier = Modifier.weight(1f))
-                Text("HI-FI", style = mono.copy(color = c.c3))
-            }
-        }
     }
 }
 
@@ -244,7 +215,9 @@ fun Barcode(text: String, modifier: Modifier, vertical: Boolean = false, paper: 
 @Composable
 fun Box3D(t: Title, angle: Float, tapeText: String, dvd: Boolean, modifier: Modifier = Modifier) {
     val a by animateFloatAsState(angle, tween(700, easing = CubicBezierEasing(.3f, .7f, .2f, 1f)), label = "turn")
-    val w = if (dvd) 238f else 190f; val d = if (dvd) 26f else 46f; val h = 336f
+    val h = 336f
+    val w = if (dvd) 238f else if (t.box != null) h * frontAspect(t) else 190f
+    val d = if (dvd) 26f else 46f
     val density = LocalDensity.current.density
     val rad = Math.toRadians(a.toDouble())
     val toPx = Ui.unit * density
