@@ -182,6 +182,26 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     private var tvBoxes: Map<String, Pair<ArtTitle, ArtCandidate>> = emptyMap()
     var status by mutableStateOf(""); private set
     var loaded by mutableStateOf(false); private set
+    /** TMDB facts per movie (looked up when a movie's box screen opens). */
+    var info by mutableStateOf<Map<String, Tmdb.Summary>>(emptyMap()); private set
+    /** Screenshots from each movie's own tape: title key → paths in the box art repository. */
+    var shots by mutableStateOf<Map<String, List<String>>>(emptyMap()); private set
+
+    fun loadInfo(t: ArtTitle) {
+        val id = t.tmdb ?: return
+        if (t.key in info || !Tmdb.available) return
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { Tmdb.summary(id) } }.getOrNull()?.let { info = info + (t.key to it) }
+        }
+    }
+
+    /** A picture in the private box art repository, loaded with the GitHub key. */
+    fun privateImage(ctx: android.content.Context, path: String): coil.request.ImageRequest =
+        coil.request.ImageRequest.Builder(ctx)
+            .data("https://api.github.com/repos/${BuildConfig.BOXART_REPO}/contents/$path?ref=main")
+            .addHeader("Authorization", "Bearer ${token()}").addHeader("Accept", "application/vnd.github.raw")
+            .crossfade(true).build()
+
     /** Brian's line-ups: title key → adjustment (only used while that box is the one shown). */
     var adjusts by mutableStateOf<Map<String, Adjust>>(emptyMap()); private set
     /** Line-ups the TV boxes were cut with. */
@@ -203,6 +223,8 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 runCatching {
                     val repo = BoxArtRepo(token())
                     if (!repo.canOpen()) throw NoAccess()
+                    val s = repo.read("shots.json")
+                    if (s != null) shots = parseShots(s)
                     Triple(repo.read("candidates.json"), repo.read("choices.json"), repo.read("index.json"))
                 }
             }
@@ -367,6 +389,13 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
 
         private fun titleCase(s: String) = if (s != s.uppercase()) s else
             s.lowercase().split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+
+        fun parseShots(text: String): Map<String, List<String>> {
+            val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
+            return o.keys().asSequence().associateWith { k ->
+                o.optJSONObject(k)?.optJSONArray("files").let { a -> if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) } }
+            }.filterValues { it.isNotEmpty() }
+        }
 
         fun parseAdjusts(text: String): Map<String, Adjust> {
             val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()

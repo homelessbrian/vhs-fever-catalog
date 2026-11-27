@@ -128,6 +128,18 @@ class AppModel(private val ctx: Context) {
     var token by mutableStateOf(prefs.getString("github_token", "") ?: "")
         private set
 
+    /** The tapes on file for a box art entry ("tmdb:603" or "title:…"), for telling versions apart. */
+    fun tapesFor(key: String): List<FileItem> {
+        val tmdb = key.removePrefix("tmdb:").toIntOrNull().takeIf { key.startsWith("tmdb:") }
+        val title = key.removePrefix("title:").takeIf { key.startsWith("title:") }
+        return files.filter { f ->
+            if (f.isCopy) return@filter false
+            if (title != null) return@filter f.titleId == title
+            val chosen = decisions[f.id]?.movie
+            (chosen?.tmdbId ?: f.botMovie?.tmdbId ?: f.guess?.tmdbId) == tmdb && decisions[f.id]?.status != "bad"
+        }.sortedBy { it.name }
+    }
+
     /** Box art: what the finder bot found for each movie, and Brian's picks. */
     val boxArt = BoxArtModel(scope) { token }
     var githubUser by mutableStateOf(prefs.getString("github_user", "") ?: "")

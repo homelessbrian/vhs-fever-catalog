@@ -133,7 +133,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
     val onTv = b.onTv[key]
     var big by remember { mutableStateOf<ArtCandidate?>(null) }
     var query by remember(key) { mutableStateOf(t.name) }
-    LaunchedEffect(key) { b.clearSearch() }
+    LaunchedEffect(key) { b.clearSearch(); b.loadInfo(t) }
     val listed = b.candidatesOf(t)
     val uri = LocalUriHandler.current
     Column(Modifier.fillMaxSize()) {
@@ -141,6 +141,8 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
         if (b.status.isNotEmpty()) Text(b.status, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
         LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // which movie and which tape this is, so the right version's box gets picked
+            item(span = { GridItemSpan(2) }) { MovieContext(m, t) }
             item(span = { GridItemSpan(2) }) { Column {
                 Text(when {
                     picked == "none" -> "You picked the TMDB poster for this one."
@@ -235,5 +237,61 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
             Tag(when (c.kind) { "wrap" -> "Full wrap"; "front" -> if (c.hasBack) "Front + back" else "Front"; else -> "Picture" })
         }
         if (c.score > 0) Text("Match ${c.score}", color = if (c.score >= 70) C.good else C.muted, fontSize = 11.sp)
+    }
+}
+
+/** The movie (TMDB) and its tape(s) on file, with screenshots from the tape. */
+@Composable
+private fun MovieContext(m: AppModel, t: ArtTitle) {
+    val b = m.boxArt
+    val info = b.info[t.key]
+    val tapes = remember(t.key, m.files, m.decisions) { m.tapesFor(t.key) }
+    val shots = b.shots[t.key].orEmpty()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val uri = LocalUriHandler.current
+    var more by remember(t.key) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.panel).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(70.dp, 105.dp).clip(RoundedCornerShape(6.dp)).background(C.panel2), contentAlignment = Alignment.Center) {
+                if (info?.poster != null) AsyncImage(model = info.poster, contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize())
+                else Text(if (t.tmdb == null) "No TMDB\nmatch" else "…", color = C.muted, fontSize = 10.sp)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                SectionLabel("The movie")
+                Text(listOfNotNull(info?.title ?: t.name, (info?.year ?: t.year)?.let { "($it)" }).joinToString(" "),
+                    color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                val facts = listOfNotNull(info?.runtime?.let { "$it min" }, info?.genres?.take(3)?.joinToString(", ")?.ifBlank { null })
+                if (facts.isNotEmpty()) Text(facts.joinToString(" · "), color = C.muted, fontSize = 12.sp)
+                info?.director?.let { Text("Directed by $it", color = C.muted, fontSize = 12.sp) }
+                info?.cast?.takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(", "), color = C.muted, fontSize = 12.sp, maxLines = 2) }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    t.tmdb?.let { id -> Text("TMDB", color = C.blue, fontSize = 12.sp,
+                        modifier = Modifier.clickable { uri.openUri("https://www.themoviedb.org/movie/$id") }) }
+                    info?.imdbId?.let { id -> Text("IMDb", color = C.blue, fontSize = 12.sp,
+                        modifier = Modifier.clickable { uri.openUri("https://www.imdb.com/title/$id/") }) }
+                }
+            }
+        }
+        info?.overview?.let {
+            Text(it, color = C.text, fontSize = 13.sp, maxLines = if (more) 20 else 3, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable { more = !more })
+        }
+        if (tapes.isNotEmpty() || shots.isNotEmpty()) {
+            SectionLabel(if (tapes.size > 1) "Your tapes (${tapes.size})" else "Your tape")
+            tapes.take(3).forEach { f ->
+                Text(listOfNotNull(f.name, f.releaseYear, mins(f.durationSec)).joinToString(" · "), color = C.muted, fontSize = 12.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable { uri.openUri("https://archive.org/details/${f.archiveItem}") })
+            }
+            if (shots.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                shots.take(3).forEach { p ->
+                    AsyncImage(model = b.privateImage(ctx, p), contentDescription = "Screenshot from the tape",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.weight(1f).aspectRatio(4f / 3).clip(RoundedCornerShape(4.dp)).background(Color.Black))
+                }
+            }
+        }
     }
 }

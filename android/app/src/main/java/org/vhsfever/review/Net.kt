@@ -98,6 +98,24 @@ object Tmdb {
             tooNew = ceiling != null && y?.toIntOrNull()?.let { it > ceiling } == true, genres = genres)
     }
 
+    /** What the box art screen shows about a movie, to tell versions apart (cartoon or live action, which year). */
+    data class Summary(val title: String, val year: String?, val poster: String?, val overview: String?, val runtime: Int?,
+                       val director: String?, val cast: List<String>, val genres: List<String>, val imdbId: String?)
+
+    fun summary(id: Int): Summary {
+        val o = JSONObject(Http.request("$API/movie/$id?append_to_response=credits", headers = auth))
+        val credits = o.optJSONObject("credits")
+        return Summary(
+            o.optStringOrNull("title") ?: "", o.optStringOrNull("release_date")?.take(4),
+            o.optStringOrNull("poster_path")?.let { "https://image.tmdb.org/t/p/w342$it" }, o.optStringOrNull("overview"),
+            o.optInt("runtime").takeIf { it > 0 },
+            credits?.optJSONArray("crew").objects().firstOrNull { it.optString("job") == "Director" }?.optStringOrNull("name"),
+            credits?.optJSONArray("cast").objects().take(4).mapNotNull { it.optStringOrNull("name") },
+            o.optJSONArray("genres").objects().mapNotNull { it.optStringOrNull("name") },
+            o.optStringOrNull("imdb_id"),
+        )
+    }
+
     data class Details(val imdbId: String?, val runtime: Int?, val genres: List<String>, val physical: List<Pair<String, String>>)
 
     /** IMDb link, runtime, genres and physical (VHS/DVD) release dates by country. */
