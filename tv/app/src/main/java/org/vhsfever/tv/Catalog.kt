@@ -45,6 +45,9 @@ data class Title(
     val addedAt: String = "",        // when the newest tape of it was marked good
     val adult: Boolean = false,      // adult tape: only behind the red curtain, never on the shelves
 ) {
+    /** The one store section this tape sits in (like a real rental store, never two). */
+    val section: String get() = storeSection(genres)
+
     /** Fills in TMDB art and blurb; the poster counts as confirmed only when the TMDB match is. */
     fun withArt(a: Art?): Title = if (a == null) this else copy(
         poster = poster ?: a.poster,
@@ -61,14 +64,21 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
     /** Newest tapes marked good first. */
     val newArrivals: List<Title> get() = titles.sortedByDescending { it.addedAt }
 
-    /** Each genre with its titles, biggest shelf first; movies TMDB gives no genre go on "Other", last. */
+    /**
+     * Each store section with its titles, biggest first; movies TMDB gives no genre go on "Other", last.
+     * A movie is on one shelf only, like a real rental store.
+     */
     val genreShelves: List<Pair<String, List<Title>>>
-        get() = titles.flatMap { it.genres }.distinct()
-            .map { g -> g to titles.filter { g in it.genres } }
-            .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first }) +
-            listOfNotNull(titles.filter { it.genres.isEmpty() }.takeIf { it.isNotEmpty() }?.let { "Other" to it })
+        get() {
+            val bySection = titles.groupBy { it.section }
+            return bySection.filterKeys { it != OTHER }.toList()
+                .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first }) +
+                listOfNotNull(bySection[OTHER]?.let { OTHER to it })
+        }
 
     companion object {
+        const val OTHER = "Other"
+
         /** Everything on the shelves is a VHS movie now. */
         const val SHELF = "VHS Movies"
 
@@ -267,3 +277,18 @@ private fun JSONArray?.objs(): List<JSONObject> =
 
 private fun JSONArray?.strings(): List<String> =
     if (this == null) emptyList() else (0 until length()).mapNotNull { opt(it) as? String }
+
+/**
+ * Where a rental store would file a movie with these TMDB genres. Sections a store kept apart win
+ * (a horror comedy goes in Horror, a cartoon in Animation); otherwise TMDB's first genre, which is the main one.
+ */
+fun storeSection(genres: List<String>): String {
+    val g = genres.map { ArtRepo.shortGenre(it) }
+    for (s in listOf("Animation", "Documentary", "Horror", "Family", "Kids", "Western", "Sci-Fi")) if (s in g) return s
+    val main = g.firstOrNull { it != "TV Movie" } ?: return Catalog.OTHER
+    return when (main) {
+        "Mystery" -> "Thriller"
+        "History" -> "Drama"
+        else -> main
+    }
+}

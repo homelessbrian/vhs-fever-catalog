@@ -16,7 +16,7 @@ class BotSureTest {
         assertEquals("Snoopy, Come Home", t.name)
         assertEquals(listOf("Animation", "Family"), t.genres)
         assertEquals(1, t.tapes.size)                // the original, with the Archive copy as a backup
-        assertEquals(listOf("Animation", "Family"), c.genreShelves.map { it.first })
+        assertEquals(listOf("Animation"), c.genreShelves.map { it.first })   // one shelf only, like a real store
     }
 
     @Test fun markingItBadTakesItOff() {

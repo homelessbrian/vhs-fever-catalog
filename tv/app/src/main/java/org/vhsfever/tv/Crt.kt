@@ -168,6 +168,14 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
     var showing by remember(tape?.fileId) { mutableStateOf(false) }
     var position by remember(tape?.fileId) { mutableLongStateOf(if (tape != null) previewStartMs(tape) else 0L) }
     var focused by remember { mutableStateOf(false) }
+    // The movie's YouTube trailer plays on the TV; the tape itself only if there's no trailer YouTube will play here.
+    val ctx = LocalContext.current
+    val trailers = rememberTrailers(t)
+    var trailerFailed by remember(t.key) { mutableStateOf(false) }
+    val trailerKeys = trailers?.takeIf { it.isNotEmpty() && !trailerFailed }
+    var yt by remember { mutableStateOf<YouTubePlayer?>(null) }
+    var trailerTime by remember(t.key) { mutableStateOf(0f) }
+    val showsTrailer = trailerKeys != null
     val anim = rememberInfiniteTransition(label = "crt")
     val flick by anim.animateFloat(1f, 0.94f, infiniteRepeatable(tween(180), RepeatMode.Reverse), label = "flick")
     val blink by anim.animateFloat(1f, 0.2f, infiniteRepeatable(keyframes { durationMillis = 1200; 1f at 0; 1f at 720; 0.2f at 732; 0.2f at 1200 }), label = "blink")
@@ -185,7 +193,13 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
             })
             val bodyShape = RoundedCornerShape(u(20), u(20), u(12), u(12))
             Surface(
-                onClick = { onFullScreen(position) },
+                onClick = {
+                    val keys = trailerKeys
+                    if (keys != null) {
+                        val i = yt?.key?.let { keys.indexOf(it) }?.coerceAtLeast(0) ?: 0
+                        ctx.startActivity(TrailerActivity.intent(ctx, t.name, keys, i, trailerTime))
+                    } else onFullScreen(position)
+                },
                 modifier = Modifier.fillMaxSize().onFocusChanged { focused = it.isFocused },
                 shape = ClickableSurfaceDefaults.shape(bodyShape),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
@@ -205,10 +219,12 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
                                 style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = f(26), lineHeight = f(26),
                                     letterSpacing = (1f * k).fs, color = Ink.CoverCream, textAlign = TextAlign.Center,
                                     shadow = Shadow(Color(0xB3FF285A), Offset(2f, 0f), 2f)), maxLines = 3)
-                            if (tape != null && playPreview) TapeVideo(tape, onShowing = { showing = it }, onPosition = { position = it })
+                            if (playPreview && trailerKeys != null) TrailerVideo(trailerKeys, onShowing = { showing = it },
+                                onTime = { trailerTime = it }, onFailed = { showing = false; trailerFailed = true }, onPlayer = { yt = it })
+                            else if (tape != null && playPreview && trailers != null) TapeVideo(tape, onShowing = { showing = it }, onPosition = { position = it })
                             CrtGlass(k = k)
                             Text("PLAY ▶", modifier = Modifier.padding(start = u(10), top = u(6)), style = vt)
-                            Text("SP " + clock(position), modifier = Modifier.align(Alignment.BottomEnd).padding(end = u(10), bottom = u(18)), style = vt)
+                            Text("SP " + clock(if (showsTrailer) (trailerTime * 1000).toLong() else position), modifier = Modifier.align(Alignment.BottomEnd).padding(end = u(10), bottom = u(18)), style = vt)
                             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = u(6)).fillMaxWidth().height(u(8))
                                 .graphicsLayer { translationX = (if (track < .33f) 0f else if (track < .66f) 5f else -4f) * 1.5f * k }
                                 .drawBehind {
@@ -242,8 +258,8 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
                 color = Color(0xFF6DFF8A), shadow = Shadow(Color(0xFF33FF66), Offset.Zero, 6f)))
         }
         Spacer(Modifier.height(u(10)))
-        Text("NOW SHOWING · THIS TAPE", style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.4f.fs, color = Ink.Soft))
-        Text("Select the TV to watch full screen", modifier = Modifier.padding(top = 4.px),
+        Text(if (showsTrailer) "NOW SHOWING · TRAILER" else "NOW SHOWING · THIS TAPE", style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.4f.fs, color = Ink.Soft))
+        Text(if (showsTrailer) "Select the TV to watch the trailer full screen" else "Select the TV to watch full screen", modifier = Modifier.padding(top = 4.px),
             style = TextStyle(fontFamily = Type.Barlow, fontSize = 15.fs, color = if (focused) Ink.Gold else Ink.Muted))
     }
 }

@@ -75,7 +75,7 @@ fun DetailScreen(
     BackHandler { if (chooser) chooser = false else onBack() }
 
     val related = remember(t.key, catalog) {
-        val same = catalog.titles.filter { it.key != t.key && it.genres.any { g -> g in t.genres } }
+        val same = catalog.titles.filter { it.key != t.key && it.section == t.section }
         (same + catalog.titles.filter { it.key != t.key && it !in same }).take(6)
     }
 
@@ -145,7 +145,7 @@ fun DetailScreen(
 
         // middle: the info card. Everything shrinks to fit rather than being cut off.
         Column(Modifier.offset(414.px, 84.px).width(406.px).height(612.px)) {
-            val genre = t.genres.take(2).joinToString(" · ").ifBlank { t.shelf }
+            val genre = t.section.takeIf { it != Catalog.OTHER && !t.adult } ?: t.shelf
             Text(genre.uppercase(), modifier = Modifier.border(1.dp, Ink.Gold, RoundedCornerShape(3.px)).padding(horizontal = 12.px, vertical = 3.px),
                 style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.6f.fs, color = Ink.Gold))
             FitText(t.name.uppercase(), modifier = Modifier.padding(top = 10.px).fillMaxWidth(), maxLines = 3, minScale = 0.5f,

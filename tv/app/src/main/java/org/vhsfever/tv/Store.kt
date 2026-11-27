@@ -157,7 +157,7 @@ fun StoreScreen(
             Section.Home -> HomeContent(catalog, restoreKey, onOpen, onSection)
             Section.Browse -> GridContent("Browse All", "Every tape in the store", catalog.titles, restoreKey, onOpen)
             Section.Genres -> GenresContent(catalog, onSection)
-            is Section.Genre -> GridContent(section.name, "Genre", catalog.titles.filter { section.name in it.genres }, restoreKey, onOpen)
+            is Section.Genre -> GridContent(section.name, "Genre", catalog.titles.filter { it.section == section.name }, restoreKey, onOpen)
             Section.NewArrivals -> GridContent("New Arrivals", "Newest tapes marked good", catalog.newArrivals, restoreKey, onOpen)
             Section.Watchlist -> GridContent("My Watchlist", "Tapes you saved for later",
                 catalog.titles.filter { it.key in watchlist }, restoreKey, onOpen,
@@ -274,12 +274,18 @@ private fun HeroPhoto(playing: Title?) {
         Image(painterResource(R.drawable.store_hero), null, contentScale = ContentScale.FillBounds,
             modifier = Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).offset(PHOTO_X.px, PHOTO_Y.px)
                 .size((2172 * PHOTO_SCALE).px, (724 * PHOTO_SCALE).px))
-        val tape = playing?.tapes?.firstOrNull()
-        if (tape != null) {
-            var showing by remember(tape.fileId) { mutableStateOf(false) }
+        // The highlighted movie's trailer; a clip of the tape only when it has no trailer YouTube will play here.
+        val trailers = rememberTrailers(playing)
+        var trailerFailed by remember(playing?.key) { mutableStateOf(false) }
+        val trailerKeys = trailers?.takeIf { it.isNotEmpty() && !trailerFailed }
+        val tape = playing?.tapes?.firstOrNull()?.takeIf { trailers != null && trailerKeys == null }
+        if (trailerKeys != null || tape != null) {
+            var showing by remember(playing?.key) { mutableStateOf(false) }
             Box(Modifier.offset(TV_X.px, TV_Y.px).size(TV_W.px, TV_H.px).clip(RoundedCornerShape(12.px))
                 .graphicsLayer { alpha = if (showing) 1f else 0f }.background(Color.Black)) {
-                TapeVideo(tape, onShowing = { showing = it }, onPosition = {})
+                if (trailerKeys != null) TrailerVideo(trailerKeys, onShowing = { showing = it }, onTime = {},
+                    onFailed = { showing = false; trailerFailed = true })
+                else if (tape != null) TapeVideo(tape, onShowing = { showing = it }, onPosition = {})
                 CrtGlass(k = 0.8f)
                 Text("PLAY ▶", modifier = Modifier.padding(start = 10.px, top = 6.px),
                     style = TextStyle(fontFamily = Type.Vt, fontSize = 18.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f)))
@@ -399,10 +405,12 @@ private fun SectionHeader(title: String, sub: String) {
 }
 
 /** A grid of boxes; each cell fits a DVD, and VHS boxes stand in the middle of theirs. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun BoxGrid(titles: List<Title>, restoreKey: String?, onOpen: (Title) -> Unit, first: FocusRequester?, top: Int) {
-    LazyVerticalGrid(GridCells.Adaptive(150.px), Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 252.px, end = 40.px, top = top.px, bottom = 40.px),
+    // The grid starts where the menu ends (not under it), so Right from the menu finds it, and comes back to the box you left.
+    LazyVerticalGrid(GridCells.Adaptive(150.px), Modifier.fillMaxSize().padding(start = 232.px).focusRestorer(),
+        contentPadding = PaddingValues(start = 20.px, end = 40.px, top = top.px, bottom = 40.px),
         horizontalArrangement = Arrangement.spacedBy(10.px), verticalArrangement = Arrangement.spacedBy(26.px)) {
         items(titles, key = { it.key }) { t ->
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
@@ -426,6 +434,7 @@ private fun GridContent(title: String, sub: String, titles: List<Title>, restore
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun GenresContent(catalog: Catalog, onSection: (Section) -> Unit) {
     val first = remember { FocusRequester() }
@@ -434,8 +443,8 @@ private fun GenresContent(catalog: Catalog, onSection: (Section) -> Unit) {
         SectionHeader("Genres", "Pick a shelf · ${catalog.genreShelves.size}")
         if (catalog.genreShelves.isEmpty()) Text("Genres show up once the TMDB info has loaded.", modifier = Modifier.padding(start = 252.px),
             style = TextStyle(fontFamily = Type.Barlow, fontSize = 22.fs, color = Ink.Body))
-        LazyVerticalGrid(GridCells.Adaptive(226.px), Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 252.px, end = 40.px, top = 10.px, bottom = 40.px),
+        LazyVerticalGrid(GridCells.Adaptive(226.px), Modifier.fillMaxSize().padding(start = 232.px).focusRestorer(),
+            contentPadding = PaddingValues(start = 20.px, end = 40.px, top = 10.px, bottom = 40.px),
             horizontalArrangement = Arrangement.spacedBy(20.px), verticalArrangement = Arrangement.spacedBy(20.px)) {
             items(catalog.genreShelves, key = { it.first }) { (g, list) ->
                 Column(if (g == catalog.genreShelves.first().first) Modifier.focusRequester(first) else Modifier) {
