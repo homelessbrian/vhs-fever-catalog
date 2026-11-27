@@ -311,8 +311,9 @@ class AppModel(private val ctx: Context) {
         val f = byId[fileId] ?: return false
         val g = robotFor(f) ?: return false
         if (g.verdict != "good" && g.verdict != "bad") return false
+        val shown = if (g.verdict == "good") shownMovieToSave(f) else null
         update(fileId, "Agreed with the bot") {
-            it.copy(status = g.verdict, reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
+            it.copy(status = g.verdict, movie = it.movie ?: shown, reasons = if (g.verdict == "bad") listOfNotNull(g.reason) else emptyList(),
                 otherReason = if (g.verdict == "bad" && g.reason == null) "bot: " + g.why.firstOrNull().orEmpty() else "",
                 robot = "agreed")
         }
@@ -353,8 +354,17 @@ class AppModel(private val ctx: Context) {
 
     fun soundFor(f: FileItem): AudioCheck? = audio[f.id]
 
+    /** The movie on screen, if it's only the bot's guess: saved with "good" so the box finder and TV see it too. */
+    private fun shownMovieToSave(f: FileItem): Movie? {
+        val (mv, confirmed) = movieFor(f)
+        if (confirmed || mv == null || mv.tmdbId <= 0) return null
+        return mv.copy(genres = genresFor(f))
+    }
+
     fun markGood(f: FileItem, notes: String) {
-        update(f.id, "Marked good") { it.copy(status = "good", reasons = emptyList(), otherReason = "", notes = notes) }
+        val shown = shownMovieToSave(f)
+        update(f.id, "Marked good") { it.copy(status = "good", reasons = emptyList(), otherReason = "", notes = notes,
+            movie = it.movie ?: shown) }
     }
 
     fun markBad(f: FileItem, reasons: List<String>, other: String, notes: String) {
