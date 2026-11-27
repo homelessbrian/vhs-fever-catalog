@@ -142,7 +142,7 @@ fun DetailScreen(
 
         // middle: the writing. Everything shrinks to fit rather than being cut off.
         Column(Modifier.offset(282.px, 92.px).width(404.px).height(414.px)) {
-            FitText(t.name.uppercase(), modifier = Modifier.fillMaxWidth(), maxLines = 2, minScale = 0.5f,
+            FitText(t.name.uppercase(), modifier = Modifier.fillMaxWidth(), maxLines = 3, minScale = 0.45f,
                 style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 60.fs, lineHeight = 62.fs,
                     letterSpacing = 1f.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(0f, 3f), 10f)))
             val art = t.art
