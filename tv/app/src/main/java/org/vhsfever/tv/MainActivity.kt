@@ -225,7 +225,7 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterRepo: PosterRep
                     restoreGenre = (s as? Section.Genre)?.name
                     section = if (s is Section.Genre) Section.Genres else Section.Home
                 }
-                StoreScreen(c, section, status, watchlist, restoreKey, restoreGenre,
+                StoreScreen(c, section, status, watchlist, restoreKey,
                     onSection = { restoreKey = null; restoreGenre = null; section = it },
                     onOpen = { restoreKey = it.key; openKey = it.key },
                     onRefresh = { reload() },
@@ -238,7 +238,8 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterRepo: PosterRep
                             else -> false
                         }
                     },
-                    onCurtainReset = { prefs.edit().remove("curtain_pin").apply(); curtainPin = null; Curtain.open = false })
+                    onCurtainReset = { prefs.edit().remove("curtain_pin").apply(); curtainPin = null; Curtain.open = false },
+                    restoreGenre = restoreGenre)
             }
             status.startsWith("Couldn’t") -> Text(status, modifier = Modifier.align(Alignment.Center).padding(48.px),
                 style = TextStyle(fontFamily = Type.Barlow, fontSize = 26.fs, color = Ink.Cream, textAlign = TextAlign.Center))

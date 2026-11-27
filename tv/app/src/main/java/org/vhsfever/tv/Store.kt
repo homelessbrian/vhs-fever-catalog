@@ -160,10 +160,11 @@ object Hi {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun StoreScreen(
-    catalog: Catalog, section: Section, status: String, watchlist: Set<String>, restoreKey: String?, restoreGenre: String? = null,
+    catalog: Catalog, section: Section, status: String, watchlist: Set<String>, restoreKey: String?,
     onSection: (Section) -> Unit, onOpen: (Title) -> Unit, onRefresh: () -> Unit,
     update: Updater.State = Updater.State.Idle, onCheckUpdate: () -> Unit = {},
     curtainPinSet: Boolean = false, onCurtainPin: (String) -> Boolean = { false }, onCurtainReset: () -> Unit = {},
+    restoreGenre: String? = null,
 ) {
     val nav = remember { StoreNav() }
     CompositionLocalProvider(LocalNav provides nav) {
