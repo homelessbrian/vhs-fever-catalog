@@ -31,11 +31,14 @@ data class Art(
     val titleLogo: String? = null,     // transparent PNG of the movie's title
     val stills: List<String> = emptyList(),  // film stills with no text on them
     val imdbId: String? = null,
+    val collection: Int? = null,       // TMDB collection (a movie and its sequels), so the series' boxes match
+    val collectionChecked: Boolean = true,  // false for art saved before collections were looked up
 ) {
     fun toJson(): JSONObject = JSONObject().put("poster", poster).put("backdrop", backdrop).put("overview", overview)
         .put("year", year).put("genres", JSONArray(genres)).put("tagline", tagline).put("cast", JSONArray(cast))
         .put("director", director).put("rating", rating).put("runtime", runtime).put("studio", studio)
         .put("studioLogo", studioLogo).put("titleLogo", titleLogo).put("stills", JSONArray(stills)).put("imdbId", imdbId)
+        .put("collection", collection ?: 0)
 
     companion object {
         fun fromJson(o: JSONObject) = Art(
@@ -43,6 +46,7 @@ data class Art(
             o.s("tagline"), o.optJSONArray("cast").list(), o.s("director"), o.s("rating"),
             o.optInt("runtime").takeIf { it > 0 }, o.s("studio"), o.s("studioLogo"), o.s("titleLogo"),
             o.optJSONArray("stills").list(), o.s("imdbId"),
+            collection = o.optInt("collection").takeIf { it > 0 }, collectionChecked = o.has("collection"),
         )
     }
 }
@@ -71,7 +75,8 @@ class ArtRepo(ctx: Context) {
      */
     suspend fun loadAll(titles: List<Title>, onArt: (String, Art) -> Unit) = withContext(Dispatchers.IO) {
         if (!available) return@withContext
-        val todo = titles.filter { cached(it) == null }
+        // art saved before collections were looked up is fetched again (the old art shows meanwhile)
+        val todo = titles.filter { cached(it).let { a -> a == null || !a.collectionChecked } }
         if (todo.isEmpty()) return@withContext
         val gate = Semaphore(4)
         var sinceSave = 0
@@ -122,6 +127,7 @@ class ArtRepo(ctx: Context) {
             stills = images?.optJSONArray("backdrops").objs().filter { it.s("iso_639_1") == null }
                 .take(4).mapNotNull { it.s("file_path")?.let { p -> "$IMG/w780$p" } },
             imdbId = o.s("imdb_id") ?: o.optJSONObject("external_ids")?.s("imdb_id"),
+            collection = o.optJSONObject("belongs_to_collection")?.optInt("id")?.takeIf { it > 0 },
         )
     }
 

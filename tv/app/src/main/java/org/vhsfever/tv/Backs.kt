@@ -70,7 +70,7 @@ private class BackText(t: Title, val tapeText: String) {
     fun pic(i: Int): Any? = pictures.getOrNull(i) ?: pictures.firstOrNull()
 }
 
-fun backLayout(t: Title): Int = Math.floorMod(t.key.hashCode() * 31 + 7, 5)
+fun backLayout(t: Title): Int = Math.floorMod(lookKey(t).hashCode() * 31 + 7, 5)
 
 @Composable
 fun BoxBack(t: Title, tapeText: String, modifier: Modifier = Modifier, layout: Int = backLayout(t)) {

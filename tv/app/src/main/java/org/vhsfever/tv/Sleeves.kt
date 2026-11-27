@@ -51,8 +51,8 @@ import coil.compose.AsyncImage
 /*
  * The printed bands around a TMDB poster on a VHS-sized sleeve. Posters (2:3) are wider than a VHS front, so the
  * whole poster sits full width and the room left above and below is printed like a real rental sleeve.
- * There are 14 looks; each movie always gets the same one (picked from its key), so the shelf has variety
- * but a box never changes from one visit to the next. All colours come from the movie's own poster.
+ * There are 14 looks; each movie always gets the same one (picked from its key, or its series so sequels
+ * match), so the shelf has variety but a box never changes from one visit to the next. All colours come from the movie's own poster.
  */
 
 /** The sleeve looks, in the order they were designed. */
@@ -60,7 +60,13 @@ enum class SleeveStyle { Classic, StudioHeader, ColorFade, Spectrum, Framed, Big
     GoldFoil, RentalStickers, WhiteLabel, Halftone, Neon, DiagonalSplit }
 
 fun sleeveStyle(t: Title): SleeveStyle =
-    SleeveStyle.values().let { it[Math.floorMod(t.key.hashCode() * 131 + 29, it.size)] }
+    SleeveStyle.values().let { it[Math.floorMod(lookKey(t).hashCode() * 131 + 29, it.size)] }
+
+/**
+ * What picks a made-up box's look: the TMDB collection when the movie has one, so a movie and all its
+ * sequels share the same sleeve, back layout and rental sticker; otherwise the movie itself.
+ */
+fun lookKey(t: Title): String = t.art?.collection?.let { "collection:$it" } ?: t.key
 
 /** Only for the screen-picture tests, where posters can't be downloaded: a stand-in picture. */
 val LocalPosterStandIn = compositionLocalOf<Painter?> { null }
@@ -365,7 +371,7 @@ private fun RentalStickers(k: Sleeve) = Column(Modifier.fillMaxSize().background
             .clip(CircleShape).background(Color(0xFFFFD23A)), verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally) {
             Text("RENT", style = k.bold(Color(0xFFB3151A), 3f, spacing = 0.3f))
-            Text(PRICES[Math.floorMod(k.t.key.hashCode(), PRICES.size)], style = k.bold(Color(0xFFB3151A), 5.6f, spacing = 0f))
+            Text(PRICES[Math.floorMod(lookKey(k.t).hashCode(), PRICES.size)], style = k.bold(Color(0xFFB3151A), 5.6f, spacing = 0f))
         }
         Text("BE KIND REWIND", style = k.bold(Color(0xFF0A4DBB), 3.4f, spacing = 0.3f), maxLines = 1,
             modifier = Modifier.align(Alignment.BottomStart).offset((3 * k.s).px, (-4 * k.s).px).rotate(-4f)
