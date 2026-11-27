@@ -37,7 +37,7 @@ API = "https://api.themoviedb.org/3"
 # Bumped whenever the search gets smarter. Titles that found nothing (or only
 # weak guesses) with an older version are searched again instead of being
 # copied forward; confident matches are kept.
-MATCHER_VERSION = 6
+MATCHER_VERSION = 7
 KEEP_STATUSES = {"one_likely_candidate", "one_likely_episode", "skipped_tape_opening",
                  "skipped_commercial_or_promo", "skipped_not_english", "skipped_adult"}
 # File names that are a piece of a tape, not the film itself: the Archive
@@ -310,10 +310,20 @@ def main() -> None:
             detail_cache[key] = out
         return detail_cache[key]
 
+    def name_ceiling(tid: str, query: str) -> int | None:
+        """The latest year written in the names: the tape can't be older than the film."""
+        ys = [y for n in [query, *names.get(tid, [])] for y in title_search.years_in_name(n)]
+        return max(ys) if ys else None
+
+    def disney_tape(tid: str, query: str) -> bool:
+        text = " ".join([query, *names.get(tid, []), *[p.get("archive_title") or "" for p in pages_of.get(tid) or []]])
+        return re.search(r"\b(?:walt\s+)?disney|\bpixar\b", text, re.I) is not None
+
     def smart_search(query: str, tid: str, hint_year: int | None, extra: list[tuple[str, str]] | None = None,
                      show: str | None = None) -> dict[str, Any]:
-        common = dict(vocab=vocab, ceiling=first_release.get(tid), hint_year=hint_year,
-                      minutes=typical_minutes(tid), details=details, extra=extra, show=show)
+        common = dict(vocab=vocab, ceiling=first_release.get(tid) or name_ceiling(tid, query), hint_year=hint_year,
+                      minutes=typical_minutes(tid), details=details, extra=extra, show=show,
+                      kids_hint=disney_tape(tid, query))
         res = title_search.search(query, find=raw_find("movie"), **common)
         if res["confidence"] in {"none", "weak"}:
             # TV specials and video collections of shows live under TV on TMDB.
@@ -361,10 +371,11 @@ def main() -> None:
             # Matches found by cutting words off the name ("Alphabet Soup With
             # Barney" -> "Alphabet Soup") are checked again against the show.
             retry = True
-        if (old and (old.get("matcher") or 1) < 6 and old.get("confidence") != "sure"
-                and title_search.leading_year(old.get("search_title") or t["display_title"])):
-            # Matcher 5: names with a year in front ("1998 Paulie") are searched
-            # without it even when one word is left, and the year is used.
+        if (old and (old.get("matcher") or 1) < 7 and old.get("confidence") in {"likely", "several", "weak", "none"}):
+            # Matcher 7: every guess the bot wasn't sure about is looked at again
+            # with the newest rules (years after the name, extras and shorts
+            # ruled out, Disney tapes, more junk words dropped). Before this,
+            # guesses from older matchers were never re-checked.
             retry = True
         if old and dash and dash.get("from") == "Archive page show" and not old.get("page_show_tried"):
             # The Archive page names a show this title was never tried
@@ -413,16 +424,18 @@ def main() -> None:
             t["tmdb"] = {"status": "no_usable_name", "search_title": None,
                          "note": "The file name is a camera/capture name, so there is nothing to search for."}
         else:
-            hint = sorted(hints.get(tid, []))
-            hint_year = int(hint[0]) if len(hint) == 1 else None
-            if hint_year is None:
-                # "1999 The Sixth Sense": a year in front of the name is the film's year.
-                hint_year = title_search.leading_year(t["tmdb"].get("search_title") or t["display_title"])
             query = t["tmdb"].get("search_title") or t["display_title"]
             extra = page_tries(tid, query)
             if title_search.looks_like_no_name(t["display_title"]):
                 query = extra[0][0]
                 extra = []
+            hint = sorted(hints.get(tid, []))
+            hint_year = int(hint[0]) if len(hint) == 1 else None
+            if hint_year is None:
+                # "1999 The Sixth Sense": a year in front of the name is the film's
+                # year; "STRYKER 1983 VHS TRANSFER", "Loser (Amy Heckerling, 2000,
+                # VHS)": a year after the name is the film's or the tape's year.
+                hint_year = title_search.film_year_hint(query)
             show = show_for(tid, title_search.clean_name(query))
             ep_result = None
             if not dash and show and not series:
@@ -460,7 +473,8 @@ def main() -> None:
                     "status": found["status"], "confidence": found["confidence"],
                     "search_title": query, "search_kind": found["kind"],
                     "found_with": found["found_with"], "searches_tried": found["tried"],
-                    "latest_allowed_year": first_release.get(tid), "filename_film_year": hint_year,
+                    "latest_allowed_year": first_release.get(tid) or name_ceiling(tid, query),
+                    "filename_film_year": hint_year,
                     "file_minutes": typical_minutes(tid),
                     "candidates": movies, "confirmed_tmdb_id": None,
                     "note": "Suggestions only. A person must confirm the match.",

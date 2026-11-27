@@ -214,13 +214,13 @@ def fix_spelling(title: str, vocab: Counter[str], *, min_count: int = 3) -> str 
 # Ones", "003 Pingu". A plain "10 Years of Thomas" / "2 Girls in Love" /
 # "60 Minutes" is left alone: no dot, letter, '#' or leading zero.
 TRACK_NUMBER = re.compile(r"^\s*(?:#\s*\d{1,4}[a-z]?\.?|\d{1,3}[a-z][.)]?|\d{1,3}[.)]|0\d{1,3}\.?)\s*[-–]?\s+(?=\S)", re.I)
-DOWNLOAD_SITE = re.compile(r"^\s*(?:y2mate|ssyoutube|savefrom|ytmp3|yt1s|keepvid|clipconverter|snapsave|"
+DOWNLOAD_SITE = re.compile(r"^\s*(?:www[-.])?(?:y2mate|ssyoutube|savefrom|ytmp3|yt1s|keepvid|clipconverter|snapsave|"
                            r"onlinevideoconverter|loader)\.?\w*\s*-\s*", re.I)
 # "-BESskV0WmT0-480pp-1692124241" / ".avi-i0Uq5oQ613k-nomusic" / " F4ps6zFf"
 YOUTUBE_TAIL = re.compile(r"(?:\.\w{2,4})?-[A-Za-z0-9_-]{11}(?:-\d{3,4}p+)?(?:-\d{6,})?(?:-\w+)?(?:\s+\d+)?\s*$")
 YEAR_LABEL = re.compile(r"^\s*(?:(?:19|20)\d\d\s+)?(?:found\s+)?(?:vhs|dvd|tape)\s*[•|·:-]\s*", re.I)
 NOISE = re.compile(
-    r"\b(?:\d{2,3}\s?fps|\d{3,4}p+|\d{3,4}i|prores(?:\s+\d{3,4}[ip])?|hevc|nvenc|x26[45]|h\.?26[45]|xvid|divx|"
+    r"\b(?:\d{2,3}\s?fps|\d{3,4}p+(?:\d{2,3})?|ia\s+copy|(?:english\s+)?(?:dubbed|subbed)|\d{3,4}i|prores(?:\s+\d{3,4}[ip])?|hevc|nvenc|x26[45]|h\.?26[45]|xvid|divx|"
     r"deinterlaced|lagarith|original\s+theatrical\s+audio|screener|"
     r"(?:full\s+)?(?:hd\s+|hq\s+|lq\s+)?(?:vhs|dvd|tv)\s*(?:rip|capture|transfer|recording)(?:\s+version)?|"
     r"full\s+vhs(?:\s+tape)?|vhs\s+tape|full\s+tape|"
@@ -228,7 +228,12 @@ NOISE = re.compile(
     r"(?:better|alternate|alt|original)\s+version|"
     r"(?:us|uk|usa|aus|australian|canadian|nz|pal|ntsc)\s+(?:vhs|dvd|release|version)|"
     r"(?:roadshow|abc\s+video)?\s*re[\s-]?release|(?:\d{4}\s+)?reprint|"
-    r"lyrick\s+studios|anchor\s+bay|strand\s+home\s+video|golden\s+books(?:\s+version)?|cbs\s+fox|"
+    r"lyrick\s+studios|anchor\s+bay|magnetic\s+video|media\s+home\s+entertainment|"
+    r"full\s+moon\s+(?:pictures|features|entertainment)|vestron(?:\s+video)?|thorn\s+emi(?:\s+video)?|"
+    r"rca\s*/?\s*columbia(?:\s+pictures)?(?:\s+home\s+video)?|columbia\s+tristar(?:\s+home\s+video)?|"
+    r"(?:walt\s+)?disney\s+home\s+video|(?:warner|paramount|mgm\s*/?\s*ua|hbo|live|prism|embassy|artisan)\s+"
+    r"home\s+(?:video|entertainment|e[a-z]*)|thames\s+video|bbc\s+video|feature\s+films\s+for\s+families|"
+    r"braveworld|re-?issued?(?:\s+by\s+.*$)?|strand\s+home\s+video|golden\s+books(?:\s+version)?|cbs\s+fox|"
     r"video\s+release(?:\s+\d+)?|vhs\s+release|short\s+film|music\s+video|full\s+movie|full\s+episodes?|"
     r"ext[a-z]*(?:ly|ley)|ultra\s+rare|very\s+rare|rare)\b",
     re.I)
@@ -370,7 +375,13 @@ def by_director_name(text: str) -> str | None:
 
 # "CARRIE 1976 MAGNETIC VIDEO", "CHRISTINE 1983 RCA": name, film year, then
 # the tape label. Only the part before the year is the film's name.
-MID_YEAR = re.compile(r"^\s*(?P<name>\D*?[^\W\d_]\S*)\s+(?P<year>(?:19|20)\d\d)\s+(?P<rest>\S.*)$")
+MID_YEAR = re.compile(r"^\s*(?P<name>(?:(?!\b(?:19|20)\d\d\b).)*?[^\W\d_]\S*(?:\s+\d{1,2})?)\s+"
+                      r"(?P<year>(?:19|20)\d\d)\s+(?P<rest>\S.*)$")
+# The year is part of the name after these words ("Summer of 1942", "Class of
+# 1984", "The Year 2000"), or when the name is just this one word ("Space 1999").
+YEAR_IN_NAME_AFTER = {"the", "a", "an", "of", "in", "on", "to", "and", "for", "from", "since", "year", "after",
+                      "before", "until", "circa", "race", "summer", "class"}
+YEAR_IN_NAME_ALONE = {"space", "summer", "class", "year", "circa", "death race"}
 
 
 def name_before_mid_year(text: str) -> tuple[str, int] | None:
@@ -378,11 +389,45 @@ def name_before_mid_year(text: str) -> tuple[str, int] | None:
     if not m or LEADING_YEAR.match(clean_name(text or "")):
         return None
     name = m["name"].strip(" -.,:")
-    words = plain(name).split()
-    if not words or words[-1] in {"the", "a", "an", "of", "in", "on", "to", "and", "for", "from", "since", "summer",
-                                  "class", "space", "year", "after", "before", "until", "circa"}:
+    if year_is_part_of_name(name):
         return None   # "Summer of 1942", "Space 1999", "Class of 1984": the year is part of the name
     return name, int(m["year"])
+
+
+def year_is_part_of_name(before: str) -> bool:
+    words = plain(before).split()
+    return (not words or words[-1] in YEAR_IN_NAME_AFTER or " ".join(words) in YEAR_IN_NAME_ALONE
+            or (len(words) == 1 and words[0].isdigit()))
+
+
+YEAR_ANYWHERE = re.compile(r"(?<![\d-])((?:19[2-9]|200)\d)(?![\d-])")
+
+
+def years_in_name(text: str) -> list[int]:
+    """Years written after the film's name: 'STRYKER 1983 VHS TRANSFER' -> [1983],
+    'Loser (Amy Heckerling, 2000, VHS)' -> [2000], 'Barney [1990] - 1997 VHS' -> [1990, 1997].
+
+    A year with nothing in front of it, or that belongs to the name ("Summer of
+    1942", "Space 1999"), doesn't count. Dates like "1989-07" are skipped.
+    """
+    raw = DOWNLOAD_SITE.sub("", (text or "").replace("_", " "))
+    out = []
+    for m in YEAR_ANYWHERE.finditer(raw):
+        before = re.sub(r"[(\[{,]", " ", raw[:m.start()])
+        before = re.sub(r"\s[(\[].*$", " ", raw[:m.start()]) if re.search(r"[(\[]", raw[:m.start()]) else before
+        if len(plain(before)) < 2 or year_is_part_of_name(before):
+            continue
+        out.append(int(m.group(1)))
+    return sorted(set(out))
+
+
+def film_year_hint(text: str) -> int | None:
+    """The film's year as the name gives it: a year in front, else the earliest year after the name."""
+    y = leading_year(text)
+    if y:
+        return y
+    ys = years_in_name(text)
+    return ys[0] if ys else None
 
 
 def leading_year(text: str) -> int | None:
@@ -477,6 +522,10 @@ def search_tries(title: str, vocab: Counter[str] | None = None, *, extra: list[t
     mid = name_before_mid_year(title)
     if mid:
         add(mid[0], "name before the year in the middle")
+        m2 = mid[0]
+        for _how, rx in STRIP_PATTERNS:
+            m2 = rx.sub(" ", m2)
+        add(m2, "name before the year in the middle, cleaned up")   # "... SPECIAL EDITION 1985 RCA"
     # "1975 It's a Bird, It's a Plane, It's Superman": a year written in front
     # of the name. The name with the year is still tried first, so films
     # named after a year ("2001 A Space Odyssey") still match.
@@ -620,14 +669,29 @@ def rank(query: str, cands: list[dict[str, Any]], *, ceiling: int | None, hint_y
             elif diff > 0.35:
                 score -= 12
                 why.append(f"runs {rt} min but the file runs {round(minutes)}")
+        if rt and minutes and minutes >= 40 and rt < minutes * 0.5:
+            # A feature-length tape is never a 10-30 minute short or extra.
+            score -= 25
+            c["too_short"] = True
+            why.append(f"only {rt} min, far shorter than the {round(minutes)} min tape")
+        title_l = plain(" ".join(n for n in names if n))
+        if EXTRA_WORDS.search(title_l) and not EXTRA_WORDS.search(plain(query)):
+            score -= 20
+            why.append("a making-of or extra, not the film")
         if kids_hint and c.get("animated"):
-            score += 4
+            score += 10
+            why.append("animated, and the tape says Disney")
         pop = c.get("popularity") or 0
         score += min(pop, 50) / 10
         c["score"] = round(score, 1)
         c["why"] = why
     cands.sort(key=lambda c: c["score"], reverse=True)
     return cands
+
+
+# Extras that share a film's name. ("Sing-Along Songs" tapes are real tapes, so not those.)
+EXTRA_WORDS = re.compile(r"\b(?:making of|behind the scenes|story behind|featurette|sing and play|"
+                         r"bonus features?|deleted scenes|documentary about)\b")
 
 
 def confidence(cands: list[dict[str, Any]]) -> str:
@@ -676,8 +740,11 @@ def search(title: str, *, find: Callable[[str, int | None], list[dict[str, Any]]
 
     for q, how in search_tries(title, vocab, extra=extra, show=show)[:max_tries]:
         results = find(q, hint_year) if hint_year else []
-        if not results:
-            results = find(q, None)
+        if not results or max(name_similarity(judge(q, how), r.get("title") or "") for r in results) < 0.95:
+            # A year after the name is often the tape's year, not the film's
+            # ("Roman Holiday VHS (1992)"), so also search without it.
+            seen_ids = {r.get("tmdb_id") for r in results}
+            results = results + [r for r in find(q, None) if r.get("tmdb_id") not in seen_ids]
         tried.append({"query": q, "how": how, "results": len(results)})
         for r in results:
             key = (r.get("media_type"), r.get("tmdb_id"))

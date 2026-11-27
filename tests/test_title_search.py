@@ -310,3 +310,44 @@ def test_name_then_year_then_tape_label():
     assert "Iron Will" in [q for q, _ in ts.search_tries("Disney's Iron Will VHS", None)]
     for name in ("Summer of 1942 Warner", "Space 1999 Breakaway", "Class of 1984 Vestron"):
         assert ts.name_before_mid_year(name) is None
+
+
+
+class MatcherSevenTests(unittest.TestCase):
+
+    def test_year_after_the_name_is_used(self):
+        assert ts.film_year_hint("STRYKER 1983 VHS TRANSFER") == 1983
+        assert ts.film_year_hint("Loser (Amy Heckerling, 2000, VHS)") == 2000
+        assert ts.film_year_hint("Barney: Waiting For Santa [1990] - 1997 VHS Release") == 1990
+        assert ts.film_year_hint("Roman Holiday VHS (1992) (USA)") == 1992
+        for name in ("Summer of 1942", "Space 1999", "Death Race 2000", "1989-07 Florida Vacation", "The Year 2000"):
+            assert ts.years_in_name(name) == []
+
+    def test_more_tape_junk_is_dropped(self):
+        tries = lambda n: [q for q, _ in ts.search_tries(n, None)]
+        assert "KILLER KLOWN FROM OUTER SPACE" in tries("KILLER KLOWN FROM OUTER SPACE 1988 MEDIA HOME ENTERTAINMENT VHS RIP")
+        assert "TRANCERS 6" in tries("TRANCERS 6 2002 FULL MOON PICTURES VHS RIP")
+        assert "CLOSE ENCOUNTERS OF THE THIRD KIND" in tries("CLOSE ENCOUNTERS OF THE THIRD KIND SPECIAL EDITION 1985 RCA VHS RIP")
+        assert ts.clean_name("www-y2mate.cc - Sarah Plain And Tall Winter s End (Full 1999 Artisan Home E") == \
+            "Sarah Plain And Tall Winter s End"
+        assert ts.clean_name("Muzzy In Gondoland 1989 VHS 1080p60") == "Muzzy In Gondoland"
+        assert ts.clean_name("Plymptoons IA COPY") == "Plymptoons"
+
+    def test_shorts_and_making_ofs_lose_to_the_film(self):
+        cands = [dict(title="The Adventures of Elmo in Grouchland", release_date="1999-10-01", runtime=73, popularity=8, tmdb_id=1),
+                 dict(title="The Adventures of Elmo in Grouchland: Sing and Play", release_date="1999-10-01", runtime=30,
+                      popularity=9, tmdb_id=2)]
+        ranked = ts.rank("The Adventures of Elmo in Grouchland", cands, ceiling=None, hint_year=1999, minutes=75)
+        assert ranked[0]["tmdb_id"] == 1 and ts.confidence(ranked) == "sure"
+        cands = [dict(title="The Many Adventures of Winnie the Pooh", release_date="1977-03-11", runtime=74, popularity=20, tmdb_id=1),
+                 dict(title="The Many Adventures of Winnie the Pooh: The Story Behind the Masterpiece",
+                      release_date="1996-01-01", runtime=25, popularity=2, tmdb_id=2)]
+        ranked = ts.rank("The Many Adventures of Winnie the Pooh", cands, ceiling=None, hint_year=None, minutes=76)
+        assert ranked[0]["tmdb_id"] == 1 and ts.confidence(ranked) == "sure"
+
+    def test_disney_tape_picks_the_animated_film(self):
+        cands = [dict(title="Alice in Wonderland", release_date="1951-07-26", runtime=75, popularity=40, animated=True, tmdb_id=12092),
+                 dict(title="Alice in Wonderland", release_date="1933-12-22", runtime=76, popularity=5, tmdb_id=2),
+                 dict(title="Alice in Wonderland", release_date="1966-12-28", runtime=72, popularity=3, tmdb_id=3)]
+        ranked = ts.rank("Alice in Wonderland", cands, ceiling=1985, hint_year=None, minutes=85, kids_hint=True)
+        assert ranked[0]["tmdb_id"] == 12092 and ts.confidence(ranked) == "sure"
