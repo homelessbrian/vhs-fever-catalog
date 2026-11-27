@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,13 +72,25 @@ private const val STEP = 0.002f                  // one nudge
  * front, spine and back shown as they'll be cut. Saved with the pick; the box job cuts it again.
  */
 @Composable
-fun BoxAlignScreen(m: AppModel, key: String) {
+fun BoxAlignScreen(m: AppModel, key: String, spineFrom: String? = null) {
     val b = m.boxArt
     val t = b.titles.firstOrNull { it.key == key }
-    val c = t?.let { b.shown(it) }
+    // spine mode: the blue lines mark the spine on this picture instead of trimming a front
+    val spineMode = spineFrom != null
+    val c = t?.let { if (spineFrom != null) b.picture(it, spineFrom) else b.shown(it) }
     if (t == null || c == null) { LaunchedEffect(key) { m.back() }; return }
-    val start = remember(key, c.id) {
-        b.adjustFor(key, c) ?: Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null)
+    val isFront = spineMode && b.shown(t)?.id == c.id
+    val isBack = spineMode && b.backs[key]?.id == c.id
+    // where a spine usually is: on the left edge of a front scan, the right edge of a back scan
+    fun spineDefault(rotate: Int) = when {
+        isFront -> Adjust(c.id, null, 0f, 0.12f, rotate = rotate)
+        isBack -> Adjust(c.id, null, 0.88f, 1f, rotate = rotate)
+        else -> Adjust(c.id, null, rotate = rotate)
+    }
+    val start = remember(key, c.id, spineMode) {
+        if (spineMode) b.spines[key]?.takeIf { it.first.id == c.id }?.second
+            ?: spineDefault(if (isFront) b.adjustFor(key, c)?.rotate ?: 0 else 0)
+        else b.adjustFor(key, c) ?: Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null)
     }
     var a by remember(key, c.id) { mutableStateOf(start) }
     var selected by remember { mutableStateOf<Line?>(null) }
@@ -119,13 +132,15 @@ fun BoxAlignScreen(m: AppModel, key: String) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { m.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = C.text) }
             Column(Modifier.weight(1f)) {
-                Text("Line up the box", color = C.text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(if (spineMode) "Mark the spine" else "Line up the box", color = C.text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(t.name, color = C.muted, fontSize = 12.sp)
             }
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (a.folds != null) "Drag the yellow lines onto the folds on each side of the spine, and the blue lines in to trim any border. Pinch to zoom in."
+            Text(if (spineMode) "Drag the blue lines onto the edges of the spine, so only the spine is left bright. " +
+                (if (isFront || isBack) "The ${if (isFront) "front" else "back"} is cut to stop at the spine. " else "") + "Pinch to zoom in."
+                else if (a.folds != null) "Drag the yellow lines onto the folds on each side of the spine, and the blue lines in to trim any border. Pinch to zoom in."
                 else "Drag the blue lines in to trim any border around the front. Pinch to zoom in.", color = C.muted, fontSize = 13.sp)
             val img = bmp
             if (img == null) Text(loadError ?: "Loading the picture…", color = C.muted, fontSize = 13.sp)
@@ -229,10 +244,11 @@ fun BoxAlignScreen(m: AppModel, key: String) {
                         val turned = Math.floorMod(a.rotate + 90, 360)
                         val o = original
                         val wide = o != null && (if (turned % 180 == 0) o.width > o.height * 1.15f else o.height > o.width * 1.15f)
-                        a = Adjust(c.sleeve, if (wide) c.folds?.takeIf { turned == 0 } ?: DEFAULT_FOLDS else null, rotate = turned)
+                        a = if (spineMode) spineDefault(turned)
+                            else Adjust(c.sleeve, if (wide) c.folds?.takeIf { turned == 0 } ?: DEFAULT_FOLDS else null, rotate = turned)
                         selected = null
                     })
-                    Chip(if (a.folds != null) "Whole wrap: back, spine, front" else "Front only", a.folds != null, {
+                    if (!spineMode) Chip(if (a.folds != null) "Whole wrap: back, spine, front" else "Front only", a.folds != null, {
                         a = if (a.folds != null) a.copy(folds = null) else a.copy(folds = c.folds ?: DEFAULT_FOLDS)
                         selected = null
                     })
@@ -244,17 +260,22 @@ fun BoxAlignScreen(m: AppModel, key: String) {
                         Panel(img, a.left, f.first, a.top, a.bottom, "Back")
                         Panel(img, f.first, f.second, a.top, a.bottom, "Spine")
                         Panel(img, f.second, a.right, a.top, a.bottom, "Front")
-                    } else Panel(img, a.left, a.right, a.top, a.bottom, "Front")
+                    } else Panel(img, a.left, a.right, a.top, a.bottom, if (spineMode) "Spine" else "Front")
                 }
             }
             if (b.status.isNotEmpty()) Text(b.status, color = C.muted, fontSize = 13.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 24.dp)) {
-                Button(onClick = { b.saveAdjust(key, c, a) }, enabled = bmp != null,
+                Button(onClick = { if (spineMode) { b.setSpine(key, c, a); m.back() } else b.saveAdjust(key, c, a) }, enabled = bmp != null,
                     colors = ButtonDefaults.buttonColors(containerColor = C.gold, contentColor = Color(0xFF1A1206))) { Text("Save") }
                 OutlinedButton(onClick = { a = start; selected = null }) { Text("Undo changes", color = C.text) }
-                OutlinedButton(onClick = { a = Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null); selected = null }) {
-                    Text("Start over", color = C.text)
-                }
+                OutlinedButton(onClick = {
+                    a = if (spineMode) spineDefault(a.rotate) else Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null)
+                    selected = null
+                }) { Text("Start over", color = C.text) }
+            }
+            if (spineMode && b.spines[key] != null) TextButton(onClick = { b.setSpine(key, null, null); m.back() },
+                modifier = Modifier.padding(bottom = 24.dp)) {
+                Text("Remove the spine (use the box's own)", color = C.warn)
             }
         }
     }

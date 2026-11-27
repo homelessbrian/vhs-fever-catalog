@@ -151,16 +151,20 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                     t.sure -> "The bot picked the box marked BOT. Tap any box to use it instead."
                     listed.isEmpty() -> "No boxes found yet; the TV shows the TMDB poster. Try searching below."
                     else -> "The bot isn't sure. Tap the right box (a full wrap gives the TV a real back and spine too)."
-                } + if (listed.any { it.kind != "wrap" }) " Front and back scanned as two pictures? Tap the front, then \"Use as the back\" on the other." else "", color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+                } + if (listed.any { it.kind != "wrap" }) " Front and back scanned as two pictures? Tap the front, then \"Use as the back\" on the other. " +
+                    "Spine attached to the front or back? Tap that picture and pick \"Use as spine\"." else "", color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
                 // straighten up the box that's showing: spine lines and trimmed edges
                 if (b.shown(t) != null && picked != "none") TextButton(onClick = { m.open(Screen.BoxAlign(key)) }) {
                     Text("Line up this box (spine and edges)", color = C.gold)
+                }
+                b.spines[key]?.let { (sp, _) ->
+                    TextButton(onClick = { m.open(Screen.BoxSpine(key, sp.id)) }) { Text("Change where the spine is", color = C.gold) }
                 }
             } }
             items(listed, key = { it.id }) { c ->
                 val chosen = picked == c.id || (picked == null && onTv == c.id)
                 ArtCard(c, chosen = chosen, bot = t.botPick == c.id && t.sure, onTv = onTv == c.id,
-                    isBack = b.backs[key]?.id == c.id,
+                    isBack = b.backs[key]?.id == c.id, isSpine = b.spines[key]?.first?.id == c.id,
                     onPick = { if (!chosen) b.pick(key, c.id, c.takeIf { it.source == "manual" }) }, onLook = { big = c },
                     onBack = if (chosen || c.kind == "wrap") null else ({ b.setBack(key, if (b.backs[key]?.id == c.id) null else c) }))
             }
@@ -196,6 +200,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
             }
             items(b.searchResults.filter { r -> listed.none { it.id == r.id } }, key = { "s-" + it.id }) { c ->
                 ArtCard(c, chosen = picked == c.id, bot = false, onTv = false, isBack = b.backs[key]?.id == c.id,
+                    isSpine = b.spines[key]?.first?.id == c.id,
                     onPick = { b.pick(key, c.id, c) }, onLook = { big = c },
                     onBack = { b.setBack(key, if (b.backs[key]?.id == c.id) null else c) })
             }
@@ -212,6 +217,10 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { b.pick(key, c.id, c.takeIf { it.source == "manual" }); big = null }) { Text("Use as front", color = C.gold) }
                     if (c.kind != "wrap") TextButton(onClick = { b.setBack(key, c); big = null }) { Text("Use as back", color = C.gold) }
+                    // mark the spine on this picture (a spine scanned attached to the front or the back)
+                    if (c.kind != "wrap") TextButton(onClick = { big = null; m.open(Screen.BoxSpine(key, c.id)) }) { Text("Use as spine", color = C.gold) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     c.link?.let { l -> TextButton(onClick = { uri.openUri(l) }) { Text("Open on Archive", color = C.blue) } }
                     TextButton(onClick = { big = null }) { Text("Close", color = C.muted) }
                 }
@@ -222,7 +231,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
 
 @Composable
 private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolean, onPick: () -> Unit, onLook: () -> Unit,
-                    isBack: Boolean = false, onBack: (() -> Unit)? = null) {
+                    isBack: Boolean = false, onBack: (() -> Unit)? = null, isSpine: Boolean = false) {
     Column(Modifier.clip(RoundedCornerShape(10.dp)).background(C.panel)
         .border(if (chosen) 3.dp else 1.dp, if (chosen) C.gold else C.line, RoundedCornerShape(10.dp))
         .clickable(onClick = onPick).padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -235,6 +244,7 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
                 if (bot) Tag("BOT", C.panel2, C.good)
                 if (onTv) Tag("ON TV", C.blueBg, C.blue)
                 if (isBack) Tag("BACK", C.warnBg, C.warn)
+                if (isSpine) Tag("SPINE", C.warnBg, C.warn)
             }
         }
         Text(c.label, color = C.text, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)

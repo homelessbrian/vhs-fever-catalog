@@ -152,6 +152,14 @@ class BoxArtRepo(private val token: String) {
         if (back == null) e.remove("back") else e.put("back", JSONObject().put("id", back.id).put("url", back.url))
     }
 
+    /** Sets (or with null, removes) the spine: a strip Brian marked on a picture, often the front's or the back's own scan. */
+    fun saveSpine(key: String, pic: ArtCandidate?, cut: Adjust?) = change(key, "Box art spine from phone") { e ->
+        if (pic == null || cut == null) e.remove("spine")
+        else e.put("spine", JSONObject().put("id", pic.id).put("url", pic.url).put("rotate", cut.rotate)
+            .put("trim", JSONObject().put("left", cut.left.toDouble()).put("right", cut.right.toDouble())
+                .put("top", cut.top.toDouble()).put("bottom", cut.bottom.toDouble())))
+    }
+
     /** Changes one movie's entry in choices.json, merged into whatever it holds now. */
     private fun change(key: String, message: String, edit: (JSONObject) -> Unit) {
         repeat(3) { attempt ->
@@ -187,6 +195,7 @@ class BoxArtRepo(private val token: String) {
                     if (adjust != null) put("adjust", adjust.toJson())
                     else before?.optJSONObject("adjust")?.let { put("adjust", it) }
                     before?.optJSONObject("back")?.let { put("back", it) }
+                    before?.optJSONObject("spine")?.let { put("spine", it) }
                 })
             now.put("about", "Box art picked in the review app. \"none\" = show the TMDB poster.")
             val body = JSONObject().put("message", "Box art pick from phone").put("branch", "main")
@@ -225,6 +234,25 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 { backs = before; "Couldn't save: ${it.message}" })
         }
     }
+
+    /** Spines Brian marked on a picture: title key → the picture and where the spine is on it. */
+    var spines by mutableStateOf<Map<String, Pair<ArtCandidate, Adjust>>>(emptyMap()); private set
+
+    fun setSpine(key: String, c: ArtCandidate?, cut: Adjust?) {
+        val before = spines
+        spines = if (c == null || cut == null) spines - key else spines + (key to (c to cut))
+        status = "Saving…"
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { BoxArtRepo(token()).saveSpine(key, c, cut) } }
+            status = r.fold({ if (c == null) "Spine removed. The box goes back to its own spine after the next refresh."
+                else "Spine saved. The TV shows it after its next refresh, in a few minutes." },
+                { spines = before; "Couldn't save: ${it.message}" })
+        }
+    }
+
+    /** Any picture listed for a movie (its boxes, its back, its spine, or a search result) by id. */
+    fun picture(t: ArtTitle, id: String): ArtCandidate? =
+        candidatesOf(t).firstOrNull { it.id == id } ?: searchResults.firstOrNull { it.id == id }
 
     /** TMDB facts per movie (looked up when a movie's box screen opens). */
     var info by mutableStateOf<Map<String, Tmdb.Summary>>(emptyMap()); private set
@@ -282,6 +310,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 custom = choices?.let { parseCustom(it) } ?: emptyMap()
                 adjusts = choices?.let { parseAdjusts(it) } ?: emptyMap()
                 backs = choices?.let { parseBacks(it) } ?: emptyMap()
+                spines = choices?.let { parseSpines(it) } ?: emptyMap()
                 tvAdjusts = index?.let { parseTvAdjusts(it) } ?: emptyMap()
                 onTv = index?.let { parseOnTv(it) } ?: emptyMap()
                 if (!loaded && filter == ArtFilter.REVIEW && count(ArtFilter.REVIEW) == 0) filter = ArtFilter.ON_TV
@@ -351,6 +380,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
         tvBoxes[t.key]?.second?.let { c -> if (list.none { it.id == c.id }) list = listOf(c) + list }
         custom[t.key]?.let { c -> if (list.none { it.id == c.id }) list = listOf(c) + list }
         backs[t.key]?.let { c -> if (list.none { it.id == c.id }) list = list + c }
+        spines[t.key]?.first?.let { c -> if (list.none { it.id == c.id }) list = list + c }
         return list
     }
 
@@ -442,6 +472,17 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 val b = o.optJSONObject(k)?.optJSONObject("back") ?: return@mapNotNull null
                 val url = b.optStringOrNull("url") ?: return@mapNotNull null
                 k to ArtCandidate(b.optString("id"), "manual", url, url, "front", 0, emptyList(), "Back", null, false)
+            }.toMap()
+        }
+
+        fun parseSpines(text: String): Map<String, Pair<ArtCandidate, Adjust>> {
+            val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k ->
+                val sp = o.optJSONObject(k)?.optJSONObject("spine") ?: return@mapNotNull null
+                val url = sp.optStringOrNull("url") ?: return@mapNotNull null
+                val id = sp.optString("id")
+                val cut = Adjust.parse(sp, id) ?: return@mapNotNull null
+                k to (ArtCandidate(id, "manual", url, url, "front", 0, emptyList(), "Spine", null, false) to cut)
             }.toMap()
         }
 

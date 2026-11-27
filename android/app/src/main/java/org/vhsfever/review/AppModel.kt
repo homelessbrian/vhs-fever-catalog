@@ -26,6 +26,8 @@ sealed interface Screen {
     data object BoxArt : Screen
     data class BoxArtPick(val key: String) : Screen
     data class BoxAlign(val key: String) : Screen
+    /** Mark the spine on one picture (id), often the front's or the back's own scan. */
+    data class BoxSpine(val key: String, val id: String) : Screen
 }
 
 enum class QueueMode(val label: String) {

@@ -82,5 +82,6 @@ fun App(m: AppModel, installApk: (File) -> Unit) {
         Screen.BoxArt -> BoxArtListScreen(m)
         is Screen.BoxArtPick -> BoxArtPickScreen(m, s.key)
         is Screen.BoxAlign -> BoxAlignScreen(m, s.key)
+        is Screen.BoxSpine -> BoxAlignScreen(m, s.key, spineFrom = s.id)
     }
 }
