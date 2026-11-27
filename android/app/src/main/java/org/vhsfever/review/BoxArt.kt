@@ -100,6 +100,11 @@ class BoxArtRepo(private val token: String) {
         Http.request("$api/$path?ref=main", headers = auth + ("Accept" to "application/vnd.github.raw+json"), timeoutMs = 90000)
     } catch (e: HttpError) { if (e.code == 404) null else throw e }
 
+    /** Whether this key can see the box art repository at all (GitHub says "not found" when it can't). */
+    fun canOpen(): Boolean = try {
+        Http.request("https://api.github.com/repos/${BuildConfig.BOXART_REPO}", headers = auth); true
+    } catch (e: HttpError) { if (e.code == 404 || e.code == 403 || e.code == 401) false else throw e }
+
     private fun sha(path: String): String? = try {
         JSONObject(Http.request("$api/$path?ref=main", headers = auth)).optString("sha").ifBlank { null }
     } catch (e: HttpError) { if (e.code == 404) null else throw e }
@@ -122,6 +127,8 @@ class BoxArtRepo(private val token: String) {
         }
     }
 }
+
+private class NoAccess : Exception("no access to the box art repository")
 
 /** Box art screen state: what the bot found, what's on the TV now, and Brian's picks. */
 class BoxArtModel(private val scope: CoroutineScope, private val token: () -> String) {
@@ -149,6 +156,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
             val r = withContext(Dispatchers.IO) {
                 runCatching {
                     val repo = BoxArtRepo(token())
+                    if (!repo.canOpen()) throw NoAccess()
                     Triple(repo.read("candidates.json"), repo.read("choices.json"), repo.read("index.json"))
                 }
             }
@@ -165,8 +173,10 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 loaded = true
                 status = if (cands == null) "The bot is still on its first search for other boxes. Movies that already have one are listed." else ""
             }.onFailure { e ->
-                status = if (e is HttpError && (e.code == 404 || e.code == 403))
-                    "Your GitHub key can't open vhs-fever-boxart. Give it access (Contents: Read and write) on GitHub."
+                status = if (e is NoAccess || e is HttpError && (e.code == 404 || e.code == 403))
+                    "Your GitHub key can't see vhs-fever-boxart. On GitHub, open the key you use in this app " +
+                        "and add vhs-fever-boxart to its repositories with Contents: Read and write. " +
+                        "If it's a fine-grained key, check its owner is homelessbrian. Then tap reload."
                 else "Couldn't load box art: ${e.message}"
             }
         }
