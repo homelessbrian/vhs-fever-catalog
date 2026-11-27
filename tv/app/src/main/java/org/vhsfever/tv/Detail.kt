@@ -45,7 +45,11 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +62,21 @@ import androidx.tv.material3.Text
 fun tapeRelease(tape: Tape?): String? =
     if (tape == null) null else listOfNotNull(tape.releaseYear, tape.media).joinToString(" ").ifBlank { null }
 
+/*
+ * The tape page is the store itself: the store photo fills the screen, and the movie's trailer plays on the real
+ * TV on the counter. The photo (2172×724 units) is scaled to the screen's height and lined up on the right,
+ * so its TV sits right of middle. Where the TV's screen is, in mockup pixels:
+ */
+private const val DETAIL_PHOTO_SCALE = 720f / 724f
+private const val DETAIL_PHOTO_X = 1280f - 2172f * DETAIL_PHOTO_SCALE
+private const val DETAIL_TV_X = DETAIL_PHOTO_X + 1606f * DETAIL_PHOTO_SCALE
+private const val DETAIL_TV_Y = 200f * DETAIL_PHOTO_SCALE
+private const val DETAIL_TV_W = 387f * DETAIL_PHOTO_SCALE
+private const val DETAIL_TV_H = 272f * DETAIL_PHOTO_SCALE
+
+/** The views of the box, in the order the turn button goes through them. */
+private val BOX_VIEWS = listOf(24f, 0f, 90f, 180f)
+
 @Composable
 fun DetailScreen(
     t: Title, catalog: Catalog, onWatchlist: Boolean, previewOn: Boolean,
@@ -69,63 +88,110 @@ fun DetailScreen(
     var chooser by remember(t.key) { mutableStateOf(false) }
     val tape = t.tapes.getOrNull(tapeIndex)
     val dvd = tape?.media?.let { it == "DVD" } ?: isDvd(t)
-    val c = colorsOf(t)
     val play = remember { FocusRequester() }
     LaunchedEffect(t.key) { runCatching { play.requestFocus() } }
     BackHandler { if (chooser) chooser = false else onBack() }
 
     // the movies most like this one (same series, TMDB pairings, director, stars, themes), topped up from its shelf
-    val related = remember(t.key, catalog) { Similar.pick(t, catalog.titles) }
+    val related = remember(t.key, catalog) { Similar.pick(t, catalog.titles, count = 9) }
 
     Box(Modifier.fillMaxSize().background(Ink.Navy)) {
-        Image(painterResource(R.drawable.store_blur), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.fillMaxSize().drawBehind {
-            drawRect(Brush.radialGradient(listOf(Color(0x33FFF0CD), Color.Transparent), Offset(size.width * .17f, size.height * .3f), size.width * .4f))
-            drawRect(Brush.radialGradient(listOf(c.c3.alpha(0.22f), Color.Transparent), Offset(size.width * .82f, size.height * .45f), size.width * .35f))
-            drawRect(Brush.radialGradient(0.4f to Color.Transparent, 1f to Color(0xD9040514), center = Offset(size.width / 2, size.height * .45f), radius = size.width * .62f))
-        })
+        // the store, with its counter and TV on the right
+        Image(painterResource(R.drawable.store_hero), null, Modifier.fillMaxSize(),
+            contentScale = ContentScale.FillHeight, alignment = Alignment.CenterEnd)
+        // darken the aisles on the left for the box and the writing, and the floor for the shelf of spines
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+            0f to Ink.Navy.alpha(0.97f), 0.38f to Ink.Navy.alpha(0.92f), 0.52f to Ink.Navy.alpha(0.5f), 0.6f to Ink.Navy.alpha(0f))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.7f to Ink.Navy.alpha(0f), 1f to Ink.Navy.alpha(0.85f))))
 
-        // top bar
-        StoreButton("← BACK TO STORE", Modifier.offset(48.px, 22.px), Ink.Gold, Ink.Gold, onBack, size = 20)
-        Box(Modifier.align(Alignment.TopEnd).padding(top = 24.px, end = 40.px)
-            .background(Brush.linearGradient(listOf(Ink.BadgeTop, Ink.BadgeBottom)), RoundedCornerShape(8.px))
-            .border(2.px, Ink.Gold, RoundedCornerShape(8.px)).padding(horizontal = 16.px, vertical = 6.px)) {
-            Text("VHS FEVER", style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 24.fs,
-                letterSpacing = 1f.fs, color = Ink.Gold, shadow = Shadow(Ink.BadgeShadow, Offset(2f, 2f), 0f)))
+        // the trailer on the counter TV; select it to watch full screen
+        Box(Modifier.offset(DETAIL_TV_X.px, DETAIL_TV_Y.px)) {
+            CounterTv(t, tape, previewOn && !chooser, DETAIL_TV_W, DETAIL_TV_H) { pos ->
+                if (tape != null) ctx.startActivity(PlayerActivity.intent(ctx, t.name, tape, startMs = pos))
+            }
         }
 
-        // left: the box on its shelf, the view buttons, and spines of similar movies
-        Column(Modifier.offset(40.px, 84.px).width(352.px)) {
-            Box(Modifier.size(352.px, 376.px), contentAlignment = Alignment.Center) {
-                Box(Modifier.align(Alignment.BottomCenter).size(380.px, 100.px).drawBehind {
-                    val p = Path().apply {
-                        moveTo(size.width * .1f, 0f); lineTo(size.width * .9f, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close()
-                    }
-                    drawPath(p, Brush.verticalGradient(listOf(Color(0xFF2A46C8), Color(0xFF101D66))))
-                    val gh = 9.px.toPx()
-                    val inset = size.width * .1f * (1f - gh / size.height)
-                    val top = Path().apply {
-                        moveTo(size.width * .1f, 0f); lineTo(size.width * .9f, 0f)
-                        lineTo(size.width - inset, gh); lineTo(inset, gh); close()
-                    }
-                    drawPath(top, Ink.Gold)
-                    drawPath(p, Brush.radialGradient(listOf(Color(0x4DFFEBBE), Color.Transparent), Offset(size.width / 2, 0f), size.width * .45f))
-                })
-                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 30.px).size(220.px, 22.px).drawBehind {
+        // top bar
+        Row(Modifier.offset(48.px, 24.px), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.px)) {
+            StoreButton("← BACK TO STORE", Modifier, Ink.Gold, Ink.Gold, onBack, size = 18)
+            val genre = t.section.takeIf { it != Catalog.OTHER && !t.adult } ?: t.shelf
+            Text("${genre.uppercase()} SHELF", style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.6f.fs, color = Ink.Soft))
+        }
+
+        // left: the box, and a button to turn it
+        Column(Modifier.offset(36.px, 92.px).width(232.px), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(232.px, 318.px), contentAlignment = Alignment.BottomCenter) {
+                Box(Modifier.padding(bottom = 2.px).size(200.px, 20.px).drawBehind {
                     drawOval(Brush.radialGradient(listOf(Color(0xD9000000), Color.Transparent)))
                 })
-                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 40.px)) {
+                Box(Modifier.padding(bottom = 10.px).graphicsLayer {
+                    scaleX = 0.88f; scaleY = 0.88f
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                }) {
                     Box3D(t, angle, tapeText = tapeRelease(tape)?.let { "$it release" } ?: "Edition unresolved", dvd = dvd)
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top = 8.px), horizontalArrangement = Arrangement.spacedBy(8.px, Alignment.CenterHorizontally)) {
-                for ((label, a) in listOf("3/4" to 24f, "FRONT" to 0f, "SPINE" to 90f, "BACK" to 180f)) {
-                    StoreButton(label, Modifier, Color.White.alpha(0.45f), Ink.RailText, { angle = a }, size = 17, chosen = angle == a)
+            val view = when (angle) { 0f -> "FRONT"; 90f -> "SPINE"; 180f -> "BACK"; else -> "3/4" }
+            StoreButton("↻ TURN BOX · $view", Modifier.padding(top = 12.px), Color.White.alpha(0.45f), Ink.RailText, {
+                angle = BOX_VIEWS[(BOX_VIEWS.indexOf(angle) + 1) % BOX_VIEWS.size]
+            }, size = 15)
+        }
+
+        // middle: the writing. Everything shrinks to fit rather than being cut off.
+        Column(Modifier.offset(282.px, 92.px).width(404.px).height(414.px)) {
+            FitText(t.name.uppercase(), modifier = Modifier.fillMaxWidth(), maxLines = 2, minScale = 0.5f,
+                style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 60.fs, lineHeight = 62.fs,
+                    letterSpacing = 1f.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(0f, 3f), 10f)))
+            val art = t.art
+            val minutes = art?.runtime ?: tape?.minutes
+            val meta = listOfNotNull(t.year, art?.rating, minutes?.let { "$it MIN" }, art?.director?.uppercase()).joinToString(" · ")
+            if (meta.isNotBlank()) Text(meta, modifier = Modifier.padding(top = 8.px), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = TextStyle(fontFamily = Type.Mono, fontSize = 14.fs, color = Ink.Lavender))
+            FitText(t.overview ?: "No summary yet.", modifier = Modifier.padding(top = 12.px).fillMaxWidth().weight(1f, fill = false),
+                maxLines = 9, minScale = 0.62f,
+                style = TextStyle(fontFamily = Type.Barlow, fontSize = 19.fs, lineHeight = 27.fs, color = Ink.Body))
+            val cast = art?.cast.orEmpty().take(3)
+            if (cast.isNotEmpty()) Text(buildAnnotatedString {
+                append("Starring ")
+                withStyle(SpanStyle(color = Color.White)) { append(cast.joinToString(", ")) }
+            }, modifier = Modifier.padding(top = 10.px), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = TextStyle(fontFamily = Type.Barlow, fontSize = 16.fs, color = Ink.Muted))
+
+            // which tape plays; with more than one on file, select it to pick another
+            val tapeText = listOfNotNull(tape?.let { tapeName(t, tapeIndex) }, tape?.minutes?.let { "$it min" }).joinToString(" · ").ifBlank { "—" }
+            val many = t.tapes.size > 1
+            var tf by remember { mutableStateOf(false) }
+            val shape = RoundedCornerShape(8.px)
+            Surface(onClick = { if (many) chooser = true }, modifier = Modifier.padding(top = 14.px).fillMaxWidth().onFocusChanged { tf = it.isFocused },
+                shape = ClickableSurfaceDefaults.shape(shape),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+                colors = ClickableSurfaceDefaults.colors(containerColor = Color.White.alpha(0.05f), focusedContainerColor = Ink.Gold,
+                    contentColor = Color.White, focusedContentColor = Ink.Dark),
+                border = ClickableSurfaceDefaults.border(border = Border(BorderStroke(1.px, Color(0x4DCFD4FF)), shape = shape)),
+            ) {
+                Row(Modifier.padding(horizontal = 14.px, vertical = 10.px), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.px)) {
+                    Text(if (dvd) "DISC" else "TAPE", style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, letterSpacing = 1.4f.fs,
+                        color = if (tf) Ink.Dark else Ink.Muted))
+                    Text(tapeText, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Medium, fontSize = 17.fs))
+                    Text(if (many) "${tapeIndex + 1} OF ${t.tapes.size} ›" else "1 OF 1",
+                        style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, color = if (tf) Ink.Dark else Ink.Gold))
                 }
             }
-            Text("SIMILAR MOVIES", modifier = Modifier.padding(top = 12.px),
-                style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, letterSpacing = 1.7f.fs, color = Ink.Soft))
-            Row(Modifier.padding(top = 8.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
+            Row(Modifier.padding(top = 16.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
+                GoldButton("▶ PLAY TAPE", Modifier.focusRequester(play)) {
+                    if (tape != null) ctx.startActivity(PlayerActivity.intent(ctx, t.name, tape))
+                }
+                StoreButton(if (onWatchlist) "✓ ON WATCHLIST" else "+ WATCHLIST", Modifier, Color.White.alpha(0.6f), Color.White,
+                    onToggleWatchlist, chosen = onWatchlist)
+            }
+        }
+
+        // bottom: spines of similar movies, standing on the shelf
+        if (related.isNotEmpty()) Column(Modifier.offset(48.px, 512.px)) {
+            Text("ALSO ON THE SHELF", style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, letterSpacing = 1.7f.fs, color = Ink.Soft))
+            Row(Modifier.padding(top = 10.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
                 for (r in related) {
                     var f by remember(r.key) { mutableStateOf(false) }
                     Box(Modifier.lift(if (f) (-6).px else 0.px)) {
@@ -141,79 +207,8 @@ fun DetailScreen(
             }
         }
 
-        // middle: the info card. Everything shrinks to fit rather than being cut off.
-        Column(Modifier.offset(414.px, 84.px).width(406.px).height(612.px)) {
-            val genre = t.section.takeIf { it != Catalog.OTHER && !t.adult } ?: t.shelf
-            Text(genre.uppercase(), modifier = Modifier.border(1.dp, Ink.Gold, RoundedCornerShape(3.px)).padding(horizontal = 12.px, vertical = 3.px),
-                style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.6f.fs, color = Ink.Gold))
-            FitText(t.name.uppercase(), modifier = Modifier.padding(top = 10.px).fillMaxWidth(), maxLines = 3, minScale = 0.5f,
-                style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 44.fs, lineHeight = 46.fs,
-                    letterSpacing = 0.9f.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(0f, 3f), 8f)))
-            val meta = listOfNotNull(t.year?.let { "$it film" }, tapeRelease(tape)?.let { "$it " + if (dvd) "disc" else "tape" } ?: "edition unresolved",
-                "${t.tapes.size} ${if (t.tapes.size == 1) "tape" else "tapes"} on file").joinToString(" · ")
-            Text(meta, modifier = Modifier.padding(top = 8.px),
-                style = TextStyle(fontFamily = Type.Mono, fontSize = 14.fs, lineHeight = 20.fs, color = Ink.Lavender))
-            FitText(t.overview ?: "No summary yet.", modifier = Modifier.padding(top = 12.px).fillMaxWidth().weight(1f, fill = false),
-                maxLines = 30, minScale = 0.62f,
-                style = TextStyle(fontFamily = Type.Barlow, fontSize = 21.fs, lineHeight = 28.fs, color = Ink.Body))
-            Column(Modifier.padding(top = 14.px).drawBehind {
-                drawLine(Color(0x4DCFD4FF), Offset.Zero, Offset(size.width, 0f), 1f)
-            }) {
-                val scan = t.box
-                val art = when {
-                    scan != null -> listOfNotNull("VHS box scan", scan.label?.let(::titleCase), scan.region, scan.tapeYear,
-                        if (t.posterIsSuggestion) "match not confirmed" else null, scan.source).joinToString(" · ")
-                    t.poster == null -> "Placeholder · no tape scan yet"
-                    t.posterIsSuggestion -> "${t.posterFrom} poster · match not confirmed"
-                    else -> "${t.posterFrom} poster · no tape scan yet"
-                }
-                InfoRow("FILM", t.year ?: "—")
-                val tapeText = listOfNotNull(tape?.let { tapeName(t, tapeIndex) }, tape?.minutes?.let { "$it min" }).joinToString(" · ").ifBlank { "—" }
-                if (t.tapes.size > 1) {
-                    // pick which of the tapes on file to play
-                    var f by remember { mutableStateOf(false) }
-                    Surface(onClick = { chooser = true }, modifier = Modifier.fillMaxWidth().onFocusChanged { f = it.isFocused },
-                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.px)),
-                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-                        colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Ink.Gold,
-                            contentColor = Color.White, focusedContentColor = Ink.Dark),
-                    ) { Box(Modifier.padding(horizontal = if (f) 8.px else 0.px)) { InfoRow("THIS TAPE", tapeText, action = "CHANGE ›", onGold = f) } }
-                } else InfoRow("THIS TAPE", tapeText)
-                InfoRow("TAPES ON FILE", t.tapes.size.toString())
-                InfoRow("BOX ART", art)
-            }
-            Row(Modifier.padding(top = 16.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
-                GoldButton("▶ PLAY TAPE", Modifier.focusRequester(play)) {
-                    if (tape != null) ctx.startActivity(PlayerActivity.intent(ctx, t.name, tape))
-                }
-                StoreButton(if (onWatchlist) "✓ ON WATCHLIST" else "+ WATCHLIST", Modifier, Color.White.alpha(0.6f), Color.White,
-                    onToggleWatchlist, chosen = onWatchlist)
-            }
-        }
-
-        // right: the big CRT on the counter; select it to watch full screen from the same spot
-        Box(Modifier.offset(842.px, 112.px)) {
-            CrtTv(t, tape, previewOn && !chooser, width = 400) { pos ->
-                if (tape != null) ctx.startActivity(PlayerActivity.intent(ctx, t.name, tape, startMs = pos))
-            }
-        }
-
         if (chooser) TapeChooser(t, tapeIndex, onPick = { tapeIndex = it; chooser = false })
         Grain()
-    }
-}
-
-@Composable
-private fun InfoRow(k: String, v: String, action: String? = null, onGold: Boolean = false) {
-    Row(Modifier.fillMaxWidth().drawBehind {
-        drawLine(Color(0x4DCFD4FF), Offset(0f, size.height), Offset(size.width, size.height), 1f)
-    }.padding(vertical = 9.px), horizontalArrangement = Arrangement.spacedBy(12.px), verticalAlignment = Alignment.CenterVertically) {
-        Text(k, style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.3f.fs, color = if (onGold) Ink.Dark else Ink.Muted))
-        Text(v, modifier = Modifier.weight(1f), maxLines = 2,
-            style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Medium, fontSize = 20.fs, lineHeight = 24.fs,
-                color = if (onGold) Ink.Dark else Color.White, textAlign = TextAlign.End))
-        if (action != null) Text(action, style = TextStyle(fontFamily = Type.Condensed, fontWeight = FontWeight.Bold, fontSize = 16.fs,
-            letterSpacing = 1.2f.fs, color = if (onGold) Ink.Dark else Ink.Gold))
     }
 }
 

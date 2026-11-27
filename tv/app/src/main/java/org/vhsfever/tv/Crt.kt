@@ -166,20 +166,15 @@ private fun CrtGlassDrawing(modifier: Modifier, k: Float, rollAt: () -> Float, d
 }
 
 /**
- * The old CRT on the counter of the tape page. It plays the selected tape silently so you can judge the picture.
- * [width] is in mockup pixels (the mockup's TV was 270 wide); everything inside grows with it.
- * Select it to watch full screen from the same spot.
+ * The real TV on the counter in the store photo of the tape page, [w]×[h] mockup pixels over its screen.
+ * It plays the movie's YouTube trailer silently (the tape itself only if YouTube won't play a trailer here),
+ * and shows the photo's own screen until the picture starts. Select it to watch full screen from the start.
  */
 @Composable
-fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen: (Long) -> Unit) {
-    val c = colorsOf(t)
-    val k = width / 270f
-    fun u(n: Int): Dp = (n * k).px
-    fun f(n: Int) = (n * k).fs
-    var showing by remember(tape?.fileId) { mutableStateOf(false) }
+fun CounterTv(t: Title, tape: Tape?, playPreview: Boolean, w: Float, h: Float, onFullScreen: (Long) -> Unit) {
+    var showing by remember(t.key, tape?.fileId) { mutableStateOf(false) }
     var position by remember(tape?.fileId) { mutableLongStateOf(if (tape != null) previewStartMs(tape) else 0L) }
     var focused by remember { mutableStateOf(false) }
-    // The movie's YouTube trailer plays on the TV; the tape itself only if there's no trailer YouTube will play here.
     val ctx = LocalContext.current
     val trailers = rememberTrailers(t)
     var trailerFailed by remember(t.key) { mutableStateOf(false) }
@@ -187,93 +182,41 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
     var yt by remember { mutableStateOf<YouTubePlayer?>(null) }
     var trailerTime by remember(t.key) { mutableStateOf(0f) }
     val showsTrailer = trailerKeys != null
-    val anim = rememberInfiniteTransition(label = "crt")
-    val flick by anim.animateFloat(1f, 0.94f, infiniteRepeatable(tween(180), RepeatMode.Reverse), label = "flick")
-    val blink by anim.animateFloat(1f, 0.2f, infiniteRepeatable(keyframes { durationMillis = 1200; 1f at 0; 1f at 720; 0.2f at 732; 0.2f at 1200 }), label = "blink")
-    val track by anim.animateFloat(0f, 1f, infiniteRepeatable(tween(400, easing = LinearEasing)), label = "track")
-    val vt = TextStyle(fontFamily = Type.Vt, fontSize = f(20), color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f))
+    val vt = TextStyle(fontFamily = Type.Vt, fontSize = 24.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f))
+    val shape = RoundedCornerShape(24.px)
 
-    Column(Modifier.width(u(270)), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("BE KIND, REWIND", modifier = Modifier.rotate(-3f).shadow(4.px).background(Color(0xFFE9E3D0))
-            .padding(horizontal = u(12), vertical = u(5)),
-            style = TextStyle(fontFamily = Type.Mono, fontSize = f(12), letterSpacing = (1.2f * k).fs, color = Color(0xFF2A2A2A)))
-        Spacer(Modifier.height(u(12)))
-        Box(Modifier.size(u(270), u(214))) {
-            Box(Modifier.offset(-u(30), -u(20)).size(u(330), u(254)).drawBehind {
-                drawRect(Brush.radialGradient(listOf(c.c3.alpha(if (focused) 0.55f else 0.33f), Color.Transparent), radius = size.width * 0.5f))
-            })
-            val bodyShape = RoundedCornerShape(u(20), u(20), u(12), u(12))
-            Surface(
-                onClick = {
-                    val keys = trailerKeys
-                    if (keys != null) {
-                        val i = yt?.key?.let { keys.indexOf(it) }?.coerceAtLeast(0) ?: 0
-                        ctx.startActivity(TrailerActivity.intent(ctx, t.name, keys, i, 0f))
-                    } else onFullScreen(position)
-                },
-                modifier = Modifier.fillMaxSize().onFocusChanged { focused = it.isFocused },
-                shape = ClickableSurfaceDefaults.shape(bodyShape),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-                colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
-                border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.px, Ink.Gold), shape = bodyShape)),
-                glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.2f), 12.px)),
-            ) {
-                Row(Modifier.fillMaxSize()
-                    .background(Brush.linearGradient(listOf(Color(0xFF47474C), Color(0xFF1C1C1F)), Offset.Zero, Offset(300f * k, 500f * k)), bodyShape)
-                    .padding(u(14)), horizontalArrangement = Arrangement.spacedBy(u(10))) {
-                    Box(Modifier.weight(1f).height(u(184)).background(Color(0xFF060607), RoundedCornerShape(u(18))).padding(u(8))) {
-                        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(u(28)))) {
-                            Box(Modifier.fillMaxSize().drawBehind {
-                                drawRect(Brush.radialGradient(listOf(c.c1.alpha(0.8f), c.c2), Offset(size.width / 2, size.height * .38f), size.width * .8f))
-                            })
-                            if (!showing) FitText(coverText(t).uppercase(), modifier = Modifier.align(Alignment.Center).padding(horizontal = u(12)),
-                                style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = f(26), lineHeight = f(26),
-                                    letterSpacing = (1f * k).fs, color = Ink.CoverCream, textAlign = TextAlign.Center,
-                                    shadow = Shadow(Color(0xB3FF285A), Offset(2f, 0f), 2f)), maxLines = 3)
-                            if (playPreview && trailerKeys != null) TrailerVideo(trailerKeys, onShowing = { showing = it },
-                                onTime = { trailerTime = it }, onFailed = { showing = false; trailerFailed = true }, onPlayer = { yt = it })
-                            else if (tape != null && playPreview && trailers != null) TapeVideo(tape, onShowing = { showing = it }, onPosition = { position = it })
-                            CrtGlass(k = k)
-                            // the tube's flicker, drawn over the picture (fading the trailer itself left its web view black)
-                            Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.copy(alpha = 1f - flick)) })
-                            Text("PLAY ▶", modifier = Modifier.padding(start = u(10), top = u(6)), style = vt)
-                            Text("SP " + clock(if (showsTrailer) (trailerTime * 1000).toLong() else position), modifier = Modifier.align(Alignment.BottomEnd).padding(end = u(10), bottom = u(18)), style = vt)
-                            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = u(6)).fillMaxWidth().height(u(8))
-                                .graphicsLayer { translationX = (if (track < .33f) 0f else if (track < .66f) 5f else -4f) * 1.5f * k }
-                                .drawBehind {
-                                    var x = 0f; var i = 0
-                                    val pat = listOf(3f to Color(0x8CFFFFFF), 2f to Color(0x66000000), 4f to Color(0x40FFFFFF))
-                                    while (x < size.width) { val (w, col) = pat[i % 3]; drawRect(col, Offset(x, 0f), Size(w * 1.5f * k, size.height)); x += w * 1.5f * k; i++ }
-                                })
-                        }
-                    }
-                    Column(Modifier.width(u(32)).padding(top = u(6)), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(u(10))) {
-                        repeat(2) {
-                            Box(Modifier.size(u(24)).border(u(2), Color(0xFF111111), CircleShape)
-                                .background(Brush.radialGradient(listOf(Color(0xFF8A8A92), Color(0xFF2C2C31))), CircleShape))
-                        }
-                        Box(Modifier.size(u(22), u(40)).drawBehind {
-                            var y = 0f
-                            while (y < size.height) { drawRect(Color(0xFF0B0B0C), Offset(0f, y), Size(size.width, 3f * k)); y += 9f * k }
-                        })
-                        Box(Modifier.size(u(7)).alpha(blink).background(Color(0xFFFF3B3B), CircleShape))
-                    }
-                }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            onClick = {
+                val keys = trailerKeys
+                if (keys != null) {
+                    val i = yt?.key?.let { keys.indexOf(it) }?.coerceAtLeast(0) ?: 0
+                    ctx.startActivity(TrailerActivity.intent(ctx, t.name, keys, i, 0f))
+                } else onFullScreen(position)
+            },
+            modifier = Modifier.size(w.px, h.px).onFocusChanged { focused = it.isFocused },
+            shape = ClickableSurfaceDefaults.shape(shape),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+            colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
+            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.px, Ink.Gold), shape = shape)),
+            glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.3f), 18.px)),
+        ) {
+            // hidden (the photo's own screen shows through) until the picture starts
+            Box(Modifier.fillMaxSize().clip(shape).graphicsLayer { alpha = if (showing) 1f else 0f }.background(Color.Black)) {
+                if (playPreview && trailerKeys != null) TrailerVideo(trailerKeys, onShowing = { showing = it },
+                    onTime = { trailerTime = it }, onFailed = { showing = false; trailerFailed = true }, onPlayer = { yt = it })
+                else if (tape != null && playPreview && trailers != null) TapeVideo(tape, onShowing = { showing = it }, onPosition = { position = it })
+                CrtGlass()
+                Text("PLAY ▶", modifier = Modifier.padding(start = 16.px, top = 10.px), style = vt)
+                Text((if (showsTrailer) "TRAILER " else "SP ") + clock(if (showsTrailer) (trailerTime * 1000).toLong() else position),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.px, bottom = 10.px), style = vt)
             }
         }
-        // the VCR under the TV, flashing 12:00 like every VCR ever
-        Row(Modifier.padding(top = u(6)).size(u(246), u(38)).shadow(5.px, RoundedCornerShape(u(3)))
-            .background(Brush.verticalGradient(listOf(Color(0xFF2E2E32), Color(0xFF151518))), RoundedCornerShape(u(3)))
-            .padding(horizontal = u(12)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Box(Modifier.size(u(124), u(9)).background(Color(0xFF030303), RoundedCornerShape(u(2))))
-            Text("12:00", modifier = Modifier.alpha(blink), style = TextStyle(fontFamily = Type.Vt, fontSize = f(22),
-                color = Color(0xFF6DFF8A), shadow = Shadow(Color(0xFF33FF66), Offset.Zero, 6f)))
-        }
-        Spacer(Modifier.height(u(10)))
-        Text(if (showsTrailer) "NOW SHOWING · TRAILER" else "NOW SHOWING · THIS TAPE", style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, letterSpacing = 1.4f.fs, color = Ink.Soft))
-        Text(if (showsTrailer) "Select the TV to watch the trailer full screen" else "Select the TV to watch full screen", modifier = Modifier.padding(top = 4.px),
-            style = TextStyle(fontFamily = Type.Barlow, fontSize = 15.fs, color = if (focused) Ink.Gold else Ink.Muted))
+        // a paper note stuck on the counter under the TV
+        Text(if (showsTrailer) "SELECT THE TV · TRAILER FULL SCREEN" else "SELECT THE TV · WATCH FULL SCREEN",
+            modifier = Modifier.padding(top = 22.px).rotate(-2f).shadow(4.px)
+                .background(if (focused) Ink.Gold else Color(0xFFE9E3D0)).padding(horizontal = 10.px, vertical = 4.px),
+            style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, letterSpacing = 1f.fs, color = Color(0xFF2A2A2A)))
     }
 }
 
