@@ -262,9 +262,13 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
 
         /** index.json boxes, as listings with the picture of the box shown now. */
         fun parseTvBoxes(text: String): Map<String, Pair<ArtTitle, ArtCandidate>> {
-            val o = JSONObject(text).optJSONObject("boxes") ?: return emptyMap()
-            return o.keys().asSequence().mapNotNull { k ->
-                val e = o.optJSONObject(k) ?: return@mapNotNull null
+            val root = JSONObject(text)
+            // an older list has only "films", by TMDB id
+            val boxes = root.optJSONObject("boxes")
+            val o = boxes ?: root.optJSONObject("films") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { key ->
+                val k = if (boxes != null) key else "tmdb:$key"
+                val e = o.optJSONObject(key) ?: return@mapNotNull null
                 val sleeve = e.optStringOrNull("sleeve") ?: return@mapNotNull null
                 val img = e.optStringOrNull("source_image") ?: return@mapNotNull null
                 val archive = sleeve.startsWith("ia-")
@@ -296,7 +300,10 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
         }
 
         /** index.json boxes → candidate ids ("covers/uk7" → "vt:uk7", "ia-ab12" → "ia:ab12"). */
-        fun parseOnTv(text: String): Map<String, String> {
+        fun parseOnTv(text: String): Map<String, String> = parseTvBoxes(text).mapValues { it.value.second.id }
+
+        @Suppress("unused")
+        private fun parseOnTvOld(text: String): Map<String, String> {
             val o = JSONObject(text).optJSONObject("boxes") ?: return emptyMap()
             return o.keys().asSequence().mapNotNull { k ->
                 val s = o.optJSONObject(k)?.optStringOrNull("sleeve") ?: return@mapNotNull null
