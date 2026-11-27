@@ -12,7 +12,7 @@ class WearTest {
     }
 
     @Test fun boxesDontAllLookAlike() {
-        val looks = keys.map { k -> WearPlan.plan(k, WearFace.Front).map { it::class.simpleName }.sorted() }.toSet()
+        val looks = keys.map { k -> WearPlan.plan(k, WearFace.Front).map { m -> m.javaClass.simpleName }.sorted() }.toSet()
         assertTrue("only ${looks.size} different mixes", looks.size >= 25)
         // and the same kinds of wear still land in different places
         val corners = keys.mapNotNull { k -> WearPlan.plan(k, WearFace.Front).filterIsInstance<WearMark.Corner>().firstOrNull()?.corner }.toSet()
