@@ -197,7 +197,7 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
                     val keys = trailerKeys
                     if (keys != null) {
                         val i = yt?.key?.let { keys.indexOf(it) }?.coerceAtLeast(0) ?: 0
-                        ctx.startActivity(TrailerActivity.intent(ctx, t.name, keys, i, trailerTime))
+                        ctx.startActivity(TrailerActivity.intent(ctx, t.name, keys, i, 0f))
                     } else onFullScreen(position)
                 },
                 modifier = Modifier.fillMaxSize().onFocusChanged { focused = it.isFocused },
@@ -211,7 +211,7 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
                     .background(Brush.linearGradient(listOf(Color(0xFF47474C), Color(0xFF1C1C1F)), Offset.Zero, Offset(300f * k, 500f * k)), bodyShape)
                     .padding(u(14)), horizontalArrangement = Arrangement.spacedBy(u(10))) {
                     Box(Modifier.weight(1f).height(u(184)).background(Color(0xFF060607), RoundedCornerShape(u(18))).padding(u(8))) {
-                        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(u(28))).graphicsLayer { alpha = flick }) {
+                        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(u(28)))) {
                             Box(Modifier.fillMaxSize().drawBehind {
                                 drawRect(Brush.radialGradient(listOf(c.c1.alpha(0.8f), c.c2), Offset(size.width / 2, size.height * .38f), size.width * .8f))
                             })
@@ -223,6 +223,8 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
                                 onTime = { trailerTime = it }, onFailed = { showing = false; trailerFailed = true }, onPlayer = { yt = it })
                             else if (tape != null && playPreview && trailers != null) TapeVideo(tape, onShowing = { showing = it }, onPosition = { position = it })
                             CrtGlass(k = k)
+                            // the tube's flicker, drawn over the picture (fading the trailer itself left its web view black)
+                            Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.copy(alpha = 1f - flick)) })
                             Text("PLAY ▶", modifier = Modifier.padding(start = u(10), top = u(6)), style = vt)
                             Text("SP " + clock(if (showsTrailer) (trailerTime * 1000).toLong() else position), modifier = Modifier.align(Alignment.BottomEnd).padding(end = u(10), bottom = u(18)), style = vt)
                             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = u(6)).fillMaxWidth().height(u(8))
