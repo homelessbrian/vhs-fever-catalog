@@ -23,6 +23,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -151,36 +154,71 @@ fun Modifier.sideways(): Modifier = this
 fun BoxSpine(t: Title, w: Dp, h: Dp, titleSize: Int = 22, modifier: Modifier = Modifier, dvd: Boolean = isDvd(t)) {
     val c = colorsOf(t)
     val art = t.art
-    Column(modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine, t.box == null && !dvd),
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.fillMaxWidth().height(28.px).background(c.c3), contentAlignment = Alignment.Center) {
-            Text(if (dvd) "DVD" else "VHS", style = TextStyle(fontFamily = Type.Mono, fontWeight = FontWeight.Medium,
-                fontSize = (if (dvd) 9 else 11).fs, letterSpacing = 1.1f.fs, color = Color(0xFF111111)))
-        }
-        // the studio's logo, printed in cream like a real spine
-        if (art?.studioLogo != null) AsyncImage(model = art.studioLogo, contentDescription = art.studio,
-            colorFilter = ColorFilter.tint(Ink.CoverCream), contentScale = ContentScale.Fit,
-            modifier = Modifier.padding(top = 10.px).size(w * 0.74f, 30.px))
-        Spacer(Modifier.height(12.px))
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (art?.titleLogo != null && !dvd) {
-                // the movie's own title logo, running down the spine
-                BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    val along = maxHeight; val across = maxWidth * 0.8f
-                    AsyncImage(model = art.titleLogo, contentDescription = t.name, contentScale = ContentScale.Fit,
-                        colorFilter = ColorFilter.tint(Ink.CoverCream),
-                        modifier = Modifier.requiredSize(along, across).graphicsLayer { rotationZ = 90f })
-                }
-            } else {
-                Text(coverText(t).uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.sideways(),
-                    style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = titleSize.fs,
-                        letterSpacing = 0.9f.fs, color = Ink.CoverCream, shadow = Shadow(Color(0xCC000000), Offset(0f, 2f), 3f)))
+    Box(modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine, t.box == null && !dvd)) {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            SpineCap(dvd, if (dvd) 28.px else 40.px, big = true)
+            // the studio's logo, printed in cream like a real spine
+            if (art?.studioLogo != null) AsyncImage(model = art.studioLogo, contentDescription = art.studio,
+                colorFilter = ColorFilter.tint(Ink.CoverCream), contentScale = ContentScale.Fit,
+                modifier = Modifier.padding(top = 12.px).size(w * 0.74f, 28.px))
+            Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.px), contentAlignment = Alignment.Center) {
+                SpineTitle(t, if (dvd) 0.86f else 0.84f, titleSize, maxLines = 2)
             }
+            // the age rating in a little box, like the real ones
+            art?.rating?.let { r ->
+                Box(Modifier.heightIn(min = if (dvd) 18.px else 26.px).widthIn(min = if (dvd) 18.px else 26.px)
+                    .border(2.px, Ink.CoverCream).padding(horizontal = 3.px), contentAlignment = Alignment.Center) {
+                    Text(r, maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold,
+                        fontSize = ((if (dvd) 10 else 15) * (if (r.length > 2) 0.62f else 1f)).fs, color = Ink.CoverCream))
+                }
+            }
+            Text(yearText(t), modifier = Modifier.padding(top = 10.px), style = TextStyle(fontFamily = Type.Mono,
+                fontSize = (if (dvd) 8 else 11).fs, letterSpacing = 1f.fs, color = Ink.CoverCream))
+            Barcode(barcodeText(t), Modifier.padding(top = 12.px, bottom = 14.px).size(if (dvd) 16.px else 30.px, 64.px), vertical = true)
         }
-        Text(yearText(t), modifier = Modifier.padding(top = 10.px), style = TextStyle(fontFamily = Type.Mono,
-            fontSize = (if (dvd) 8 else 10).fs, color = c.c3))
-        Barcode(barcodeText(t), Modifier.padding(vertical = 12.px).size(if (dvd) 16.px else 28.px, 64.px), vertical = true)
+        SpineSheen()
     }
+}
+
+/** The cream "VHS" (or "DVD") cap at the top of a spine, with the gold stripe under it. */
+@Composable
+private fun SpineCap(dvd: Boolean, height: Dp, big: Boolean) {
+    Column(Modifier.fillMaxWidth().height(height).background(Ink.CoverCream),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(if (dvd) "DVD" else "VHS", style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold,
+            fontSize = (if (big) (if (dvd) 11 else 16) else 9).fs, letterSpacing = (if (big) 2f else 1f).fs, color = Color(0xFF111111)))
+        if (big && !dvd) Text("HI-FI · STEREO", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Type.Mono,
+            fontSize = 6.fs, letterSpacing = 0.5f.fs, color = Color(0xFF3A3A3A)))
+    }
+    Box(Modifier.fillMaxWidth().height(if (big) 4.px else 2.px).background(Ink.Gold))
+}
+
+/**
+ * The movie's title running down a spine: its TMDB title logo in the logo's own colours,
+ * or, with no logo, the name in bold type that shrinks to fit (never cut off with "…").
+ */
+@Composable
+private fun SpineTitle(t: Title, across: Float, titleSize: Int, maxLines: Int) {
+    val logo = t.art?.titleLogo
+    if (logo != null) {
+        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            AsyncImage(model = logo, contentDescription = t.name, contentScale = ContentScale.Fit,
+                modifier = Modifier.requiredSize(maxHeight, maxWidth * across).graphicsLayer { rotationZ = 90f })
+        }
+    } else {
+        FitText(coverText(t).uppercase(), modifier = Modifier.sideways(), maxLines = maxLines, minScale = 0.4f,
+            textAlign = TextAlign.Center, align = Alignment.Center,
+            style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = titleSize.fs,
+                lineHeight = (titleSize * 1.08f).fs, letterSpacing = (titleSize * 0.04f).fs, color = Ink.CoverCream,
+                shadow = Shadow(Color(0xCC000000), Offset(0f, 2f), 3f)))
+    }
+}
+
+/** Light catching the plastic sleeve: brighter on the left edge, a touch darker on the right. */
+@Composable
+private fun SpineSheen() {
+    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+        0f to Color.White.alpha(0.2f), 0.3f to Color.Transparent, 0.75f to Color.Transparent, 1f to Color.Black.alpha(0.22f))))
 }
 
 /**
@@ -219,7 +257,7 @@ fun Box3D(t: Title, angle: Float, tapeText: String, dvd: Boolean, modifier: Modi
     val a by animateFloatAsState(angle, tween(700, easing = CubicBezierEasing(.3f, .7f, .2f, 1f)), label = "turn")
     val h = 336f
     val w = if (dvd) 238f else if (t.box != null) h * frontAspect(t) else 190f
-    val d = if (dvd) 26f else 46f
+    val d = if (dvd) 26f else 54f
     val density = LocalDensity.current.density
     val rad = Math.toRadians(a.toDouble())
     val toPx = Ui.unit * density
@@ -260,18 +298,24 @@ fun Box3D(t: Title, angle: Float, tapeText: String, dvd: Boolean, modifier: Modi
     }
 }
 
-fun miniSpineWidth(t: Title) = if (isDvd(t)) 28 else 44
+fun miniSpineWidth(t: Title) = if (isDvd(t)) 30 else 48
+const val MINI_SPINE_HEIGHT = 156
 
 /** The little upright spine used in "Also in the store" (DVDs thinner, like the real thing). */
 @Composable
 fun MiniSpine(t: Title, modifier: Modifier = Modifier) {
     val c = colorsOf(t)
-    Box(modifier.size(miniSpineWidth(t).px, 112.px).clip(RoundedCornerShape(2.px))
-        .background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine), contentAlignment = Alignment.Center) {
-        Box(Modifier.fillMaxHeight().width(3.px).align(Alignment.CenterStart).background(c.c3))
-        Text(coverText(t).uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.offset(x = 1.px).sideways(),
-            style = TextStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = 12.fs, letterSpacing = 0.5f.fs,
-                color = Ink.CoverCream, shadow = Shadow(Color.Black, Offset(0f, 1f), 2f)))
+    val dvd = isDvd(t)
+    Box(modifier.size(miniSpineWidth(t).px, MINI_SPINE_HEIGHT.px).clip(RoundedCornerShape(2.px))
+        .background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine)) {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            SpineCap(dvd, 16.px, big = false)
+            Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 6.px), contentAlignment = Alignment.Center) {
+                SpineTitle(t, 0.84f, titleSize = if (dvd) 10 else 13, maxLines = 2)
+            }
+            Text(yearText(t), style = TextStyle(fontFamily = Type.Mono, fontSize = 8.fs, color = Ink.CoverCream))
+            Barcode(barcodeText(t), Modifier.padding(top = 5.px, bottom = 7.px).size(if (dvd) 12.px else 18.px, 22.px), vertical = true)
+        }
+        SpineSheen()
     }
 }

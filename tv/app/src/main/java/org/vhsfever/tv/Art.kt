@@ -48,12 +48,13 @@ data class Art(
 }
 
 class ArtRepo(ctx: Context) {
-    private val cacheFile = File(ctx.filesDir, "tmdb-art-v3.json")
+    private val cacheFile = File(ctx.filesDir, "tmdb-art-v4.json")
     private val cache = HashMap<String, Art>()
     val available get() = BuildConfig.TMDB_TOKEN.isNotBlank()
 
     init {
-        File(ctx.filesDir, "tmdb-art-v2.json").delete()  // older, smaller cache
+        // older caches (v3 picked stacked title logos that don't fit a spine)
+        for (old in listOf("tmdb-art-v2.json", "tmdb-art-v3.json")) File(ctx.filesDir, old).delete()
         runCatching {
             val o = JSONObject(cacheFile.readText())
             for (k in o.keys()) o.optJSONObject(k)?.let { cache[k] = Art.fromJson(it) }
@@ -112,8 +113,10 @@ class ArtRepo(ctx: Context) {
             runtime = (o.optInt("runtime").takeIf { it > 0 } ?: o.optJSONArray("episode_run_time")?.optInt(0)?.takeIf { it > 0 }),
             studio = company?.s("name"),
             studioLogo = company?.s("logo_path")?.let { "$IMG/w185$it" },
+            // the widest English logo: a one-line logo fits down a spine, a stacked one shrinks to a smudge
             titleLogo = images?.optJSONArray("logos").objs()
-                .firstOrNull { it.s("iso_639_1") == "en" && it.s("file_path")?.endsWith(".png") == true }
+                .filter { it.s("iso_639_1") == "en" && it.s("file_path")?.endsWith(".png") == true }
+                .maxByOrNull { it.optDouble("aspect_ratio", 0.0) }
                 ?.s("file_path")?.let { "$IMG/w500$it" },
             // stills without any words on them (no language) make the best screenshots
             stills = images?.optJSONArray("backdrops").objs().filter { it.s("iso_639_1") == null }

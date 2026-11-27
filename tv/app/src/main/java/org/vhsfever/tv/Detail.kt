@@ -75,8 +75,9 @@ fun DetailScreen(
     BackHandler { if (chooser) chooser = false else onBack() }
 
     val related = remember(t.key, catalog) {
-        val same = catalog.titles.filter { it.key != t.key && it.section == t.section }
-        (same + catalog.titles.filter { it.key != t.key && it !in same }).take(6)
+        // a random handful from the same shelf (not always the first six A to Z), topped up from elsewhere if it's small
+        val same = catalog.titles.filter { it.key != t.key && it.section == t.section }.shuffled()
+        (same + catalog.titles.filter { it.key != t.key && it.section != t.section }.shuffled()).take(6)
     }
 
     Box(Modifier.fillMaxSize().background(Ink.Navy)) {
@@ -98,8 +99,8 @@ fun DetailScreen(
 
         // left: the box on its shelf, the view buttons, and a few other spines
         Column(Modifier.offset(40.px, 84.px).width(352.px)) {
-            Box(Modifier.size(352.px, 410.px), contentAlignment = Alignment.Center) {
-                Box(Modifier.align(Alignment.BottomCenter).size(380.px, 124.px).drawBehind {
+            Box(Modifier.size(352.px, 376.px), contentAlignment = Alignment.Center) {
+                Box(Modifier.align(Alignment.BottomCenter).size(380.px, 100.px).drawBehind {
                     val p = Path().apply {
                         moveTo(size.width * .1f, 0f); lineTo(size.width * .9f, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close()
                     }
@@ -113,10 +114,10 @@ fun DetailScreen(
                     drawPath(top, Ink.Gold)
                     drawPath(p, Brush.radialGradient(listOf(Color(0x4DFFEBBE), Color.Transparent), Offset(size.width / 2, 0f), size.width * .45f))
                 })
-                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 56.px).size(220.px, 22.px).drawBehind {
+                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 30.px).size(220.px, 22.px).drawBehind {
                     drawOval(Brush.radialGradient(listOf(Color(0xD9000000), Color.Transparent)))
                 })
-                Box(Modifier.padding(bottom = 36.px)) {
+                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 40.px)) {
                     Box3D(t, angle, tapeText = tapeRelease(tape)?.let { "$it release" } ?: "Edition unresolved", dvd = dvd)
                 }
             }
@@ -125,15 +126,15 @@ fun DetailScreen(
                     StoreButton(label, Modifier, Color.White.alpha(0.45f), Ink.RailText, { angle = a }, size = 17, chosen = angle == a)
                 }
             }
-            Text("ALSO IN THE STORE", modifier = Modifier.padding(top = 16.px),
+            Text("ALSO IN THE STORE", modifier = Modifier.padding(top = 12.px),
                 style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, letterSpacing = 1.7f.fs, color = Ink.Soft))
-            Row(Modifier.padding(top = 8.px), horizontalArrangement = Arrangement.spacedBy(10.px)) {
+            Row(Modifier.padding(top = 8.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
                 for (r in related) {
                     var f by remember(r.key) { mutableStateOf(false) }
                     Box(Modifier.lift(if (f) (-6).px else 0.px)) {
-                        Surface(onClick = { onOpen(r) }, modifier = Modifier.size(miniSpineWidth(r).px, 112.px).onFocusChanged { f = it.isFocused },
+                        Surface(onClick = { onOpen(r) }, modifier = Modifier.size(miniSpineWidth(r).px, MINI_SPINE_HEIGHT.px).onFocusChanged { f = it.isFocused },
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(2.px)),
-                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
                             colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
                             border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.px, Ink.Gold.alpha(0.85f)), shape = RoundedCornerShape(2.px))),
                             glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.22f), 8.px)),

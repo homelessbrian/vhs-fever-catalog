@@ -255,7 +255,7 @@ abstract class ScreensBase(private val tag: String) {
                         for (t in boxes) BoxFront(t, 1.5f, androidx.compose.ui.Modifier.size(129.px, 228.px), dvd = false)
                     }
                     androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.px)) {
-                        for (t in boxes) BoxSpine(t, 46.px, 336.px, dvd = false)
+                        for (t in boxes) BoxSpine(t, 54.px, 336.px, dvd = false)
                         for (t in boxes.take(3)) BoxBack(t, "1986 VHS release", androidx.compose.ui.Modifier.size(190.px, 336.px), layout = 2)
                     }
                 }
