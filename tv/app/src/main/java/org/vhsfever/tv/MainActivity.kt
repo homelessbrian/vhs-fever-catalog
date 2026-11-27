@@ -79,12 +79,12 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
     var raw by remember { mutableStateOf<Catalog?>(null) }
     val art = remember { mutableStateMapOf<String, Art>() }
     // Real VHS box scans by TMDB id (never for adult tapes, which stay plain boxes).
-    val boxes = remember { mutableStateMapOf<Int, BoxScan>().apply { putAll(boxRepo.cached()) } }
+    val boxes = remember { mutableStateMapOf<String, BoxScan>().apply { putAll(boxRepo.cached()) } }
     // Screenshots from each movie's own tape, and box colours picked from each poster.
     val shots = remember { mutableStateMapOf<String, List<java.io.File>>().apply { putAll(boxRepo.cachedShots()) } }
     val colors = remember { mutableStateMapOf<String, BoxColors>() }
     val catalog = raw?.let { c -> Catalog(c.titles.map { t ->
-        t.withArt(art[t.key]).let { a -> if (a.adult || a.tmdbType != "movie") a else a.copy(box = a.tmdbId?.let { boxes[it] }) }
+        t.withArt(art[t.key]).let { a -> if (a.adult) a else a.copy(box = boxes[a.key] ?: a.tmdbId?.takeIf { a.tmdbType == "movie" }?.let { boxes["tmdb:$it"] }) }
             .let { a -> a.copy(
                 shots = shots[a.key] ?: a.tmdbId?.let { shots["tmdb:$it"] } ?: emptyList(),
                 colors = a.poster?.let { p -> colors[p] ?: posterColors.cached(p) },
@@ -129,9 +129,8 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
     }
     LaunchedEffect(raw) {
         val c = raw ?: return@LaunchedEffect
-        val wanted = c.titles.filter { !it.adult }.mapNotNull { it.tmdbId }.toSet()
-        runCatching { boxRepo.refresh(wanted) { id, b -> scope.launch(Dispatchers.Main) { boxes[id] = b } } }
         val keys = c.titles.filter { !it.adult }.flatMap { listOfNotNull(it.key, it.tmdbId?.let { id -> "tmdb:$id" }) }.toSet()
+        runCatching { boxRepo.refresh(keys) { id, b -> scope.launch(Dispatchers.Main) { boxes[id] = b } } }
         runCatching { boxRepo.refreshShots(keys) { k, f -> scope.launch(Dispatchers.Main) { shots[k] = f } } }
     }
 

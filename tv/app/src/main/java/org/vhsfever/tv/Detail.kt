@@ -164,7 +164,7 @@ fun DetailScreen(
                 val scan = t.box
                 val art = when {
                     scan != null -> listOfNotNull("VHS box scan", scan.label?.let(::titleCase), scan.region, scan.tapeYear,
-                        if (t.posterIsSuggestion) "match not confirmed" else null, "videotapes.io").joinToString(" · ")
+                        if (t.posterIsSuggestion) "match not confirmed" else null, scan.source).joinToString(" · ")
                     t.poster == null -> "Placeholder · no tape scan yet"
                     t.posterIsSuggestion -> "TMDB poster · match not confirmed"
                     else -> "TMDB poster · no tape scan yet"

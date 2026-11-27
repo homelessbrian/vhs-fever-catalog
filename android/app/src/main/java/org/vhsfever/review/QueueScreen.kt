@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -106,6 +107,7 @@ fun QueueScreen(m: AppModel) {
                     Text("Movie review", color = C.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     m.listInfo?.let { Text(it, color = C.muted, fontSize = 12.sp) }
                 }
+                IconButton(onClick = { m.open(Screen.BoxArt) }) { Icon(Icons.Filled.PhotoLibrary, "Box art", tint = C.text) }
                 IconButton(onClick = { m.open(Screen.Settings) }) { Icon(Icons.Filled.Settings, "Settings", tint = C.text) }
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.panel).padding(12.dp),

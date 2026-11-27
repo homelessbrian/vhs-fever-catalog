@@ -79,5 +79,7 @@ fun App(m: AppModel, installApk: (File) -> Unit) {
         is Screen.Review -> ReviewScreen(m, s.fileId)
         is Screen.MovieEdit -> MovieScreen(m, s.fileId)
         Screen.Settings -> SettingsScreen(m, installApk)
+        Screen.BoxArt -> BoxArtListScreen(m)
+        is Screen.BoxArtPick -> BoxArtPickScreen(m, s.key)
     }
 }

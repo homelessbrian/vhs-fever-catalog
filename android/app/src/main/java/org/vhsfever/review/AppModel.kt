@@ -23,6 +23,8 @@ sealed interface Screen {
     data class Review(val fileId: String) : Screen
     data class MovieEdit(val fileId: String) : Screen
     data object Settings : Screen
+    data object BoxArt : Screen
+    data class BoxArtPick(val key: String) : Screen
 }
 
 enum class QueueMode(val label: String) {
@@ -124,6 +126,9 @@ class AppModel(private val ctx: Context) {
 
     var token by mutableStateOf(prefs.getString("github_token", "") ?: "")
         private set
+
+    /** Box art: what the finder bot found for each movie, and Brian's picks. */
+    val boxArt = BoxArtModel(scope) { token }
     var githubUser by mutableStateOf(prefs.getString("github_user", "") ?: "")
         private set
     var updateStatus by mutableStateOf<String?>(null)

@@ -21,6 +21,7 @@ data class BoxScan(
     val label: String?,
     val region: String?,
     val tapeYear: String?,
+    val source: String = "videotapes.io",
 )
 
 /**
@@ -36,19 +37,27 @@ class BoxArtRepo(private val ctx: Context) {
 
     /** TMDB id → the sleeve to use and its panel paths in the repo. */
     private data class Entry(val sleeve: String, val files: Map<String, String>, val label: String?,
-                             val region: String?, val tapeYear: String?)
+                             val region: String?, val tapeYear: String?, val source: String)
 
-    private fun parse(text: String): Map<Int, Entry> {
-        val films = JSONObject(text).optJSONObject("films") ?: return emptyMap()
-        val out = HashMap<Int, Entry>()
+    /**
+     * Title key ("tmdb:603" or "title:…") → its box. Picks from the review app are already applied:
+     * this is exactly the box each movie should show.
+     */
+    private fun parse(text: String): Map<String, Entry> {
+        val o = JSONObject(text)
+        val boxes = o.optJSONObject("boxes")
+        val films = boxes ?: o.optJSONObject("films") ?: return emptyMap()
+        val out = HashMap<String, Entry>()
         for (k in films.keys()) {
             val e = films.optJSONObject(k) ?: continue
             val f = e.optJSONObject("files") ?: continue
             val files = f.keys().asSequence().associateWith { f.optString(it) }.filterValues { it.isNotBlank() }
             if ("front" !in files) continue
-            val id = k.toIntOrNull() ?: continue
+            val id = if (boxes != null) k else "tmdb:$k"
+            if (e.optString("sleeve").let { it.isBlank() || it.contains("/") || it.contains("..") }) continue
             out[id] = Entry(e.optString("sleeve"), files, e.str("label"), e.str("region"),
-                e.opt("tape_year")?.takeIf { it != JSONObject.NULL }?.toString())
+                e.opt("tape_year")?.takeIf { it != JSONObject.NULL }?.toString(),
+                if (e.str("source") == "archive") "Internet Archive" else "videotapes.io")
         }
         return out
     }
@@ -58,11 +67,11 @@ class BoxArtRepo(private val ctx: Context) {
     private fun scan(e: Entry): BoxScan? {
         val front = local(e, "front")?.takeIf { it.exists() } ?: return null
         return BoxScan(e.sleeve, front, local(e, "spine")?.takeIf { it.exists() },
-            local(e, "back")?.takeIf { it.exists() }, e.label, e.region, e.tapeYear)
+            local(e, "back")?.takeIf { it.exists() }, e.label, e.region, e.tapeYear, e.source)
     }
 
     /** Boxes already on the TV, by TMDB id. */
-    fun cached(): Map<Int, BoxScan> = runCatching {
+    fun cached(): Map<String, BoxScan> = runCatching {
         parse(indexFile.readText()).mapNotNull { (id, e) -> scan(e)?.let { id to it } }.toMap()
     }.getOrDefault(emptyMap())
 
@@ -70,7 +79,7 @@ class BoxArtRepo(private val ctx: Context) {
      * Gets the latest list, downloads boxes the TV doesn't have yet (a few at a time, only for
      * the movies in [wanted]) and calls [onBox] as each one is ready.
      */
-    suspend fun refresh(wanted: Set<Int>, onBox: (Int, BoxScan) -> Unit) = withContext(Dispatchers.IO) {
+    suspend fun refresh(wanted: Set<String>, onBox: (String, BoxScan) -> Unit) = withContext(Dispatchers.IO) {
         if (!available) return@withContext
         val text = runCatching { get(base + "index.json").decodeToString() }.getOrNull()
         if (text != null) {
