@@ -33,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -95,10 +97,11 @@ fun DetailScreen(
     // the movies most like this one (same series, TMDB pairings, director, stars, themes), topped up from its shelf
     val related = remember(t.key, catalog) { Similar.pick(t, catalog.titles, count = 9) }
 
-    Box(Modifier.fillMaxSize().background(Ink.Navy)) {
+    Box(Modifier.fillMaxSize().clipToBounds().background(Ink.Navy)) {
         // the store, with its counter and TV on the right
-        Image(painterResource(R.drawable.store_hero), null, Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillHeight, alignment = Alignment.CenterEnd)
+        Image(painterResource(R.drawable.store_hero), null, contentScale = ContentScale.FillBounds,
+            modifier = Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).offset(DETAIL_PHOTO_X.px, 0.px)
+                .size((2172f * DETAIL_PHOTO_SCALE).px, 720.px))
         // darken the aisles on the left for the box and the writing, and the floor for the shelf of spines
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
             0f to Ink.Navy.alpha(0.97f), 0.38f to Ink.Navy.alpha(0.92f), 0.52f to Ink.Navy.alpha(0.5f), 0.6f to Ink.Navy.alpha(0f))))
