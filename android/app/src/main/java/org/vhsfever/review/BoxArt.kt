@@ -55,7 +55,7 @@ object ArchiveArt {
         val item = ITEM_LINK.find(q)?.groupValues?.get(1)
             ?: q.takeIf { !it.contains(' ') && it.length > 3 && it.any { c -> c == '-' || c == '_' } }
         val items: List<Pair<String, String>> = if (item != null) listOf(item to item) else {
-            val url = "https://archive.org/advancedsearch.php?q=" + enc("($q) AND (mediatype:image OR collection:vhsvault)") +
+            val url = "https://archive.org/advancedsearch.php?q=" + enc("title:($q) AND (mediatype:image OR collection:vhsvault OR collection:vhs-cover-art)") +
                 "&fl[]=identifier&fl[]=title&rows=12&output=json"
             JSONObject(Http.request(url)).optJSONObject("response")?.optJSONArray("docs").objects()
                 .map { it.optString("identifier") to (it.optStringOrNull("title") ?: it.optString("identifier")) }

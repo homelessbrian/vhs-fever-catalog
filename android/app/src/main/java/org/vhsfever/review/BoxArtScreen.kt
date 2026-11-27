@@ -131,7 +131,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
     val picked = b.picks[key]
     val onTv = b.onTv[key]
     var big by remember { mutableStateOf<ArtCandidate?>(null) }
-    var query by remember(key) { mutableStateOf("${t.name} VHS") }
+    var query by remember(key) { mutableStateOf(t.name) }
     LaunchedEffect(key) { b.clearSearch() }
     val listed = b.candidatesOf(t)
     val uri = LocalUriHandler.current
