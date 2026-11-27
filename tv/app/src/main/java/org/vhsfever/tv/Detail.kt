@@ -161,7 +161,10 @@ fun DetailScreen(
             Column(Modifier.padding(top = 14.px).drawBehind {
                 drawLine(Color(0x4DCFD4FF), Offset.Zero, Offset(size.width, 0f), 1f)
             }) {
+                val scan = t.box
                 val art = when {
+                    scan != null -> listOfNotNull("VHS box scan", scan.label?.let(::titleCase), scan.region, scan.tapeYear,
+                        if (t.posterIsSuggestion) "match not confirmed" else null, "videotapes.io").joinToString(" · ")
                     t.poster == null -> "Placeholder · no tape scan yet"
                     t.posterIsSuggestion -> "TMDB poster · match not confirmed"
                     else -> "TMDB poster · no tape scan yet"
@@ -253,3 +256,7 @@ private fun TapeChooser(t: Title, current: Int, onPick: (Int) -> Unit) {
     }
 }
 
+
+/** "PARAMOUNT HOME VIDEO" → "Paramount Home Video"; labels already in mixed case are left alone. */
+fun titleCase(s: String): String = if (s != s.uppercase()) s else
+    s.lowercase().split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }

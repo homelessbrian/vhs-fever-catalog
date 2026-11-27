@@ -40,11 +40,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val repo = Repo(applicationContext)
         val artRepo = ArtRepo(applicationContext)
+        val boxRepo = BoxArtRepo(applicationContext)
         val prefs = applicationContext.getSharedPreferences("store", Context.MODE_PRIVATE)
         Shelf.load(applicationContext)
         val dm = resources.displayMetrics
         Ui.fit(dm.widthPixels / dm.density, dm.heightPixels / dm.density)
-        setContent { StoreTheme { App(repo, artRepo, prefs) } }
+        setContent { StoreTheme { App(repo, artRepo, boxRepo, prefs) } }
     }
 
     /** Leaving the app closes the red curtain again. */
@@ -73,10 +74,14 @@ fun StoreTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun App(repo: Repo, artRepo: ArtRepo, prefs: android.content.SharedPreferences) {
+fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, prefs: android.content.SharedPreferences) {
     var raw by remember { mutableStateOf<Catalog?>(null) }
     val art = remember { mutableStateMapOf<String, Art>() }
-    val catalog = raw?.let { c -> Catalog(c.titles.map { it.withArt(art[it.key]) }, c.curtain) }
+    // Real VHS box scans by TMDB id (never for adult tapes, which stay plain boxes).
+    val boxes = remember { mutableStateMapOf<Int, BoxScan>().apply { putAll(boxRepo.cached()) } }
+    val catalog = raw?.let { c -> Catalog(c.titles.map { t ->
+        t.withArt(art[t.key]).let { a -> if (a.adult || a.tmdbType != "movie") a else a.copy(box = a.tmdbId?.let { boxes[it] }) }
+    }, c.curtain) }
     var curtainPin by remember { mutableStateOf(prefs.getString("curtain_pin", null)) }
     var status by remember { mutableStateOf("Loading the shelves…") }
     var section by remember { mutableStateOf<Section>(Section.Home) }
@@ -108,6 +113,11 @@ fun App(repo: Repo, artRepo: ArtRepo, prefs: android.content.SharedPreferences) 
         val c = raw ?: return@LaunchedEffect
         c.titles.forEach { t -> artRepo.cached(t)?.let { art[t.key] = it } }
         artRepo.loadAll(c.titles) { key, a -> scope.launch(Dispatchers.Main) { art[key] = a } }
+    }
+    LaunchedEffect(raw) {
+        val c = raw ?: return@LaunchedEffect
+        val wanted = c.titles.filter { !it.adult }.mapNotNull { it.tmdbId }.toSet()
+        runCatching { boxRepo.refresh(wanted) { id, b -> scope.launch(Dispatchers.Main) { boxes[id] = b } } }
     }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Ink.NavyTop, Ink.Navy)))) {

@@ -76,19 +76,23 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier, dvd: Boolean
             drawRect(Brush.radialGradient(listOf(c.c3.alpha(0.47f), Color.Transparent),
                 center = Offset(size.width / 2, size.height * 0.22f), radius = size.width * 0.9f))
         })
-        if (t.poster != null) {
+        val scan = t.box
+        if (scan != null) {
+            // the real sleeve: it has its own title and printing, so nothing is drawn over it but the shine
+            AsyncImage(model = scan.front, contentDescription = t.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else if (t.poster != null) {
             AsyncImage(model = t.poster, contentDescription = t.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
-        Box(Modifier.fillMaxWidth().fillMaxHeight(0.64f).align(Alignment.BottomCenter)
+        if (scan == null) Box(Modifier.fillMaxWidth().fillMaxHeight(0.64f).align(Alignment.BottomCenter)
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB8000000)))))
-        Row(Modifier.fillMaxWidth().padding(horizontal = (6 * scale).px, vertical = (6 * scale).px),
+        if (scan == null) Row(Modifier.fillMaxWidth().padding(horizontal = (6 * scale).px, vertical = (6 * scale).px),
             horizontalArrangement = Arrangement.SpaceBetween) {
             val st = TextStyle(fontFamily = Type.Mono, fontSize = (7 * scale).fs, letterSpacing = (0.6f * scale).fs,
                 color = Color.White.alpha(0.85f), shadow = Shadow(Color.Black, Offset(0f, 1f), 3f))
             Text(if (dvd) "DVD" else "VHS", style = st)
             Text(yearText(t), style = st)
         }
-        if (t.poster == null) {
+        if (t.poster == null && scan == null) {
             // no art: the title printed on the box, shrunk to fit rather than broken mid-word
             FitText(coverText(t).uppercase(), modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().fillMaxHeight(0.6f)
                 .padding(start = (7 * scale).px, end = (7 * scale).px, bottom = (10 * scale).px),
@@ -211,8 +215,12 @@ fun Box3D(t: Title, angle: Float, tapeText: String, dvd: Boolean, modifier: Modi
                         BoxFront(t, scale = 1.36f, modifier = Modifier.fillMaxSize(), dvd = dvd)
                         Box(Modifier.fillMaxSize().border(1.dp, Color.White.alpha(0.12f)))
                     }
-                    "spine" -> BoxSpine(t, d.px, h.px, titleSize = if (dvd) 14 else 22, dvd = dvd)
-                    "back" -> BoxBack(t, tapeText, Modifier.fillMaxSize())
+                    "spine" -> t.box?.spine?.let { AsyncImage(model = it, contentDescription = null,
+                        contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize()) }
+                        ?: BoxSpine(t, d.px, h.px, titleSize = if (dvd) 14 else 22, dvd = dvd)
+                    "back" -> t.box?.back?.let { AsyncImage(model = it, contentDescription = null,
+                        contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize()) }
+                        ?: BoxBack(t, tapeText, Modifier.fillMaxSize())
                     else -> Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xFF16161A), Color(0xFF0B0B0D)))))
                 }
                 // darken sides turned away from the light

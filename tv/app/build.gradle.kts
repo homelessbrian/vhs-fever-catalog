@@ -17,6 +17,9 @@ android {
         versionName = "0.1." + envOr("GITHUB_RUN_NUMBER", "1")
         buildConfigField("String", "TMDB_TOKEN", "\"" + envOr("TMDB_API_READ_ACCESS_TOKEN", "") + "\"")
         buildConfigField("String", "REPO", "\"homelessbrian/vhs-fever-catalog\"")
+        // Read-only key for the private box-art repository (VHS sleeve scans from videotapes.io).
+        buildConfigField("String", "BOXART_TOKEN", "\"" + envOr("BOXART_READ_TOKEN", "") + "\"")
+        buildConfigField("String", "BOXART_REPO", "\"homelessbrian/vhs-fever-boxart\"")
     }
     signingConfigs {
         create("stable") {

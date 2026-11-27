@@ -44,6 +44,7 @@ data class Title(
     val genres: List<String> = emptyList(),
     val addedAt: String = "",        // when the newest tape of it was marked good
     val adult: Boolean = false,      // adult tape: only behind the red curtain, never on the shelves
+    val box: BoxScan? = null,        // real VHS sleeve scan (videotapes.io), when there is one
 ) {
     /** The one store section this tape sits in (like a real rental store, never two). */
     val section: String get() = storeSection(genres)

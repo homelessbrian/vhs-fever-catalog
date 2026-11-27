@@ -489,7 +489,7 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
             for ((k, v) in listOf(
                 "IN THE STORE" to "${catalog.titles.size} titles · $tapes tapes",
                 "WHERE THE TAPES COME FROM" to "Files marked good in the review app",
-                "BOX ART" to "TMDB posters for now · tape scans coming",
+                "BOX ART" to "videotapes.io box scans · TMDB posters for the rest",
                 "APP VERSION" to "Build ${Updater.currentBuild}",
                 "UPDATES" to when (update) {
                     Updater.State.Idle -> "Checked automatically when the app opens"
