@@ -52,10 +52,8 @@ class PlayerActivity : ComponentActivity() {
     private val picture by lazy { getSharedPreferences("picture", MODE_PRIVATE) }
 
     private lateinit var title: String
-    private lateinit var label: String
     private lateinit var fileId: String
     private lateinit var urls: List<String>
-    private lateinit var names: List<String>
     private lateinit var formats: List<String>
     private var index = 0
     private val problems = mutableListOf<String>()
@@ -69,10 +67,8 @@ class PlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         title = intent.getStringExtra("title") ?: ""
-        label = intent.getStringExtra("label") ?: ""
         fileId = intent.getStringExtra("fileId") ?: ""
         urls = intent.getStringArrayListExtra("urls") ?: arrayListOf()
-        names = intent.getStringArrayListExtra("names") ?: arrayListOf()
         formats = intent.getStringArrayListExtra("formats") ?: arrayListOf()
         val dm = resources.displayMetrics
         Ui.fit(dm.widthPixels / dm.density, dm.heightPixels / dm.density)
@@ -155,10 +151,9 @@ class PlayerActivity : ComponentActivity() {
                     tryNext("this TV can’t decode the picture ($fmt)")
                 }
             }
-            override fun onVideoSizeChanged(videoSize: VideoSize) { updateInfo(); layoutVideo() }
+            override fun onVideoSizeChanged(videoSize: VideoSize) { layoutVideo() }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { vcr.playing = playWhenReady }
             override fun onPlaybackStateChanged(state: Int) {
-                updateInfo()
                 vcr.loading = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
                 vcr.ended = state == Player.STATE_ENDED
                 if (state == Player.STATE_READY) banner.visibility = View.GONE
@@ -298,11 +293,10 @@ class PlayerActivity : ComponentActivity() {
         if (pos > 0) player.seekTo(pos)
         player.prepare()
         player.playWhenReady = true
-        updateInfo()
     }
 
     private fun tryNext(reason: String) {
-        problems += "${names.getOrNull(index) ?: "file"}: $reason"
+        problems += (if (index == 0) "The tape" else "Backup copy $index") + ": $reason"
         val pos = player.currentPosition
         if (index + 1 < urls.size) {
             showBanner("Couldn’t play that file ($reason).\nTrying the Archive’s copy…")
@@ -317,14 +311,6 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun showBanner(text: String) { banner.text = text; banner.visibility = View.VISIBLE }
-
-    private fun updateInfo() {
-        val v = player.videoSize
-        val res = if (v.width > 0) "${v.width}×${v.height}" else null
-        val copy = if (index == 0) "marked file" else "backup copy $index of ${urls.size - 1}"
-        vcr.info = "$label\n" + listOfNotNull(names.getOrNull(index), formats.getOrNull(index)?.takeIf { it.isNotBlank() },
-            res, copy).joinToString("  ·  ")
-    }
 
     override fun onPause() {
         super.onPause()
@@ -344,10 +330,8 @@ class PlayerActivity : ComponentActivity() {
         fun intent(ctx: Context, title: String, tape: Tape, startMs: Long = -1L): Intent = Intent(ctx, PlayerActivity::class.java)
             .putExtra("startMs", startMs)
             .putExtra("title", title)
-            .putExtra("label", tape.label)
             .putExtra("fileId", tape.fileId)
             .putStringArrayListExtra("urls", ArrayList(tape.sources.map { it.url }))
-            .putStringArrayListExtra("names", ArrayList(tape.sources.map { it.name }))
             .putStringArrayListExtra("formats", ArrayList(tape.sources.map { it.format }))
     }
 }

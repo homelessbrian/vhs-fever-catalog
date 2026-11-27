@@ -14,7 +14,10 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -161,10 +164,19 @@ class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: 
                 onState(s)
             }.let { }
             @JavascriptInterface fun time(t: Float) = main.post { time = t; onTime(t) }.let { }
-            // 2 bad id, 5 can't play here, 100 removed, 101/150 the owner doesn't allow it outside YouTube
+            // 2 bad id, 5 can't play here, 100 removed, 101/150 the owner doesn't allow it outside YouTube,
+            // 152/153 YouTube couldn't tell which page it's on
             @JavascriptInterface fun error(code: Int) = main.post { next() }.let { }
         }, "Android")
-        view.loadDataWithBaseURL("$ORIGIN/", page(), "text/html", "utf-8", null)
+        // YouTube refuses to play ("Error 153") unless the page it's on is a real web address that tells it
+        // where it is. So the player page is opened at our own address and handed over by the app itself.
+        val html = page()
+        view.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(v: WebView, req: WebResourceRequest): WebResourceResponse? =
+                if (req.url.toString().startsWith("$ORIGIN/")) WebResourceResponse("text/html", "utf-8", html.byteInputStream())
+                else null
+        }
+        view.loadUrl("$ORIGIN/player.html")
     }
 
     /** Plays [newKeys] (starting with [first], [atSec] seconds in); an empty list stops. */
@@ -196,17 +208,22 @@ class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: 
 
     private fun page() = """
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}
 #p,iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;pointer-events:none}</style></head>
-<body><div id="p"></div>
+<body><iframe id="p" src="about:blank" referrerpolicy="strict-origin-when-cross-origin"
+  allow="autoplay; encrypted-media; picture-in-picture"></iframe>
 <script>
 var player=null, muted=$muted, loop=$loop, origin='$ORIGIN';
 function onYouTubeIframeAPIReady(){ Android.ready(); }
 function start(id, at){
   if(player && player.loadVideoById){ player.loadVideoById({videoId:id, startSeconds:at}); return; }
-  player=new YT.Player('p',{videoId:id, width:'100%', height:'100%',
-    playerVars:{autoplay:1, controls:0, disablekb:1, fs:0, rel:0, iv_load_policy:3, modestbranding:1, playsinline:1,
-      cc_load_policy:0, start:Math.floor(at), mute:muted?1:0, origin:origin, widget_referrer:origin},
+  // our own player frame (so it sends where it's from), then YouTube's controls hooked onto it
+  var q={enablejsapi:1, autoplay:1, controls:0, disablekb:1, fs:0, rel:0, iv_load_policy:3, modestbranding:1, playsinline:1,
+    cc_load_policy:0, start:Math.floor(at), mute:muted?1:0, origin:origin, widget_referrer:origin};
+  var f=document.getElementById('p');
+  f.src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?'+Object.keys(q).map(function(k){return k+'='+encodeURIComponent(q[k]);}).join('&');
+  player=new YT.Player('p',{
     events:{
       onReady:function(e){ if(muted) e.target.mute(); else { e.target.unMute(); e.target.setVolume(100); } e.target.playVideo(); },
       onStateChange:function(e){ Android.state(e.data); if(e.data===0 && loop){ e.target.seekTo(0); e.target.playVideo(); } },

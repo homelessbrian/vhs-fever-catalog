@@ -33,7 +33,9 @@ android {
     buildTypes {
         getByName("debug") { signingConfig = signingConfigs.getByName("stable") }
         getByName("release") {
-            isMinifyEnabled = false
+            // Android's standard shrink-and-optimize step: a smaller, noticeably smoother app.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("stable")
         }
     }

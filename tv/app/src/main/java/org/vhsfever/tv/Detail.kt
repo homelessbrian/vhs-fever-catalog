@@ -135,8 +135,8 @@ fun DetailScreen(
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(2.px)),
                             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
                             colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
-                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(Hi.ring.px, Ink.Gold), shape = RoundedCornerShape(2.px))),
-                            glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.5f), 16.px)),
+                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.px, Ink.Gold.alpha(0.85f)), shape = RoundedCornerShape(2.px))),
+                            glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.22f), 8.px)),
                         ) { MiniSpine(r) }
                     }
                 }
@@ -170,7 +170,7 @@ fun DetailScreen(
                     else -> "TMDB poster · no tape scan yet"
                 }
                 InfoRow("FILM", t.year ?: "—")
-                val tapeText = listOfNotNull(tape?.label, tape?.minutes?.let { "$it min" }).joinToString(" · ").ifBlank { "—" }
+                val tapeText = listOfNotNull(tape?.let { tapeName(t, tapeIndex) }, tape?.minutes?.let { "$it min" }).joinToString(" · ").ifBlank { "—" }
                 if (t.tapes.size > 1) {
                     // pick which of the tapes on file to play
                     var f by remember { mutableStateOf(false) }
@@ -241,11 +241,8 @@ private fun TapeChooser(t: Title, current: Int, onPick: (Int) -> Unit) {
                             focusedContainerColor = Ink.Gold, contentColor = Color.White, focusedContentColor = Ink.Dark),
                     ) {
                         Row(Modifier.padding(horizontal = 18.px, vertical = 10.px), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(tp.label, style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Bold, fontSize = 21.fs))
-                                Text(tp.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs))
-                            }
+                            Text(tapeName(t, i), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = TextStyle(fontFamily = Type.Barlow, fontWeight = FontWeight.Bold, fontSize = 21.fs))
                             Text(listOfNotNull(tp.minutes?.let { "$it min" }, if (sel) "SELECTED" else null).joinToString(" · "),
                                 style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs))
                         }
@@ -256,6 +253,17 @@ private fun TapeChooser(t: Title, current: Int, onPick: (Int) -> Unit) {
     }
 }
 
+
+/**
+ * What a tape is called on screen: its description ("1992 VHS · Version 2"), plus "Copy 2" when other tapes
+ * of the movie have the same description. File names are never shown (they're often just numbers).
+ */
+fun tapeName(t: Title, i: Int): String {
+    val label = t.tapes.getOrNull(i)?.label ?: return "Tape"
+    val same = t.tapes.withIndex().filter { it.value.label == label }
+    if (same.size < 2) return label
+    return "$label · Copy ${same.indexOfFirst { it.index == i } + 1}"
+}
 
 /** "PARAMOUNT HOME VIDEO" → "Paramount Home Video"; labels already in mixed case are left alone. */
 fun titleCase(s: String): String = if (s != s.uppercase()) s else

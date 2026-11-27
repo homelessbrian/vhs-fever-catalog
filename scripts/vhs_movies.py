@@ -283,6 +283,54 @@ def clean_title(text: str) -> str:
     return t or raw
 
 
+# What the TV app reads from the movie list; everything else is only for the review app.
+_TV_TITLE = ("id", "t", "adult", "genres")
+_TV_MOVIE = ("tmdb_id", "title", "year", "poster", "overview", "backdrop")
+_TV_GUESS = ("tmdb_id", "title", "release_date", "poster", "overview", "media_type")
+_TV_SRC = ("id", "ok", "role", "n", "item", "dur", "url", "fmt")
+
+
+def _pick(o: dict[str, Any] | None, keys: tuple[str, ...]) -> dict[str, Any]:
+    return {k: o[k] for k in keys if o and o.get(k) is not None}
+
+
+def archive_url(item: str, name: str) -> str:
+    """The Archive's download link for a file; the TV app works out the same link."""
+    return f"https://archive.org/download/{item}/{urllib.parse.quote(name)}"
+
+
+def _tv_src(src: dict[str, Any]) -> dict[str, Any]:
+    out = _pick(src, _TV_SRC)
+    # the usual download link is left out (the TV builds it from the item and file name)
+    if out.get("url") == archive_url(out.get("item", ""), out.get("n", "")):
+        del out["url"]
+    return out
+
+
+def _tv_rec(rec: dict[str, Any]) -> dict[str, Any]:
+    out = _pick(rec, ("ver", "notes"))
+    out["segs"] = [{"src": [_tv_src(s) for s in seg.get("src") or []]} for seg in rec.get("segs") or []]
+    return out
+
+
+def tv_feed(feed: dict[str, Any]) -> dict[str, Any]:
+    """A much smaller copy of the movie list with only what the TV app uses, so TVs load it quickly."""
+    titles = []
+    for t in feed["titles"]:
+        o = _pick(t, _TV_TITLE)
+        if t.get("movie"):
+            o["movie"] = _pick(t["movie"], _TV_MOVIE)
+        first = ((t.get("tmdb") or {}).get("c") or [None])[0]
+        if first:
+            o["tmdb"] = {"c": [_pick(first, _TV_GUESS)]}
+        if t.get("un"):
+            o["un"] = [_tv_rec(r) for r in t["un"]]
+        if t.get("eds"):
+            o["eds"] = [{**_pick(e, ("media", "year")), "recs": [_tv_rec(r) for r in e.get("recs") or []]} for e in t["eds"]]
+        titles.append(o)
+    return {"generated_at": feed.get("generated_at"), "titles": titles}
+
+
 def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_path: Path | None,
            pages_read: int | None) -> dict[str, Any]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -398,6 +446,8 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     }
     (out / "reviewer-feed.json").write_text(json.dumps(feed, ensure_ascii=False, separators=(",", ":")),
                                             encoding="utf-8")
+    (out / "tv-feed.json").write_text(json.dumps(tv_feed(feed), ensure_ascii=False, separators=(",", ":")),
+                                      encoding="utf-8")
     write_jsonl(out / "auto-sort.jsonl", out_rows)
     keep_files = {r["file_id"] for r in out_rows}
     write_jsonl(out / "audio-checks.jsonl", [a for a in read_jsonl(audio_path) if a.get("file_id") in keep_files])

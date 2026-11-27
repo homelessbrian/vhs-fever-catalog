@@ -160,7 +160,6 @@ abstract class ScreensBase(private val tag: String) {
         val s = VcrState("Night of the Creeps").apply {
             loading = false; positionMs = 2_537_000; durationMs = 5_280_000; aspect = Aspect.Four3
             audio = listOf(TrackChoice(0, "ENGLISH", "STEREO", true))
-            info = "VHS · 1986 release\nnight_of_the_creeps.mp4  ·  h264  ·  640×480  ·  marked file"
             this.menu = menu
         }
         show {

@@ -171,3 +171,33 @@ class TapeSign(unittest.TestCase):
                      "Black Hat USA 2019 Command Injection.ogv", "LIVE Press briefing on the storm.mp4"):
             self.assertIn("not a movie", vm.why_not_kept(row(name=name), title()))
         self.assertIsNone(vm.why_not_kept(row(name="Black Hawk Down (2002 VHS).mp4"), title()))
+
+
+class TvFeed(unittest.TestCase):
+    def test_keeps_only_what_the_tv_reads(self):
+        src = {"id": "s1", "ok": True, "role": "original", "n": "Bambi (1989).mp4", "item": "bambi-vhs", "dur": 4200.0,
+               "fmt": "MPEG4", "url": vm.archive_url("bambi-vhs", "Bambi (1989).mp4"), "why": ["long"], "flags": []}
+        odd = dict(src, id="s2", url="https://example.org/other.mp4")
+        feed = {"generated_at": "2026-11-26", "summary": {"x": 1}, "titles": [{
+            "id": "t1", "t": "Bambi", "adult": False, "genres": ["Animation"], "raw": "bambi_1989", "guess": {"title": "x"},
+            "movie": {"tmdb_id": 3170, "title": "Bambi", "year": "1942", "poster": "p", "why": "sure"},
+            "tmdb": {"q": "bambi", "c": [{"tmdb_id": 3170, "title": "Bambi", "release_date": "1942-08-13", "why": "w"},
+                                         {"tmdb_id": 9, "title": "Other"}]},
+            "un": [{"ver": "1", "notes": ["Hi-Fi"], "name": "x", "also": [], "segs": [{"src": [src, odd]}]}],
+            "eds": [{"media": "VHS", "year": "1989", "flags": [], "recs": [{"segs": [{"src": [src]}]}]}],
+        }]}
+        out = vm.tv_feed(feed)
+        self.assertEqual(set(out), {"generated_at", "titles"})
+        t = out["titles"][0]
+        self.assertEqual(set(t), {"id", "t", "adult", "genres", "movie", "tmdb", "un", "eds"})
+        self.assertEqual(t["movie"], {"tmdb_id": 3170, "title": "Bambi", "year": "1942", "poster": "p"})
+        self.assertEqual(len(t["tmdb"]["c"]), 1)
+        s1, s2 = t["un"][0]["segs"][0]["src"]
+        self.assertNotIn("url", s1)          # the usual Archive link is worked out by the TV
+        self.assertEqual(s2["url"], "https://example.org/other.mp4")
+        self.assertNotIn("why", s1)
+        self.assertEqual(t["eds"][0]["media"], "VHS")
+        self.assertEqual(t["un"][0]["notes"], ["Hi-Fi"])
+
+    def test_archive_url_encodes_like_the_tv(self):
+        self.assertEqual(vm.archive_url("item", "A B/[c] é.mp4"), "https://archive.org/download/item/A%20B/%5Bc%5D%20%C3%A9.mp4")

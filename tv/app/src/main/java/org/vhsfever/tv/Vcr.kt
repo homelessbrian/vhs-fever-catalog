@@ -99,7 +99,6 @@ class VcrState(val title: String) {
     /** Shown big in the top-left, like a VCR's on-screen display (e.g. "◀◀ REW"); null shows PLAY/PAUSE/STOP. */
     var flash by mutableStateOf<String?>(null)
     var flashCount by mutableIntStateOf(0)
-    var info by mutableStateOf("")
     /** Which key to land on when the deck appears ("play", "pause", "bar" …), and a counter to ask again. */
     var focus by mutableStateOf("pause")
     var focusAsk by mutableIntStateOf(0)
@@ -153,11 +152,6 @@ fun VcrOverlay(s: VcrState, act: VcrActions) {
             Text("SP", modifier = Modifier.align(Alignment.TopEnd).padding(end = 44.px, top = 38.px),
                 style = TextStyle(fontFamily = Type.Vt, fontSize = 30.fs, letterSpacing = 2f.fs, color = Color.White,
                     shadow = Shadow(Color.Black, Offset(3f, 3f), 0f)))
-        }
-        if (s.visible && s.info.isNotBlank()) {
-            Text(s.info, modifier = Modifier.padding(start = 48.px, top = 86.px, end = 120.px), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, lineHeight = 18.fs, color = Color.White.alpha(0.85f),
-                    shadow = Shadow(Color.Black, Offset(1f, 1f), 4f)))
         }
         AnimatedVisibility(s.visible, modifier = Modifier.align(Alignment.BottomCenter),
             enter = fadeIn() + slideInVertically { it / 3 }, exit = fadeOut() + slideOutVertically { it / 3 }) {

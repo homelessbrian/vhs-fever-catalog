@@ -245,21 +245,22 @@ private fun HeroPhoto(playing: Title?) {
             modifier = Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).offset(PHOTO_X.px, PHOTO_Y.px)
                 .size((2172 * PHOTO_SCALE).px, (724 * PHOTO_SCALE).px))
         // The highlighted movie's trailer; a clip of the tape only when it has no trailer YouTube will play here.
+        // One trailer player stays on this TV the whole time and just changes tapes (starting a new one each time is slow).
         val trailers = rememberTrailers(playing)
         var trailerFailed by remember(playing?.key) { mutableStateOf(false) }
         val trailerKeys = trailers?.takeIf { it.isNotEmpty() && !trailerFailed }
         val tape = playing?.tapes?.firstOrNull()?.takeIf { trailers != null && trailerKeys == null }
-        if (trailerKeys != null || tape != null) {
-            var showing by remember(playing?.key) { mutableStateOf(false) }
-            Box(Modifier.offset(TV_X.px, TV_Y.px).size(TV_W.px, TV_H.px).clip(RoundedCornerShape(12.px))
-                .graphicsLayer { alpha = if (showing) 1f else 0f }.background(Color.Black)) {
-                if (trailerKeys != null) TrailerVideo(trailerKeys, onShowing = { showing = it }, onTime = {},
-                    onFailed = { showing = false; trailerFailed = true })
-                else if (tape != null) TapeVideo(tape, onShowing = { showing = it }, onPosition = {})
-                CrtGlass(k = 0.8f)
-                Text("PLAY ▶", modifier = Modifier.padding(start = 10.px, top = 6.px),
-                    style = TextStyle(fontFamily = Type.Vt, fontSize = 18.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f)))
-            }
+        var trailerShowing by remember { mutableStateOf(false) }
+        var tapeShowing by remember(playing?.key) { mutableStateOf(false) }
+        val on = (trailerKeys != null && trailerShowing) || (tape != null && tapeShowing)
+        Box(Modifier.offset(TV_X.px, TV_Y.px).size(TV_W.px, TV_H.px).clip(RoundedCornerShape(12.px))
+            .graphicsLayer { alpha = if (on) 1f else 0f }.background(Color.Black)) {
+            TrailerVideo(trailerKeys ?: emptyList(), onShowing = { trailerShowing = it }, onTime = {},
+                onFailed = { trailerShowing = false; trailerFailed = true })
+            if (tape != null) TapeVideo(tape, onShowing = { tapeShowing = it }, onPosition = {})
+            CrtGlass(k = 0.8f)
+            Text("PLAY ▶", modifier = Modifier.padding(start = 10.px, top = 6.px),
+                style = TextStyle(fontFamily = Type.Vt, fontSize = 18.fs, color = Color.White, shadow = Shadow(Color.Black, Offset(1f, 1f), 0f)))
         }
         // fade the left under the menu and welcome text, and the bottom into the shelves
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
@@ -362,8 +363,8 @@ fun GenreTile(name: String, w: Int, h: Int, onClick: () -> Unit) {
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
         border = ClickableSurfaceDefaults.border(
             border = Border(BorderStroke(2.px, Color.White.alpha(0.55f)), shape = shape),
-            focusedBorder = Border(BorderStroke(Hi.ring.px, Ink.Gold), shape = shape)),
-        glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.5f), 20.px)),
+            focusedBorder = Border(BorderStroke(2.px, Ink.Gold.alpha(0.9f)), shape = shape)),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.22f), 10.px)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Black, focusedContainerColor = Color.Black),
     ) { GenreArt(name, scale = w / 150f) }
 }
@@ -453,11 +454,10 @@ private fun SearchContent(catalog: Catalog, restoreKey: String?, onOpen: (Title)
     var q by remember { mutableStateOf("") }
     val field = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (restoreKey == null) runCatching { field.requestFocus() } }
-    val words = q.lowercase().split(' ').filter { it.isNotBlank() }
-    val hits = if (words.isEmpty()) emptyList() else catalog.titles.filter { t ->
-        val hay = (t.name + " " + t.tapes.joinToString(" ") { it.fileName } + " " + t.genres.joinToString(" ")).lowercase()
-        words.all { it in hay }
-    }
+    val words = remember(q) { q.lowercase().split(' ').filter { it.isNotBlank() } }
+    // by title, year and genre (file names aren't shown anywhere, so they aren't searched either)
+    val hay = remember(catalog) { catalog.titles.map { t -> t to listOfNotNull(t.name, t.year, t.section, *t.genres.toTypedArray()).joinToString(" ").lowercase() } }
+    val hits = remember(words, hay) { if (words.isEmpty()) emptyList() else hay.filter { (_, h) -> words.all { it in h } }.map { it.first } }
     Column(Modifier.fillMaxSize()) {
         SectionHeader("Search", if (words.isEmpty()) "Type a title" else "${hits.size} found")
         var focused by remember { mutableStateOf(false) }
@@ -470,7 +470,7 @@ private fun SearchContent(catalog: Catalog, restoreKey: String?, onOpen: (Title)
                 .border(if (focused) Hi.ring.px else 2.px, if (focused) Ink.Gold else Color.White.alpha(0.5f), RoundedCornerShape(10.px))
                 .padding(horizontal = 18.px, vertical = 12.px),
             decorationBox = { inner ->
-                if (q.isEmpty()) Text("Title, year or file name…", style = TextStyle(fontFamily = Type.Barlow, fontSize = 26.fs, color = Ink.Muted))
+                if (q.isEmpty()) Text("Title, year or genre…", style = TextStyle(fontFamily = Type.Barlow, fontSize = 26.fs, color = Ink.Muted))
                 inner()
             })
         BoxGrid(hits, restoreKey, onOpen, null, 28)

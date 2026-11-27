@@ -64,17 +64,23 @@ class ArtRepo(ctx: Context) {
 
     fun cached(t: Title): Art? = synchronized(cache) { cache[key(t)] }
 
-    /** Looks up art for every title (a few at a time), calling [onArt] as each one arrives. */
+    /**
+     * Looks up art for every title not looked up yet (a few at a time), calling [onArt] as each one arrives.
+     * Titles already on the TV are skipped: [cached] has them.
+     */
     suspend fun loadAll(titles: List<Title>, onArt: (String, Art) -> Unit) = withContext(Dispatchers.IO) {
         if (!available) return@withContext
+        val todo = titles.filter { cached(it) == null }
+        if (todo.isEmpty()) return@withContext
         val gate = Semaphore(4)
-        titles.map { t ->
+        var sinceSave = 0
+        todo.map { t ->
             async {
-                val k = key(t)
-                synchronized(cache) { cache[k] }?.let { onArt(t.key, it); return@async }
                 val art = gate.withPermit { runCatching { fetch(t) }.getOrNull() } ?: return@async
-                synchronized(cache) { cache[k] = art }
+                synchronized(cache) { cache[key(t)] = art }
                 onArt(t.key, art)
+                // saved now and then, so a long first load isn't lost if the app is closed
+                if (synchronized(cache) { ++sinceSave } % 50 == 0) save()
             }
         }.awaitAll()
         save()

@@ -54,4 +54,9 @@ class CatalogTest {
     @Test fun everyTitleHasSomethingToLookUp() {
         for (t in catalog.titles) assertTrue(t.name, t.tmdbId != null || t.searchName.isNotBlank())
     }
+
+    @Test fun archiveLinkMatchesTheBots() {
+        // same as scripts/vhs_movies.py archive_url (tests/test_vhs_movies.py)
+        assertEquals("https://archive.org/download/item/A%20B/%5Bc%5D%20%C3%A9.mp4", Catalog.archiveUrl("item", "A B/[c] é.mp4"))
+    }
 }

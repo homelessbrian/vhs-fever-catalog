@@ -9,7 +9,12 @@ import androidx.palette.graphics.Palette
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -60,8 +65,17 @@ class PosterColors(private val ctx: Context) {
             }
         } ?: return null
         synchronized(cache) { cache[poster] = c }
-        save()
+        saveSoon()
         return c
+    }
+
+    private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val saving = AtomicBoolean(false)
+
+    /** Saves the colours once things go quiet, instead of rewriting the whole file after every poster. */
+    private fun saveSoon() {
+        if (!saving.compareAndSet(false, true)) return
+        saveScope.launch { delay(3000); saving.set(false); save() }
     }
 
     private fun save() = runCatching {

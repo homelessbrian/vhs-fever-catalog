@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -120,18 +121,17 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier, dvd: Boolean
  */
 @Composable
 private fun PosterSleeve(t: Title, c: BoxColors, scale: Float, dvd: Boolean) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val posterH = maxWidth * 1.5f
-        val spare = maxHeight - posterH
-        if (dvd || spare < maxHeight * 0.06f) {
-            AsyncImage(model = t.poster, contentDescription = t.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            return@BoxWithConstraints
-        }
+    // Every VHS box is the same shape (about 4 wide by 7 tall), so the poster (2:3) always leaves room for the bands.
+    if (dvd) {
+        AsyncImage(model = t.poster, contentDescription = t.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        return
+    }
+    run {
         val art = t.art
         val mono = TextStyle(fontFamily = Type.Mono, fontSize = (6.5f * scale).fs, letterSpacing = (0.8f * scale).fs, color = Ink.CoverCream)
         Column(Modifier.fillMaxSize()) {
             // top band: VHS mark and the studio
-            Row(Modifier.fillMaxWidth().height(spare * 0.36f).background(c.c2).padding(horizontal = (5 * scale).px),
+            Row(Modifier.fillMaxWidth().weight(0.36f).background(c.c2).padding(horizontal = (5 * scale).px),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("VHS", style = mono.copy(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = (7.5f * scale).fs,
                     color = c.c2), modifier = Modifier.background(Ink.CoverCream).padding(horizontal = (3 * scale).px))
@@ -142,10 +142,10 @@ private fun PosterSleeve(t: Title, c: BoxColors, scale: Float, dvd: Boolean) {
                     modifier = Modifier.padding(start = (4 * scale).px))
             }
             AsyncImage(model = t.poster, contentDescription = t.name, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().height(posterH))
+                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
             // bottom band: a stripe of the poster's accent, then rating and year
             Box(Modifier.fillMaxWidth().height((1.5f * scale).px).background(c.c3))
-            Row(Modifier.fillMaxWidth().weight(1f).background(c.c1).padding(horizontal = (5 * scale).px),
+            Row(Modifier.fillMaxWidth().weight(0.64f).background(c.c1).padding(horizontal = (5 * scale).px),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy((5 * scale).px)) {
                 art?.rating?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = mono.copy(fontFamily = Type.Oswald, fontWeight = FontWeight.Bold, fontSize = (7.5f * scale).fs),

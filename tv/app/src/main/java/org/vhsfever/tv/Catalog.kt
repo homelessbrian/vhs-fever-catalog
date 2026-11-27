@@ -51,7 +51,7 @@ data class Title(
     val colors: BoxColors? = null,   // colours picked from the poster
 ) {
     /** The one store section this tape sits in (like a real rental store, never two). */
-    val section: String get() = storeSection(genres)
+    val section: String by lazy { storeSection(genres) }
 
     /** Fills in TMDB art and blurb; the poster counts as confirmed only when the TMDB match is. */
     fun withArt(a: Art?): Title = if (a == null) this else copy(
@@ -68,19 +68,18 @@ data class Title(
 /** [titles] are the shelves; [curtain] holds adult tapes, shown only behind the red curtain. */
 data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList()) {
     /** Newest tapes marked good first. */
-    val newArrivals: List<Title> get() = titles.sortedByDescending { it.addedAt }
+    val newArrivals: List<Title> by lazy { titles.sortedByDescending { it.addedAt } }
 
     /**
      * Each store section with its titles, biggest first; movies TMDB gives no genre go on "Other", last.
      * A movie is on one shelf only, like a real rental store.
      */
-    val genreShelves: List<Pair<String, List<Title>>>
-        get() {
-            val bySection = titles.groupBy { it.section }
-            return bySection.filterKeys { it != OTHER }.toList()
-                .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first }) +
-                listOfNotNull(bySection[OTHER]?.let { OTHER to it })
-        }
+    val genreShelves: List<Pair<String, List<Title>>> by lazy {
+        val bySection = titles.groupBy { it.section }
+        bySection.filterKeys { it != OTHER }.toList()
+            .sortedWith(compareByDescending<Pair<String, List<Title>>> { it.second.size }.thenBy { it.first }) +
+            listOfNotNull(bySection[OTHER]?.let { OTHER to it })
+    }
 
     companion object {
         const val OTHER = "Other"
@@ -249,7 +248,8 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                 }
             }
             return srcs.sortedBy { rank(it) }.map {
-                Source(it.optString("id"), it.optString("n"), it.optString("url"), it.optString("fmt"),
+                Source(it.optString("id"), it.optString("n"),
+                    it.optString("url").ifBlank { archiveUrl(it.optString("item"), it.optString("n")) }, it.optString("fmt"),
                     it.optString("role") == "archive_derivative")
             }.distinctBy { it.url }
         }
@@ -268,6 +268,21 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
             var year: String? = null
             Regex("^((?:19|20)\\d\\d)\\s+(.+)$").find(q.trim())?.let { m -> year = m.groupValues[1]; q = m.groupValues[2] }
             return q.replace(Regex("\\s+"), " ").trim().trimEnd('.', '-', ' ').ifBlank { name } to year
+        }
+
+        /**
+         * The Archive's download link for a file, the same link the bot writes (the TV's movie list leaves
+         * it out to stay small). Spaces and other characters are %-encoded; slashes in the name are kept.
+         */
+        fun archiveUrl(item: String, name: String): String {
+            val sb = StringBuilder("https://archive.org/download/").append(item).append('/')
+            for (b in name.toByteArray(Charsets.UTF_8)) {
+                val c = b.toInt() and 0xFF
+                val ch = c.toChar()
+                if (ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch in "_.-~/") sb.append(ch)
+                else sb.append('%').append("0123456789ABCDEF"[c shr 4]).append("0123456789ABCDEF"[c and 15])
+            }
+            return sb.toString()
         }
 
         fun sortKey(name: String): String =

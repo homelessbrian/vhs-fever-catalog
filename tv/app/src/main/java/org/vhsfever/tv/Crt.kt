@@ -205,7 +205,7 @@ fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen:
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
                 border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.px, Ink.Gold), shape = bodyShape)),
-                glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.45f), 28.px)),
+                glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.2f), 12.px)),
             ) {
                 Row(Modifier.fillMaxSize()
                     .background(Brush.linearGradient(listOf(Color(0xFF47474C), Color(0xFF1C1C1F)), Offset.Zero, Offset(300f * k, 500f * k)), bodyShape)

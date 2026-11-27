@@ -192,9 +192,14 @@ private class BoxShape(val w: Float, val h: Float, val d: Float) {
     }
 }
 
+// Drawing happens on the main thread only, so one matrix and corner list are reused for every box and frame.
+private val ontoMatrix = android.graphics.Matrix()
+private val ontoSrc = FloatArray(8)
+
 private fun ContentDrawScope.drawOnto(q: FloatArray) {
-    val src = floatArrayOf(0f, 0f, size.width, 0f, size.width, size.height, 0f, size.height)
-    val m = android.graphics.Matrix()
+    val src = ontoSrc
+    src[0] = 0f; src[1] = 0f; src[2] = size.width; src[3] = 0f; src[4] = size.width; src[5] = size.height; src[6] = 0f; src[7] = size.height
+    val m = ontoMatrix
     if (!m.setPolyToPoly(src, 0, q, 0, 4)) return
     val c = drawContext.canvas.nativeCanvas
     c.save(); c.concat(m); drawContent(); c.restore()
@@ -255,10 +260,11 @@ fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) 
                 size = Size(size.width * (1.16f + 0.24f * g), 14.px.toPx()))
             if (g > 0.01f) {
                 val path = quadPath(front)
-                for ((wd, a) in listOf(26f to 0.06f, 16f to 0.10f, 8f to 0.16f)) drawPath(path, Ink.Gold.alpha(a * g), style = Stroke(wd.px.toPx()))
+                // a soft, thin halo (it used to be wide and bright)
+                for ((wd, a) in listOf(9f to 0.07f, 5f to 0.12f)) drawPath(path, Ink.Gold.alpha(a * g), style = Stroke(wd.px.toPx()))
             }
             drawContent()
-            if (g > 0.01f) drawPath(quadPath(front), Ink.Gold.alpha(g), style = Stroke(Hi.ring.px.toPx()))
+            if (g > 0.01f) drawPath(quadPath(front), Ink.Gold.alpha(0.85f * g), style = Stroke(2.px.toPx()))
             else drawPath(quadPath(front), Color.White.alpha(0.2f), style = Stroke(1f))
         }) {
         val faceMod = { face: Int -> Modifier.drawWithContent {
