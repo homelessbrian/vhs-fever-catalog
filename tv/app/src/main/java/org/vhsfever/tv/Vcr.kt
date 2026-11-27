@@ -89,6 +89,10 @@ class VcrState(val title: String) {
     var stopped by mutableStateOf(false)
     var loading by mutableStateOf(true)
     var ended by mutableStateOf(false)
+    /** False until the movie's first picture is on screen (the full-screen loading animation shows until then). */
+    var started by mutableStateOf(false)
+    /** Every copy of the tape failed; the loading animations stay away so the message can be read. */
+    var gaveUp by mutableStateOf(false)
     var positionMs by mutableLongStateOf(0L)
     var durationMs by mutableLongStateOf(0L)
     var aspect by mutableStateOf(Aspect.Auto)
