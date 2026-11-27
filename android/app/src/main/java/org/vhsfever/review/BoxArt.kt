@@ -143,6 +143,30 @@ class BoxArtRepo(private val token: String) {
         JSONObject(Http.request("$api/$path?ref=main", headers = auth)).optString("sha").ifBlank { null }
     } catch (e: HttpError) { if (e.code == 404) null else throw e }
 
+    /** Sets (or with null, removes) the separate picture used for the back of a movie's box. */
+    fun saveBack(key: String, back: ArtCandidate?) = change(key, "Box art back from phone") { e ->
+        if (back == null) e.remove("back") else e.put("back", JSONObject().put("id", back.id).put("url", back.url))
+    }
+
+    /** Changes one movie's entry in choices.json, merged into whatever it holds now. */
+    private fun change(key: String, message: String, edit: (JSONObject) -> Unit) {
+        repeat(3) { attempt ->
+            val s = sha("choices.json")
+            val now = (if (s != null) read("choices.json") else null)?.let { JSONObject(it) } ?: JSONObject()
+            val titles = now.optJSONObject("titles") ?: JSONObject().also { now.put("titles", it) }
+            val e = titles.optJSONObject(key) ?: JSONObject()
+            edit(e)
+            e.put("at", Instant.now().toString())
+            titles.put(key, e)
+            now.put("about", "Box art picked in the review app. \"none\" = show the TMDB poster.")
+            val body = JSONObject().put("message", message).put("branch", "main")
+                .put("content", Base64.encodeToString(now.toString(1).toByteArray(), Base64.NO_WRAP))
+            if (s != null) body.put("sha", s)
+            try { Http.request("$api/choices.json", "PUT", auth, body.toString(), 60000); return }
+            catch (e: HttpError) { if (e.code != 409 && e.code != 422 || attempt == 2) throw e }
+        }
+    }
+
     /** Saves one pick, merged into whatever choices.json holds now (two phones never undo each other). */
     fun savePick(key: String, pick: String?, candidate: ArtCandidate? = null, adjust: Adjust? = null) {
         repeat(3) { attempt ->
@@ -158,6 +182,7 @@ class BoxArtRepo(private val token: String) {
                     // a line-up stays with its box
                     if (adjust != null) put("adjust", adjust.toJson())
                     else before?.optJSONObject("adjust")?.let { put("adjust", it) }
+                    before?.optJSONObject("back")?.let { put("back", it) }
                 })
             now.put("about", "Box art picked in the review app. \"none\" = show the TMDB poster.")
             val body = JSONObject().put("message", "Box art pick from phone").put("branch", "main")
@@ -182,6 +207,21 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     private var tvBoxes: Map<String, Pair<ArtTitle, ArtCandidate>> = emptyMap()
     var status by mutableStateOf(""); private set
     var loaded by mutableStateOf(false); private set
+    /** Separate back pictures Brian picked: title key → the picture. */
+    var backs by mutableStateOf<Map<String, ArtCandidate>>(emptyMap()); private set
+
+    fun setBack(key: String, c: ArtCandidate?) {
+        val before = backs
+        backs = if (c == null) backs - key else backs + (key to c)
+        status = "Saving…"
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { BoxArtRepo(token()).saveBack(key, c) } }
+            status = r.fold({ if (c == null) "Back removed. The box uses its own back again after the next refresh."
+                else "Back saved. The TV shows it after its next refresh, in a few minutes." },
+                { backs = before; "Couldn't save: ${it.message}" })
+        }
+    }
+
     /** TMDB facts per movie (looked up when a movie's box screen opens). */
     var info by mutableStateOf<Map<String, Tmdb.Summary>>(emptyMap()); private set
     /** Screenshots from each movie's own tape: title key → paths in the box art repository. */
@@ -237,6 +277,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 picks = choices?.let { parsePicks(it) } ?: emptyMap()
                 custom = choices?.let { parseCustom(it) } ?: emptyMap()
                 adjusts = choices?.let { parseAdjusts(it) } ?: emptyMap()
+                backs = choices?.let { parseBacks(it) } ?: emptyMap()
                 tvAdjusts = index?.let { parseTvAdjusts(it) } ?: emptyMap()
                 onTv = index?.let { parseOnTv(it) } ?: emptyMap()
                 if (!loaded && filter == ArtFilter.REVIEW && count(ArtFilter.REVIEW) == 0) filter = ArtFilter.ON_TV
@@ -305,6 +346,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
         // the box on the TV now, even if the bot's list doesn't have it
         tvBoxes[t.key]?.second?.let { c -> if (list.none { it.id == c.id }) list = listOf(c) + list }
         custom[t.key]?.let { c -> if (list.none { it.id == c.id }) list = listOf(c) + list }
+        backs[t.key]?.let { c -> if (list.none { it.id == c.id }) list = list + c }
         return list
     }
 
@@ -389,6 +431,15 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
 
         private fun titleCase(s: String) = if (s != s.uppercase()) s else
             s.lowercase().split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+
+        fun parseBacks(text: String): Map<String, ArtCandidate> {
+            val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k ->
+                val b = o.optJSONObject(k)?.optJSONObject("back") ?: return@mapNotNull null
+                val url = b.optStringOrNull("url") ?: return@mapNotNull null
+                k to ArtCandidate(b.optString("id"), "manual", url, url, "front", 0, emptyList(), "Back", null, false)
+            }.toMap()
+        }
 
         fun parseShots(text: String): Map<String, List<String>> {
             val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()

@@ -151,7 +151,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                     t.sure -> "The bot picked the box marked BOT. Tap any box to use it instead."
                     listed.isEmpty() -> "No boxes found yet; the TV shows the TMDB poster. Try searching below."
                     else -> "The bot isn't sure. Tap the right box (a full wrap gives the TV a real back and spine too)."
-                }, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+                } + if (listed.any { it.kind != "wrap" }) " Front and back scanned as two pictures? Tap the front, then \"Use as the back\" on the other." else "", color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
                 // straighten up the box that's showing: spine lines and trimmed edges
                 if (b.shown(t) != null && picked != "none") TextButton(onClick = { m.open(Screen.BoxAlign(key)) }) {
                     Text("Line up this box (spine and edges)", color = C.gold)
@@ -160,7 +160,9 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
             items(listed, key = { it.id }) { c ->
                 val chosen = picked == c.id || (picked == null && onTv == c.id)
                 ArtCard(c, chosen = chosen, bot = t.botPick == c.id && t.sure, onTv = onTv == c.id,
-                    onPick = { if (!chosen) b.pick(key, c.id, c.takeIf { it.source == "manual" }) }, onLook = { big = c })
+                    isBack = b.backs[key]?.id == c.id,
+                    onPick = { if (!chosen) b.pick(key, c.id, c.takeIf { it.source == "manual" }) }, onLook = { big = c },
+                    onBack = if (chosen || c.kind == "wrap") null else ({ b.setBack(key, if (b.backs[key]?.id == c.id) null else c) }))
             }
             item {
                 // keep the TMDB poster instead of any box
@@ -193,8 +195,9 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                 }
             }
             items(b.searchResults.filter { r -> listed.none { it.id == r.id } }, key = { "s-" + it.id }) { c ->
-                ArtCard(c, chosen = picked == c.id, bot = false, onTv = false,
-                    onPick = { b.pick(key, c.id, c) }, onLook = { big = c })
+                ArtCard(c, chosen = picked == c.id, bot = false, onTv = false, isBack = b.backs[key]?.id == c.id,
+                    onPick = { b.pick(key, c.id, c) }, onLook = { big = c },
+                    onBack = { b.setBack(key, if (b.backs[key]?.id == c.id) null else c) })
             }
         }
     }
@@ -207,7 +210,8 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                 Text(c.label, color = C.text, fontSize = 13.sp)
                 Text(c.why.joinToString(" · "), color = C.muted, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { b.pick(key, c.id, c.takeIf { it.source == "manual" }); big = null }) { Text("Use this box", color = C.gold) }
+                    TextButton(onClick = { b.pick(key, c.id, c.takeIf { it.source == "manual" }); big = null }) { Text("Use as front", color = C.gold) }
+                    if (c.kind != "wrap") TextButton(onClick = { b.setBack(key, c); big = null }) { Text("Use as back", color = C.gold) }
                     c.link?.let { l -> TextButton(onClick = { uri.openUri(l) }) { Text("Open on Archive", color = C.blue) } }
                     TextButton(onClick = { big = null }) { Text("Close", color = C.muted) }
                 }
@@ -217,7 +221,8 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
 }
 
 @Composable
-private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolean, onPick: () -> Unit, onLook: () -> Unit) {
+private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolean, onPick: () -> Unit, onLook: () -> Unit,
+                    isBack: Boolean = false, onBack: (() -> Unit)? = null) {
     Column(Modifier.clip(RoundedCornerShape(10.dp)).background(C.panel)
         .border(if (chosen) 3.dp else 1.dp, if (chosen) C.gold else C.line, RoundedCornerShape(10.dp))
         .clickable(onClick = onPick).padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -229,6 +234,7 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
             Row(Modifier.padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (bot) Tag("BOT", C.panel2, C.good)
                 if (onTv) Tag("ON TV", C.blueBg, C.blue)
+                if (isBack) Tag("BACK", C.warnBg, C.warn)
             }
         }
         Text(c.label, color = C.text, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -236,6 +242,9 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
             Tag(c.sourceName)
             Tag(when (c.kind) { "wrap" -> "Full wrap"; "front" -> if (c.hasBack) "Front + back" else "Front"; else -> "Picture" })
         }
+        // a separate picture for the back (for fronts and backs scanned as two pictures)
+        if (onBack != null) Text(if (isBack) "Remove as back" else "Use as the back", color = C.gold, fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 4.dp))
         if (c.score > 0) Text("Match ${c.score}", color = if (c.score >= 70) C.good else C.muted, fontSize = 11.sp)
     }
 }
