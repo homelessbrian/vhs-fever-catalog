@@ -1,6 +1,7 @@
 package org.vhsfever.tv
 
 import org.json.JSONArray
+import java.io.File
 import org.json.JSONObject
 
 /** One playable file on archive.org. */
@@ -45,12 +46,16 @@ data class Title(
     val addedAt: String = "",        // when the newest tape of it was marked good
     val adult: Boolean = false,      // adult tape: only behind the red curtain, never on the shelves
     val box: BoxScan? = null,        // real VHS sleeve scan (videotapes.io), when there is one
+    val art: Art? = null,            // everything TMDB knows, for the printed back and spine
+    val shots: List<File> = emptyList(),  // screenshots taken from this movie's own tape
+    val colors: BoxColors? = null,   // colours picked from the poster
 ) {
     /** The one store section this tape sits in (like a real rental store, never two). */
     val section: String get() = storeSection(genres)
 
     /** Fills in TMDB art and blurb; the poster counts as confirmed only when the TMDB match is. */
     fun withArt(a: Art?): Title = if (a == null) this else copy(
+        art = a,
         poster = poster ?: a.poster,
         posterIsSuggestion = if (poster != null) posterIsSuggestion else !confirmed,
         overview = overview ?: a.overview,

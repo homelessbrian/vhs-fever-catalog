@@ -41,11 +41,12 @@ class MainActivity : ComponentActivity() {
         val repo = Repo(applicationContext)
         val artRepo = ArtRepo(applicationContext)
         val boxRepo = BoxArtRepo(applicationContext)
+        val posterColors = PosterColors(applicationContext)
         val prefs = applicationContext.getSharedPreferences("store", Context.MODE_PRIVATE)
         Shelf.load(applicationContext)
         val dm = resources.displayMetrics
         Ui.fit(dm.widthPixels / dm.density, dm.heightPixels / dm.density)
-        setContent { StoreTheme { App(repo, artRepo, boxRepo, prefs) } }
+        setContent { StoreTheme { App(repo, artRepo, boxRepo, posterColors, prefs) } }
     }
 
     /** Leaving the app closes the red curtain again. */
@@ -74,13 +75,20 @@ fun StoreTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, prefs: android.content.SharedPreferences) {
+fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterColors, prefs: android.content.SharedPreferences) {
     var raw by remember { mutableStateOf<Catalog?>(null) }
     val art = remember { mutableStateMapOf<String, Art>() }
     // Real VHS box scans by TMDB id (never for adult tapes, which stay plain boxes).
     val boxes = remember { mutableStateMapOf<Int, BoxScan>().apply { putAll(boxRepo.cached()) } }
+    // Screenshots from each movie's own tape, and box colours picked from each poster.
+    val shots = remember { mutableStateMapOf<String, List<java.io.File>>().apply { putAll(boxRepo.cachedShots()) } }
+    val colors = remember { mutableStateMapOf<String, BoxColors>() }
     val catalog = raw?.let { c -> Catalog(c.titles.map { t ->
         t.withArt(art[t.key]).let { a -> if (a.adult || a.tmdbType != "movie") a else a.copy(box = a.tmdbId?.let { boxes[it] }) }
+            .let { a -> a.copy(
+                shots = shots[a.key] ?: a.tmdbId?.let { shots["tmdb:$it"] } ?: emptyList(),
+                colors = a.poster?.let { p -> colors[p] ?: posterColors.cached(p) },
+            ) }
     }, c.curtain) }
     var curtainPin by remember { mutableStateOf(prefs.getString("curtain_pin", null)) }
     var status by remember { mutableStateOf("Loading the shelves…") }
@@ -112,12 +120,19 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, prefs: android.conten
     LaunchedEffect(raw) {
         val c = raw ?: return@LaunchedEffect
         c.titles.forEach { t -> artRepo.cached(t)?.let { art[t.key] = it } }
-        artRepo.loadAll(c.titles) { key, a -> scope.launch(Dispatchers.Main) { art[key] = a } }
+        fun pickColors(poster: String?) {
+            if (poster == null || colors.containsKey(poster)) return
+            scope.launch { posterColors.colorsFor(poster)?.let { colors[poster] = it } }
+        }
+        c.titles.forEach { pickColors(it.poster ?: art[it.key]?.poster) }
+        artRepo.loadAll(c.titles) { key, a -> scope.launch(Dispatchers.Main) { art[key] = a; pickColors(a.poster) } }
     }
     LaunchedEffect(raw) {
         val c = raw ?: return@LaunchedEffect
         val wanted = c.titles.filter { !it.adult }.mapNotNull { it.tmdbId }.toSet()
         runCatching { boxRepo.refresh(wanted) { id, b -> scope.launch(Dispatchers.Main) { boxes[id] = b } } }
+        val keys = c.titles.filter { !it.adult }.flatMap { listOfNotNull(it.key, it.tmdbId?.let { id -> "tmdb:$id" }) }.toSet()
+        runCatching { boxRepo.refreshShots(keys) { k, f -> scope.launch(Dispatchers.Main) { shots[k] = f } } }
     }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Ink.NavyTop, Ink.Navy)))) {

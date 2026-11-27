@@ -7,29 +7,56 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/** Poster, background and blurb from TMDB. Stand-in art until real VHS box scans are wired up. */
-data class Art(val poster: String?, val backdrop: String?, val overview: String?, val year: String?,
-    val genres: List<String> = emptyList())
+/**
+ * What TMDB knows about a movie: poster, background and blurb, plus what the box back and spine
+ * print (tagline, cast, director, rating, running time, studio and title logos, film stills, IMDb id).
+ */
+data class Art(
+    val poster: String?, val backdrop: String?, val overview: String?, val year: String?,
+    val genres: List<String> = emptyList(),
+    val tagline: String? = null,
+    val cast: List<String> = emptyList(),
+    val director: String? = null,
+    val rating: String? = null,        // US certificate: G, PG, PG-13, R…
+    val runtime: Int? = null,          // minutes
+    val studio: String? = null,
+    val studioLogo: String? = null,    // transparent PNG
+    val titleLogo: String? = null,     // transparent PNG of the movie's title
+    val stills: List<String> = emptyList(),  // film stills with no text on them
+    val imdbId: String? = null,
+) {
+    fun toJson(): JSONObject = JSONObject().put("poster", poster).put("backdrop", backdrop).put("overview", overview)
+        .put("year", year).put("genres", JSONArray(genres)).put("tagline", tagline).put("cast", JSONArray(cast))
+        .put("director", director).put("rating", rating).put("runtime", runtime).put("studio", studio)
+        .put("studioLogo", studioLogo).put("titleLogo", titleLogo).put("stills", JSONArray(stills)).put("imdbId", imdbId)
+
+    companion object {
+        fun fromJson(o: JSONObject) = Art(
+            o.s("poster"), o.s("backdrop"), o.s("overview"), o.s("year"), o.optJSONArray("genres").list(),
+            o.s("tagline"), o.optJSONArray("cast").list(), o.s("director"), o.s("rating"),
+            o.optInt("runtime").takeIf { it > 0 }, o.s("studio"), o.s("studioLogo"), o.s("titleLogo"),
+            o.optJSONArray("stills").list(), o.s("imdbId"),
+        )
+    }
+}
 
 class ArtRepo(ctx: Context) {
-    private val cacheFile = File(ctx.filesDir, "tmdb-art-v2.json")
+    private val cacheFile = File(ctx.filesDir, "tmdb-art-v3.json")
     private val cache = HashMap<String, Art>()
     val available get() = BuildConfig.TMDB_TOKEN.isNotBlank()
 
     init {
+        File(ctx.filesDir, "tmdb-art-v2.json").delete()  // older, smaller cache
         runCatching {
             val o = JSONObject(cacheFile.readText())
-            for (k in o.keys()) o.optJSONObject(k)?.let {
-                val g = it.optJSONArray("genres")
-                cache[k] = Art(it.s("poster"), it.s("backdrop"), it.s("overview"), it.s("year"),
-                    if (g == null) emptyList() else (0 until g.length()).map { i -> g.optString(i) })
-            }
+            for (k in o.keys()) o.optJSONObject(k)?.let { cache[k] = Art.fromJson(it) }
         }
     }
 
@@ -54,35 +81,61 @@ class ArtRepo(ctx: Context) {
     }
 
     private fun fetch(t: Title): Art? {
-        val o: JSONObject = if (t.tmdbId != null) {
-            JSONObject(get("$API/${if (t.tmdbType == "tv") "tv" else "movie"}/${t.tmdbId}"))
-        } else {
+        val (type, id) = if (t.tmdbId != null) (if (t.tmdbType == "tv") "tv" else "movie") to t.tmdbId else {
             // "Wallace & Gromit - The Wrong Trousers": if the whole name finds nothing, try the part after the dash.
             val names = listOf(t.searchName) + t.searchName.split(" - ").drop(1).map { it.trim() }.filter { it.length > 2 }
             names.firstNotNullOfOrNull { search(it, t.searchYear) } ?: return Art(null, null, null, null)
         }
+        // One call brings everything: details, logos and stills, cast and crew, ratings.
+        val extra = if (type == "tv") "images,aggregate_credits,content_ratings,external_ids"
+            else "images,credits,release_dates"
+        val o = JSONObject(get("$API/$type/$id?append_to_response=$extra&include_image_language=en,null"))
+        val images = o.optJSONObject("images")
+        val credits = o.optJSONObject("credits") ?: o.optJSONObject("aggregate_credits")
+        val company = o.optJSONArray("production_companies").objs().let { cs -> cs.firstOrNull { it.s("logo_path") != null } ?: cs.firstOrNull() }
         return Art(
             poster = o.s("poster_path")?.let { "$IMG/w342$it" },
             backdrop = o.s("backdrop_path")?.let { "$IMG/w1280$it" },
             overview = o.s("overview"),
             year = (o.s("release_date") ?: o.s("first_air_date"))?.take(4),
             genres = genresOf(o),
+            tagline = o.s("tagline"),
+            cast = credits?.optJSONArray("cast").objs().take(3).mapNotNull { it.s("name") },
+            director = credits?.optJSONArray("crew").objs().firstOrNull { it.s("job") == "Director" }?.s("name"),
+            rating = usRating(o),
+            runtime = (o.optInt("runtime").takeIf { it > 0 } ?: o.optJSONArray("episode_run_time")?.optInt(0)?.takeIf { it > 0 }),
+            studio = company?.s("name"),
+            studioLogo = company?.s("logo_path")?.let { "$IMG/w185$it" },
+            titleLogo = images?.optJSONArray("logos").objs()
+                .firstOrNull { it.s("iso_639_1") == "en" && it.s("file_path")?.endsWith(".png") == true }
+                ?.s("file_path")?.let { "$IMG/w500$it" },
+            // stills without any words on them (no language) make the best screenshots
+            stills = images?.optJSONArray("backdrops").objs().filter { it.s("iso_639_1") == null }
+                .take(4).mapNotNull { it.s("file_path")?.let { p -> "$IMG/w780$p" } },
+            imdbId = o.s("imdb_id") ?: o.optJSONObject("external_ids")?.s("imdb_id"),
         )
     }
 
-    private fun search(name: String, year: String?): JSONObject? {
+    private fun usRating(o: JSONObject): String? {
+        o.optJSONObject("release_dates")?.optJSONArray("results").objs().firstOrNull { it.s("iso_3166_1") == "US" }
+            ?.optJSONArray("release_dates").objs().mapNotNull { it.s("certification") }.firstOrNull()?.let { return it }
+        return o.optJSONObject("content_ratings")?.optJSONArray("results").objs()
+            .firstOrNull { it.s("iso_3166_1") == "US" }?.s("rating")
+    }
+
+    /** The best TMDB match for a name: ("movie" or "tv", id). */
+    private fun search(name: String, year: String?): Pair<String, Int>? {
         val q = URLEncoder.encode(name, "UTF-8")
         val y = year?.let { "&year=$it" } ?: ""
-        return JSONObject(get("$API/search/movie?include_adult=false&query=$q$y")).optJSONArray("results")?.optJSONObject(0)
-            ?: JSONObject(get("$API/search/tv?include_adult=false&query=$q")).optJSONArray("results")?.optJSONObject(0)
+        JSONObject(get("$API/search/movie?include_adult=false&query=$q$y")).optJSONArray("results")?.optJSONObject(0)
+            ?.optInt("id")?.takeIf { it > 0 }?.let { return "movie" to it }
+        return JSONObject(get("$API/search/tv?include_adult=false&query=$q")).optJSONArray("results")?.optJSONObject(0)
+            ?.optInt("id")?.takeIf { it > 0 }?.let { "tv" to it }
     }
 
     private fun save() {
         val o = JSONObject()
-        synchronized(cache) {
-            for ((k, a) in cache) o.put(k, JSONObject().put("poster", a.poster).put("backdrop", a.backdrop)
-                .put("overview", a.overview).put("year", a.year).put("genres", org.json.JSONArray(a.genres)))
-        }
+        synchronized(cache) { for ((k, a) in cache) o.put(k, a.toJson()) }
         runCatching { cacheFile.writeText(o.toString()) }
     }
 
@@ -123,3 +176,6 @@ class ArtRepo(ctx: Context) {
 
 private fun JSONObject.s(k: String): String? =
     if (isNull(k)) null else optString(k).takeIf { it.isNotBlank() && it != "null" }
+
+private fun JSONArray?.objs(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
+private fun JSONArray?.list(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { optString(it).takeIf { s -> s.isNotBlank() } }

@@ -84,6 +84,9 @@ private val PALETTE = listOf(
 
 fun colorsFor(key: String): BoxColors = PALETTE[Math.floorMod(key.hashCode(), PALETTE.size)]
 
+/** A box's colours: taken from its poster when that has been looked at, otherwise the stand-in set for the title. */
+fun colorsOf(t: Title): BoxColors = t.colors ?: colorsFor(t.key)
+
 fun Color.alpha(a: Float) = copy(alpha = a)
 
 /**

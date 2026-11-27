@@ -6,6 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -111,6 +113,26 @@ abstract class ScreensBase(private val tag: String) {
         val (b2, third) = focused()
         assertTrue("second Down didn't move", b2 != b1 && b2 != b0)
         assertTrue("second Down moved sideways, from $after to $third", kotlin.math.abs(third.left - after.left) < after.width / 2)
+    }
+
+    /** The five printed backs for a box with no VHS scan (pictures don't load here, so they show as dark frames). */
+    @Test fun backs() {
+        val t = catalog.titles.first().copy(name = "A Christmas Story", year = "1983",
+            colors = BoxColors(androidx.compose.ui.graphics.Color(0xFFB8261F), androidx.compose.ui.graphics.Color(0xFF1E3A26),
+                androidx.compose.ui.graphics.Color(0xFFE0B24F)),
+            shots = listOf(File("a.jpg"), File("b.jpg"), File("c.jpg")))
+            .let { it.copy(art = Art(null, null, "The comic mishaps and adventures of a young boy named Ralph, trying to convince " +
+                "his parents, teachers, and Santa that a Red Ryder B.B. gun really is the perfect Christmas gift for the 1940s.", "1983",
+                tagline = "A tribute to the original, traditional, one-hundred-percent, red-blooded, two-fisted, all-American Christmas.",
+                cast = listOf("Peter Billingsley", "Darren McGavin", "Melinda Dillon"), director = "Bob Clark", rating = "PG",
+                runtime = 93, studio = "Metro-Goldwyn-Mayer", imdbId = "tt0085334")) }
+        show {
+            androidx.compose.foundation.layout.Row(androidx.compose.ui.Modifier.fillMaxSize().background(Ink.Navy)
+                .then(androidx.compose.ui.Modifier.padding(24.px)), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.px)) {
+                for (i in 0..4) BoxBack(t, "1983 VHS release", androidx.compose.ui.Modifier.size(190.px, 336.px), layout = i)
+            }
+        }
+        shot("6-backs")
     }
 
     @Test fun genres() {

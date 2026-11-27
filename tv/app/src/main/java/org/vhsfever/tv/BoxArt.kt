@@ -27,7 +27,7 @@ data class BoxScan(
  * VHS box art from the private vhs-fever-boxart repository, read with the TV app's read-only key.
  * Each box is downloaded once and kept on the TV; it's only fetched again if the scan is redone.
  */
-class BoxArtRepo(ctx: Context) {
+class BoxArtRepo(private val ctx: Context) {
     private val dir = File(ctx.filesDir, "boxart").apply { mkdirs() }
     private val indexFile = File(dir, "index.json")
     private val token = BuildConfig.BOXART_TOKEN
@@ -99,6 +99,58 @@ class BoxArtRepo(ctx: Context) {
                     }
                 }
                 scan(e)?.let { onBox(id, it) }
+            }
+        }.awaitAll()
+    }
+
+    // ---------------------------------------------------------------- tape screenshots
+
+    private val shotsDir = File(ctx.filesDir, "shots").apply { mkdirs() }
+    private val shotsIndex = File(shotsDir, "shots.json")
+
+    /** Title key ("tmdb:603") → its screenshot paths in the repository. */
+    private fun parseShots(text: String): Map<String, List<String>> {
+        val titles = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
+        return titles.keys().asSequence().associateWith { k ->
+            titles.optJSONObject(k)?.optJSONArray("files")?.let { a -> (0 until a.length()).map { a.optString(it) } }
+                ?.filter { it.startsWith("shots/") && !it.contains("..") } ?: emptyList()
+        }.filterValues { it.isNotEmpty() }
+    }
+
+    private fun localShot(path: String) = File(shotsDir, path.removePrefix("shots/"))
+
+    /** Screenshots already on the TV, by title key. */
+    fun cachedShots(): Map<String, List<File>> = runCatching {
+        parseShots(shotsIndex.readText()).mapValues { (_, ps) -> ps.map(::localShot).filter { it.exists() } }
+            .filterValues { it.isNotEmpty() }
+    }.getOrDefault(emptyMap())
+
+    /** Gets the screenshot list and downloads the screenshots of the titles in [wanted] (each once). */
+    suspend fun refreshShots(wanted: Set<String>, onShots: (String, List<File>) -> Unit) = withContext(Dispatchers.IO) {
+        if (!available) return@withContext
+        runCatching { get(base + "shots.json").decodeToString() }.getOrNull()?.let { text ->
+            if (runCatching { parseShots(text) }.isSuccess) shotsIndex.writeText(text)
+        }
+        val index = runCatching { parseShots(shotsIndex.readText()) }.getOrDefault(emptyMap())
+        // screenshots of movies no longer listed are deleted
+        val keep = index.values.flatten().map { localShot(it).parentFile?.name }.toSet()
+        shotsDir.listFiles()?.filter { it.isDirectory && it.name !in keep }?.forEach { it.deleteRecursively() }
+        val gate = Semaphore(3)
+        index.filterKeys { it in wanted }.map { (key, paths) ->
+            async {
+                gate.withPermit {
+                    for (p in paths) {
+                        val f = localShot(p)
+                        if (f.exists()) continue
+                        runCatching {
+                            f.parentFile?.mkdirs()
+                            val tmp = File(f.parentFile, f.name + ".part")
+                            tmp.writeBytes(get(base + p))
+                            tmp.renameTo(f)
+                        }
+                    }
+                }
+                paths.map(::localShot).filter { it.exists() }.takeIf { it.isNotEmpty() }?.let { onShots(key, it) }
             }
         }.awaitAll()
     }

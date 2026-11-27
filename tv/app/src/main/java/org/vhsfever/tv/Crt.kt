@@ -161,7 +161,7 @@ fun CrtGlass(modifier: Modifier = Modifier, k: Float = 1f) {
  */
 @Composable
 fun CrtTv(t: Title, tape: Tape?, playPreview: Boolean, width: Int, onFullScreen: (Long) -> Unit) {
-    val c = colorsFor(t.key)
+    val c = colorsOf(t)
     val k = width / 270f
     fun u(n: Int): Dp = (n * k).px
     fun f(n: Int) = (n * k).fs

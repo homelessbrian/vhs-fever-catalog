@@ -69,7 +69,7 @@ fun DetailScreen(
     var chooser by remember(t.key) { mutableStateOf(false) }
     val tape = t.tapes.getOrNull(tapeIndex)
     val dvd = tape?.media?.let { it == "DVD" } ?: isDvd(t)
-    val c = colorsFor(t.key)
+    val c = colorsOf(t)
     val play = remember { FocusRequester() }
     LaunchedEffect(t.key) { runCatching { play.requestFocus() } }
     BackHandler { if (chooser) chooser = false else onBack() }

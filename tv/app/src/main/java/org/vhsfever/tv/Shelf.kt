@@ -288,7 +288,7 @@ private fun FloatArray.scaled(s: Float) = FloatArray(size) { this[it] * s }
 /** The narrow side of a box on the shelf: a coloured band at the top and the title running down it. */
 @Composable
 fun ShelfSpine(t: Title, w: Dp, h: Dp, dvd: Boolean, scale: Float) {
-    val c = colorsFor(t.key)
+    val c = colorsOf(t)
     Column(Modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c2, c.c1))),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height((18 * scale).px).background(c.c3), contentAlignment = Alignment.Center) {
