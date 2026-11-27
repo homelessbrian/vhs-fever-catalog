@@ -41,8 +41,8 @@ class ShelvesTest {
             title("Beverly Hills Cop", "Action", "Comedy"), title("Gremlins", "Comedy", "Horror"), title("Mystery tape")))
         val shelves = c.genreShelves.toMap()
         assertEquals(c.titles.size, shelves.values.sumOf { it.size })
-        assertEquals(listOf("Die Hard", "Beverly Hills Cop"), shelves["Action"]!!.map { it.name })
-        assertEquals(listOf("Airplane!"), shelves["Comedy"]!!.map { it.name })
+        assertEquals(listOf("Die Hard"), shelves["Action"]!!.map { it.name })
+        assertEquals(listOf("Airplane!", "Beverly Hills Cop"), shelves["Comedy"]!!.map { it.name })
         assertEquals(listOf("Gremlins"), shelves["Horror"]!!.map { it.name })
         assertEquals(Catalog.OTHER, c.genreShelves.last().first)
     }
