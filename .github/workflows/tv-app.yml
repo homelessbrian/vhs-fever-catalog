@@ -24,16 +24,38 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.14.3"
+      # The screen-picture tests need a big Android file from Maven Central, which often turns builds away.
+      # Keep it between builds, and fetch it with retries when it isn't kept yet.
+      - name: Keep the test Android file
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/robolectric-deps
+          key: robolectric-android-all-14-10818077-15-12650502-i7
+      - name: Get the test Android files
+        run: |
+          d="$RUNNER_TEMP/robolectric-deps"; mkdir -p "$d"
+          for v in 14-robolectric-10818077-i7 15-robolectric-12650502-i7; do
+            f="$d/android-all-instrumented-$v.jar"
+            [ -s "$f" ] && continue
+            p="org/robolectric/android-all-instrumented/$v/android-all-instrumented-$v.jar"
+            ok=0
+            # Google's copy of Maven Central first (it doesn't turn builds away), Maven Central itself as backup
+            for base in https://maven-central.storage-download.googleapis.com/maven2 https://repo1.maven.org/maven2; do
+              curl -fL --retry 5 --retry-delay 20 --retry-all-errors -o "$f" "$base/$p" && { ok=1; break; }
+            done
+            [ $ok = 1 ] || exit 1
+          done
       - name: Test and build
         working-directory: tv
         env:
           TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
+          ROBOLECTRIC_DEPS_DIR: ${{ runner.temp }}/robolectric-deps
         # Maven Central sometimes turns builds away for a minute ("Too Many Requests"): wait and try again.
         run: |
           for i in 1 2 3 4; do
             gradle --no-daemon testDebugUnitTest assembleRelease > build.log 2>&1 && { cat build.log; exit 0; }
             cat build.log
-            grep -q "Too Many Requests" build.log || exit 1
+            grep -qE "Too Many Requests|response code: 429" build.log || exit 1
             echo "Download limit hit, retrying in 60s ($i)"; sleep 60
           done
           exit 1
