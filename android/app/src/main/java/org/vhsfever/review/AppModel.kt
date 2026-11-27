@@ -369,8 +369,27 @@ class AppModel(private val ctx: Context) {
             movie = it.movie ?: shown) }
     }
 
+    /**
+     * Play this copy first on the TV (or stop doing that). One copy per movie: choosing one
+     * clears the others. Choosing a copy also marks it good, since it has to be on the shelf.
+     */
+    fun togglePlayFirst(f: FileItem) {
+        val on = decisionFor(f)?.playFirst != true
+        if (on) {
+            val movie = movieFor(f).first?.tmdbId
+            files.filter { it.id != f.id && decisions[it.id]?.playFirst == true }
+                .filter { o -> if (movie != null) movieFor(o).first?.tmdbId == movie else o.titleId == f.titleId }
+                .forEach { o -> update(o.id) { it.copy(playFirst = false) } }
+        }
+        val shown = shownMovieToSave(f)
+        update(f.id, if (on) "Play first" else "Not first") {
+            if (on) it.copy(playFirst = true, status = "good", reasons = emptyList(), otherReason = "", movie = it.movie ?: shown)
+            else it.copy(playFirst = false)
+        }
+    }
+
     fun markBad(f: FileItem, reasons: List<String>, other: String, notes: String) {
-        update(f.id, "Marked bad") { it.copy(status = "bad", reasons = reasons, otherReason = other, notes = notes) }
+        update(f.id, "Marked bad") { it.copy(status = "bad", reasons = reasons, otherReason = other, notes = notes, playFirst = false) }
     }
 
     /** Copies are hidden unless their sound/picture check differs from the original's. */

@@ -24,6 +24,10 @@ data class Tape(
     val media: String? = null,
     val releaseYear: String? = null,
     val addedAt: String = "",   // when it was marked good
+    val group: String = fileId, // copies of the same recording share this; the bot names it "tg"
+    val rank: Int = Int.MAX_VALUE,  // the bot's order: lowest plays first
+    val hidden: Boolean = false,    // no sound: only listed when there is no other tape
+    val pinnedAt: String? = null,   // Brian chose this copy to play first (when)
 )
 
 /** One box on the shelf: a movie or show, with every good tape of it. */
@@ -100,12 +104,17 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
             val decisions = JSONObject(decisionsText).optJSONObject("files") ?: JSONObject()
             val good = HashMap<String, JSONObject>()
             val bad = HashSet<String>()
+            val pinned = HashMap<String, String>()   // file -> when Brian chose it to play first
             for (k in decisions.keys()) {
                 val d = decisions.optJSONObject(k) ?: continue
                 when (d.optString("status")) { "good" -> good[k] = d; "bad" -> bad += k }
+                if (d.optBoolean("play_first")) pinned[k] = d.optString("updated_at")
             }
             val found = mutableListOf<Triple<String, Tape, Meta>>()
             val seen = HashSet<String>()
+            // Every copy of each recording, whether or not it was marked: they are the backups.
+            val groupNames = HashMap<String, String>()
+            val groupFiles = HashMap<String, MutableList<JSONObject>>()
 
             for (readFeed in feeds) {
                 val feed = JSONObject(readFeed())
@@ -124,6 +133,12 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                         for (seg in rec.optJSONArray("segs").objs()) {
                             // Include files a web browser can't play (MKV, MPEG-2, AVI): the TV player may still manage them.
                             val srcs = seg.optJSONArray("src").objs()
+                            for (src in srcs) {
+                                src.str("tg")?.let { g ->
+                                    src.str("lab")?.let { groupNames[g] = it }
+                                    if (src.optString("id") !in bad) groupFiles.getOrPut(g) { mutableListOf() } += src
+                                }
+                            }
                             for (src in srcs) {
                                 val id = src.optString("id")
                                 // The Archive's own copy is only a backup of the original, not a tape of its own.
@@ -148,6 +163,10 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                                     media = media?.takeIf { it != "TAPE_UNSPECIFIED" },
                                     releaseYear = year,
                                     addedAt = d.optString("updated_at").ifBlank { listDate },
+                                    group = src.str("tg") ?: id,
+                                    rank = if (src.has("pk")) src.optInt("pk") else Int.MAX_VALUE,
+                                    hidden = src.optBoolean("hide"),
+                                    pinnedAt = pinned[id],
                                 )
                                 val meta = if (adult) Meta(
                                     // Behind the curtain: a plain box with the name. No TMDB art is ever looked up.
@@ -190,6 +209,14 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                 val meta = if (m.key.startsWith("title:")) confirmed[tid]?.copy(shelf = m.shelf) ?: m else m
                 groups.getOrPut(meta.key) { mutableListOf() } += tape to meta
             }
+            // An unmatched copy whose TMDB guess is a movie already on the shelf, under the same
+            // name, is the same movie: one box, not two.
+            for (k in groups.keys.filter { it.startsWith("title:") }) {
+                val list = groups[k] ?: continue
+                val m = list.first().second
+                val into = m.tmdbId?.let { groups["tmdb:$it"] } ?: continue
+                if (sameName(m.name, into.first().second.name)) { into += list; groups.remove(k) }
+            }
 
             val titles = groups.values.map { list ->
                 val metas = list.map { it.second }
@@ -200,7 +227,7 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                     posterIsSuggestion = metas.none { !it.suggested && it.poster != null },
                     overview = metas.firstNotNullOfOrNull { it.overview },
                     shelf = metas.groupingBy { it.shelf }.eachCount().maxBy { it.value }.key,
-                    tapes = list.map { it.first }.distinctBy { it.fileId }.sortedWith(compareBy({ it.label }, { it.fileName })),
+                    tapes = tapesOf(list.map { it.first }.distinctBy { it.fileId }, groupNames, groupFiles),
                     tmdbId = (metas.firstOrNull { !it.suggested && it.tmdbId != null } ?: metas.firstOrNull { it.tmdbId != null })?.tmdbId,
                     tmdbType = (metas.firstOrNull { !it.suggested && it.tmdbId != null } ?: metas.firstOrNull { it.tmdbId != null })?.tmdbType ?: "movie",
                     confirmed = metas.any { !it.suggested },
@@ -233,6 +260,40 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
             version?.takeIf { it.isNotBlank() }?.let { parts += "Version $it" }
             parts += notes.filter { it.isNotBlank() }.distinct()
             return parts.joinToString(" · ").ifBlank { "Tape" }
+        }
+
+        /**
+         * Copies of the same recording become one tape: named by the bot, with every copy behind it
+         * as a backup (the TV tries the next one when a copy won't play). The copy Brian chose to play
+         * first leads; then the bot's order. A tape with no sound is only listed when it's the only one.
+         * Lists from before the bot named tapes have no groups: then each file is its own tape.
+         */
+        fun tapesOf(tapes: List<Tape>, names: Map<String, String>, files: Map<String, List<JSONObject>>): List<Tape> {
+            val merged = tapes.groupBy { it.group }.map { (g, members) ->
+                val ms = members.sortedBy { it.rank }
+                val lead = ms.firstOrNull { it.pinnedAt != null } ?: ms.first()
+                val backups = files[g].orEmpty().sortedBy { if (it.has("pk")) it.optInt("pk") else Int.MAX_VALUE }
+                // backups keep the bot's order (best recording first); Ogg copies go last
+                val extra = backups.flatMap { orderSources("", listOf(it)) }.partition { !it.name.lowercase().endsWith(".ogv") }
+                val sources = (listOf(lead) + ms.filter { it !== lead }).flatMap { it.sources } + extra.first + extra.second
+                lead.copy(
+                    label = names[g] ?: lead.label,
+                    sources = sources.distinctBy { it.url },
+                    pinnedAt = ms.mapNotNull { it.pinnedAt }.maxOrNull(),
+                    hidden = ms.all { it.hidden },
+                    addedAt = ms.maxOf { it.addedAt },
+                )
+            }
+            val listed = merged.filter { !it.hidden }.ifEmpty { merged }
+            return listed.sortedWith(
+                compareBy<Tape>({ it.pinnedAt == null }).thenByDescending { it.pinnedAt ?: "" }
+                    .thenBy { it.rank }.thenBy { it.label }.thenBy { it.fileName })
+        }
+
+        private fun sameName(a: String, b: String): Boolean {
+            fun n(s: String) = s.lowercase().replace(Regex("^(the|a|an) "), "").replace(Regex("[^a-z0-9]"), "")
+            val x = n(a); val y = n(b)
+            return x.isNotEmpty() && y.isNotEmpty() && (x == y || x.contains(y) || y.contains(x))
         }
 
         /** The file Brian marked first; then Archive's own MP4 copies; Ogg copies last. */

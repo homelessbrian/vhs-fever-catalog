@@ -27,6 +27,8 @@ data class FileItem(
     val genres: List<String>,
     val botSure: Boolean,           // the bot put this file on the shelves by itself
     val adult: Boolean = false,     // adult tape: only shown behind the red curtain
+    val tapeName: String? = null,   // the bot's name for the tape this file is ("1992 VHS · Full screen")
+    val tapeRank: Int? = null,      // the bot's order for the movie: lowest plays first
     var copyIds: List<String> = emptyList(),   // Archive copies made from this file
     var originalId: String? = null,            // for a copy: the file it was made from
 ) {
@@ -113,6 +115,8 @@ data class FileDecision(
     val updatedAt: String = "",
     /** "agreed": took the bot's call on this file; "agreed_all": part of "agree with all". */
     val robot: String? = null,
+    /** Brian chose this copy to play first on the TV. */
+    val playFirst: Boolean = false,
     val extra: JSONObject? = null,
 ) {
     fun toJson(): JSONObject {
@@ -120,11 +124,11 @@ data class FileDecision(
         return o.put("status", status).put("reasons", JSONArray(reasons))
             .put("other_reason", otherReason).put("notes", notes)
             .put("movie", movie?.toJson()).put("release", release?.toJson()).put("updated_at", updatedAt)
-            .put("robot", robot)
+            .put("robot", robot).apply { if (playFirst) put("play_first", true) else remove("play_first") }
     }
 
     companion object {
-        private val OWN = setOf("status", "reasons", "other_reason", "notes", "movie", "release", "updated_at", "robot")
+        private val OWN = setOf("status", "reasons", "other_reason", "notes", "movie", "release", "updated_at", "robot", "play_first")
 
         fun fromJson(o: JSONObject): FileDecision {
             val extra = JSONObject()
@@ -133,7 +137,7 @@ data class FileDecision(
                 o.optStringOrNull("status"), o.optJSONArray("reasons").strings(), o.optString("other_reason", ""),
                 o.optString("notes", ""), Movie.fromJson(o.optJSONObject("movie")),
                 ReleaseInfo.fromJson(o.optJSONObject("release")), o.optString("updated_at", ""),
-                o.optStringOrNull("robot"), extra.takeIf { it.length() > 0 })
+                o.optStringOrNull("robot"), o.optBoolean("play_first"), extra.takeIf { it.length() > 0 })
         }
     }
 }
@@ -230,6 +234,7 @@ fun parseFeed(text: String): List<FileItem> {
                         editionId = edId, releaseYear = year, editionNotes = notes,
                         tmdbCeiling = ceiling, suggestions = suggestions, botMovie = botMovie, guess = guess,
                         genres = genres, botSure = x.optBoolean("ok"), adult = adult,
+                        tapeName = x.optStringOrNull("lab"), tapeRank = x.optIntOrNull("pk"),
                     )
                 }
                 val originals = files.filter { !it.isCopy }

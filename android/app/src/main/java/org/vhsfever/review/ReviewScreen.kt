@@ -124,6 +124,9 @@ fun ReviewScreen(m: AppModel, fileId: String) {
                 Text(if (n > 1) "$i of $n" else "", color = C.muted, fontSize = 12.sp)
                 Spacer(Modifier.weight(1f))
                 SmallLink(if (notes.isNotBlank()) "Notes (1)" else "Notes", C.gold) { editNotes = true }
+                // Which copy the TV plays first for this movie
+                if (d?.status != "bad") SmallLink(if (d?.playFirst == true) "★ Plays first" else "☆ Play first",
+                    if (d?.playFirst == true) C.good else C.gold) { m.togglePlayFirst(f) }
                 if (m.lastUndoLabel != null) SmallLink("Undo", C.gold) { m.undoLast()?.let { id -> m.replaceTop(Screen.Review(id)) } }
                 Spacer(Modifier.weight(1f))
                 // In "To review", Skip goes to the next file that still needs a decision.
@@ -175,7 +178,9 @@ private fun FileLine(m: AppModel, f: FileItem) {
         }
         val warn = listOfNotNull(
             m.foreignReason(f)?.let { "Non-English? $it" },
-            f.versionLabel?.let { "“Version $it”" }, f.releaseYear?.let { "$it tape" }, mins(f.durationSec),
+            // the bot's tape name says year, shape and sound; the uploader's "Version 2" says nothing
+            f.tapeName ?: listOfNotNull(f.versionLabel?.let { "“Version $it”" }, f.releaseYear?.let { "$it tape" }).joinToString(" · ").ifEmpty { null },
+            mins(f.durationSec),
             when (d?.status) { "good" -> "Marked good"; "bad" -> "Marked bad: " + (d.reasons + listOfNotNull(d.otherReason.ifBlank { null })).joinToString(", "); else -> null },
         )
         if (warn.isNotEmpty()) Text(warn.joinToString(" · "), color = if (d?.status == "good") C.good else C.warn, fontSize = 12.sp,

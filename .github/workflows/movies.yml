@@ -6,7 +6,8 @@ name: Find VHS movies
 #   3. reads every page so far, keeps only recordings 40 minutes or longer that
 #      aren't split, taped off TV, tape openings or DVD/Blu-ray
 #   4. matches those to TMDB and checks their sound and picture
-#   5. keeps only full-length VHS movies, cleans up the names, adds TMDB genres
+#   5. keeps only full-length VHS movies, cleans up the names, adds TMDB genres, names each
+#      tape ("1992 VHS · Full screen") and picks the copy that plays first
 #   6. publishes the one movie list to the movies-data branch, which both apps read
 # Then, when data/batches/auto.json says keep_going, it starts the next run.
 # Nothing is ever approved for you: the bot only puts a movie on the shelves when
@@ -45,7 +46,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run tests
-        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items tests.test_unsure_kinds
+        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items tests.test_unsure_kinds tests.test_tape_copies
 
       - name: What the bot found and read before
         run: |
@@ -130,6 +131,7 @@ jobs:
             model
             found
             prev/bot/audio-checks.jsonl
+            prev/bot/picture-checks.jsonl
             prev/bot/tmdb-movies.json
             all-pages.txt
           retention-days: 3
@@ -167,7 +169,7 @@ jobs:
     needs: [read, sound]
     if: ${{ always() && needs.read.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -181,6 +183,10 @@ jobs:
           pattern: movie-bot-sound-*
           path: parts
           merge-multiple: true
+      - name: Install picture tools
+        run: |
+          (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg) || true
+          pip install -q pillow
       - name: Keep only VHS movies and build the movie list
         env:
           TMDB_API_READ_ACCESS_TOKEN: ${{ secrets.TMDB_API_READ_ACCESS_TOKEN }}
@@ -191,10 +197,17 @@ jobs:
           python scripts/vhs_movies.py finish --model-dir model --auto-sort sorted/auto-sort.jsonl \
             --audio model/audio-checks.jsonl --output-dir site --tmdb-cache prev/bot/tmdb-movies.json \
             --pages-read "$(wc -l < all-pages.txt)"
+          # Name every tape ("1992 VHS · Full screen") and pick the copy that plays first. New files get a
+          # quick look for black bars first (earlier looks are reused; anything left over is done next run).
+          mkdir -p prev/bot && touch prev/bot/picture-checks.jsonl
+          python scripts/tape_copies.py measure --feed site/reviewer-feed.json --audio model/audio-checks.jsonl \
+            --previous prev/bot/picture-checks.jsonl --output model/picture-checks.jsonl --workers 24 --budget-minutes 45
+          python scripts/tape_copies.py name --site site --audio model/audio-checks.jsonl --pictures model/picture-checks.jsonl
           # What the bot remembers for next time, so nothing is searched or checked twice.
           mkdir -p site/bot
           cp model/titles.jsonl site/bot/titles.jsonl
           cp model/audio-checks.jsonl site/bot/audio-checks.jsonl
+          cp model/picture-checks.jsonl site/bot/picture-checks.jsonl
           mv site/tmdb-movies.json site/bot/tmdb-movies.json
           cp found/new-items.jsonl found/more-items.jsonl site/bot/
           cp found/more-sources-state.json site/bot/ 2>/dev/null || echo '{}' > site/bot/more-sources-state.json
@@ -215,7 +228,7 @@ jobs:
           - `auto-sort.jsonl`: the bot's call for each file (sure / not sure / bad, and why)
           - `audio-checks.jsonl`: sound and picture check for each file
           - `summary.json`: counts, genres, and what was left out
-          - `bot/`: what the bot remembers between runs (pages found, TMDB matches, sound checks)
+          - `bot/`: what the bot remembers between runs (pages found, TMDB matches, sound and picture checks)
           MD
           sed -i 's/^          //' site/README.md
           touch site/.nojekyll

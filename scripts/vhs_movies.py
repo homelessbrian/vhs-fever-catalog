@@ -288,7 +288,7 @@ def clean_title(text: str) -> str:
 _TV_TITLE = ("id", "t", "adult", "genres")
 _TV_MOVIE = ("tmdb_id", "title", "year", "poster", "overview", "backdrop")
 _TV_GUESS = ("tmdb_id", "title", "release_date", "poster", "overview", "media_type")
-_TV_SRC = ("id", "ok", "role", "n", "item", "dur", "url", "fmt")
+_TV_SRC = ("id", "ok", "role", "n", "item", "dur", "url", "fmt", "lab", "tg", "pk", "hide")
 
 
 def _pick(o: dict[str, Any] | None, keys: tuple[str, ...]) -> dict[str, Any]:

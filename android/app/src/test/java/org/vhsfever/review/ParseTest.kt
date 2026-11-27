@@ -56,6 +56,13 @@ class ParseTest {
         assertNull(FileDecision.fromJson(FileDecision(status = "good").toJson()).robot)
     }
 
+    @Test fun playFirstIsSavedAndCleared() {
+        val on = FileDecision(status = "good", playFirst = true).toJson()
+        assertEquals(true, on.getBoolean("play_first"))
+        assertEquals(true, FileDecision.fromJson(on).playFirst)
+        assertEquals(false, FileDecision.fromJson(on).copy(playFirst = false).toJson().has("play_first"))
+    }
+
     @Test fun adultTitleMarksItsFiles() {
         val feed = JSONObject(res("feed-sample.json"))
         feed.getJSONArray("titles").getJSONObject(0).put("adult", true)
