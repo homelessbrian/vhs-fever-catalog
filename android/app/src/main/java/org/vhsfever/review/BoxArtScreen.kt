@@ -104,7 +104,7 @@ private fun ArtRow(m: AppModel, t: ArtTitle) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.size(46.dp, 72.dp).clip(RoundedCornerShape(4.dp)).background(C.panel2), contentAlignment = Alignment.Center) {
             if (shown != null) AsyncImage(model = shown.thumb, contentDescription = null, contentScale = ContentScale.Crop,
-                alignment = if (shown.kind == "wrap") Alignment.CenterEnd else Alignment.Center, modifier = Modifier.fillMaxSize())
+                alignment = frontSide(shown, b.isFlipped(t.key, shown)), modifier = Modifier.fillMaxSize())
             else Text("TMDB", color = C.muted, fontSize = 10.sp)
         }
         Column(Modifier.weight(1f)) {
@@ -163,7 +163,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
             } }
             items(listed, key = { it.id }) { c ->
                 val chosen = picked == c.id || (picked == null && onTv == c.id)
-                ArtCard(c, chosen = chosen, bot = t.botPick == c.id && t.sure, onTv = onTv == c.id,
+                ArtCard(c, chosen = chosen, bot = t.botPick == c.id && t.sure, onTv = onTv == c.id, flipped = b.isFlipped(key, c),
                     isBack = b.backs[key]?.id == c.id, isSpine = b.spines[key]?.first?.id == c.id,
                     onPick = { if (!chosen) b.pick(key, c.id, c.takeIf { it.source == "manual" }) }, onLook = { big = c },
                     onBack = if (chosen || c.kind == "wrap") null else ({ b.setBack(key, if (b.backs[key]?.id == c.id) null else c) }))
@@ -220,6 +220,15 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                     // mark the spine on this picture (a spine scanned attached to the front or the back)
                     if (c.kind != "wrap") TextButton(onClick = { big = null; m.open(Screen.BoxSpine(key, c.id)) }) { Text("Use as spine", color = C.gold) }
                 }
+                // a whole wrap scanned the other way round (front on the left): swap the front and the back
+                if (c.kind == "wrap") {
+                    val flipped = b.isFlipped(key, c)
+                    Text(if (flipped) "The TV uses the left half as the front." else "The TV uses the right half as the front.",
+                        color = C.muted, fontSize = 12.sp)
+                    TextButton(onClick = { b.flip(key, c); big = null }) {
+                        Text(if (flipped) "Flip: use the right half as the front" else "Flip: use the left half as the front", color = C.gold)
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     c.link?.let { l -> TextButton(onClick = { uri.openUri(l) }) { Text("Open on Archive", color = C.blue) } }
                     TextButton(onClick = { big = null }) { Text("Close", color = C.muted) }
@@ -231,7 +240,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
 
 @Composable
 private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolean, onPick: () -> Unit, onLook: () -> Unit,
-                    isBack: Boolean = false, onBack: (() -> Unit)? = null, isSpine: Boolean = false) {
+                    isBack: Boolean = false, onBack: (() -> Unit)? = null, isSpine: Boolean = false, flipped: Boolean = false) {
     Column(Modifier.clip(RoundedCornerShape(10.dp)).background(C.panel)
         .border(if (chosen) 3.dp else 1.dp, if (chosen) C.gold else C.line, RoundedCornerShape(10.dp))
         .clickable(onClick = onPick).padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -239,7 +248,7 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
             .clickable(onClick = onLook)) {
             // a full wrap shows its front half here; tap the picture to see all of it
             AsyncImage(model = c.thumb, contentDescription = null, contentScale = ContentScale.Crop,
-                alignment = if (c.kind == "wrap") Alignment.CenterEnd else Alignment.Center, modifier = Modifier.fillMaxSize())
+                alignment = frontSide(c, flipped), modifier = Modifier.fillMaxSize())
             Row(Modifier.padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (bot) Tag("BOT", C.panel2, C.good)
                 if (onTv) Tag("ON TV", C.blueBg, C.blue)
@@ -258,6 +267,10 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
         if (c.score > 0) Text("Match ${c.score}", color = if (c.score >= 70) C.good else C.muted, fontSize = 11.sp)
     }
 }
+
+/** Where a box's front is in its picture: the right half of a wrap, or the left half of one scanned the other way round. */
+private fun frontSide(c: ArtCandidate, flipped: Boolean) =
+    if (c.kind != "wrap") Alignment.Center else if (flipped) Alignment.CenterStart else Alignment.CenterEnd
 
 /** The movie (TMDB) and its tape(s) on file, with screenshots from the tape. */
 @Composable

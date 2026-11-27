@@ -71,4 +71,21 @@ class ParseTest {
         assertTrue(files.filter { it.titleId == first }.all { it.adult })
         assertTrue(files.filter { it.titleId != first }.none { it.adult })
     }
+
+    @Test fun boxFlipIsSavedAndReadBack() {
+        val a = Adjust("us1", 0.44f to 0.56f, flip = true)
+        val back = Adjust.parse(JSONObject(a.toJson().toString()))!!
+        assertEquals(true, back.flip)
+        assertEquals(false, Adjust.parse(JSONObject(a.copy(flip = false).toJson().toString()))!!.flip)
+        // no choice made: the bot decides
+        val none = Adjust("us1", null).toJson()
+        assertFalse(none.has("flip"))
+        assertNull(Adjust.parse(none)!!.flip)
+    }
+
+    @Test fun boxesTheBotFlippedAreListed() {
+        val index = """{"boxes": {"tmdb:16938": {"sleeve": "bc1", "flipped": true, "source_image": "x"},
+            "tmdb:603": {"sleeve": "m1", "flipped": false, "source_image": "y"}, "tmdb:1": {"sleeve": "z", "source_image": "z"}}}"""
+        assertEquals(mapOf("tmdb:16938" to "bc1"), BoxArtModel.parseTvFlipped(index))
+    }
 }

@@ -19,9 +19,12 @@ data class Adjust(
     val left: Float = 0f, val right: Float = 1f, val top: Float = 0f, val bottom: Float = 1f,
     /** Quarter turns clockwise (0, 90, 180, 270); the lines are on the turned picture. */
     val rotate: Int = 0,
+    /** A wrap scanned front | spine | back: true swaps them, false keeps them. Null lets the bot decide. */
+    val flip: Boolean? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().put("sleeve", sleeve).apply {
         if (rotate != 0) put("rotate", rotate)
+        flip?.let { put("flip", it) }
         folds?.let { put("folds", JSONObject().put("left", it.first.toDouble()).put("right", it.second.toDouble())) }
         put("trim", JSONObject().put("left", left.toDouble()).put("right", right.toDouble())
             .put("top", top.toDouble()).put("bottom", bottom.toDouble()))
@@ -35,7 +38,8 @@ data class Adjust(
             val t = o.optJSONObject("trim")
             return Adjust(s, f, t?.optDouble("left", 0.0)?.toFloat() ?: 0f, t?.optDouble("right", 1.0)?.toFloat() ?: 1f,
                 t?.optDouble("top", 0.0)?.toFloat() ?: 0f, t?.optDouble("bottom", 1.0)?.toFloat() ?: 1f,
-                Math.floorMod(o.optInt("rotate"), 360))
+                Math.floorMod(o.optInt("rotate"), 360),
+                if (o.has("flip") && !o.isNull("flip")) o.optBoolean("flip") else null)
         }
     }
 }
@@ -278,6 +282,8 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     var adjusts by mutableStateOf<Map<String, Adjust>>(emptyMap()); private set
     /** Line-ups the TV boxes were cut with. */
     private var tvAdjusts: Map<String, Adjust> = emptyMap()
+    /** Boxes the bot found scanned the wrong way round and flipped: title key → that box's sleeve. */
+    private var tvFlipped: Map<String, String> = emptyMap()
 
     /** Boxes Brian found with his own search and picked: title key → that box. */
     var custom by mutableStateOf<Map<String, ArtCandidate>>(emptyMap()); private set
@@ -312,6 +318,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 backs = choices?.let { parseBacks(it) } ?: emptyMap()
                 spines = choices?.let { parseSpines(it) } ?: emptyMap()
                 tvAdjusts = index?.let { parseTvAdjusts(it) } ?: emptyMap()
+                tvFlipped = index?.let { parseTvFlipped(it) } ?: emptyMap()
                 onTv = index?.let { parseOnTv(it) } ?: emptyMap()
                 if (!loaded && filter == ArtFilter.REVIEW && count(ArtFilter.REVIEW) == 0) filter = ArtFilter.ON_TV
                 loaded = true
@@ -342,6 +349,16 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     /** The line-up to start from for a box: Brian's saved one, else the one the TV box was cut with. */
     fun adjustFor(key: String, c: ArtCandidate): Adjust? =
         (adjusts[key] ?: tvAdjusts[key])?.takeIf { it.sleeve == c.sleeve }
+
+    /** True when the left half of this wrap is used as the front (the scan was front | spine | back). */
+    fun isFlipped(key: String, c: ArtCandidate): Boolean =
+        adjustFor(key, c)?.flip ?: (tvFlipped[key] == c.sleeve)
+
+    /** Swap which half of a wrap is the front and which is the back; the box is cut again for the TV. */
+    fun flip(key: String, c: ArtCandidate) {
+        val a = (adjustFor(key, c) ?: Adjust(c.sleeve, null)).copy(flip = !isFlipped(key, c))
+        saveAdjust(key, c, a)
+    }
 
     /** Save a line-up: the box is cut again (from the kept picture) and the TV shows it after its next refresh. */
     fun saveAdjust(key: String, c: ArtCandidate, a: Adjust) {
@@ -503,6 +520,14 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
             return o.keys().asSequence().mapNotNull { k ->
                 val e = o.optJSONObject(k) ?: return@mapNotNull null
                 Adjust.parse(e.optJSONObject("adjust"), e.optStringOrNull("sleeve"))?.let { k to it }
+            }.toMap()
+        }
+
+        fun parseTvFlipped(text: String): Map<String, String> {
+            val o = JSONObject(text).optJSONObject("boxes") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k ->
+                val e = o.optJSONObject(k) ?: return@mapNotNull null
+                if (e.optBoolean("flipped")) e.optStringOrNull("sleeve")?.let { k to it } else null
             }.toMap()
         }
 

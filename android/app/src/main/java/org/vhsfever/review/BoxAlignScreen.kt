@@ -90,7 +90,8 @@ fun BoxAlignScreen(m: AppModel, key: String, spineFrom: String? = null) {
     val start = remember(key, c.id, spineMode) {
         if (spineMode) b.spines[key]?.takeIf { it.first.id == c.id }?.second
             ?: spineDefault(if (isFront) b.adjustFor(key, c)?.rotate ?: 0 else 0)
-        else b.adjustFor(key, c) ?: Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null)
+        else (b.adjustFor(key, c) ?: Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null))
+            .let { if (it.flip == null && b.isFlipped(key, c)) it.copy(flip = true) else it }
     }
     var a by remember(key, c.id) { mutableStateOf(start) }
     var selected by remember { mutableStateOf<Line?>(null) }
@@ -245,21 +246,27 @@ fun BoxAlignScreen(m: AppModel, key: String, spineFrom: String? = null) {
                         val o = original
                         val wide = o != null && (if (turned % 180 == 0) o.width > o.height * 1.15f else o.height > o.width * 1.15f)
                         a = if (spineMode) spineDefault(turned)
-                            else Adjust(c.sleeve, if (wide) c.folds?.takeIf { turned == 0 } ?: DEFAULT_FOLDS else null, rotate = turned)
+                            else Adjust(c.sleeve, if (wide) c.folds?.takeIf { turned == 0 } ?: DEFAULT_FOLDS else null, rotate = turned, flip = a.flip)
                         selected = null
                     })
                     if (!spineMode) Chip(if (a.folds != null) "Whole wrap: back, spine, front" else "Front only", a.folds != null, {
                         a = if (a.folds != null) a.copy(folds = null) else a.copy(folds = c.folds ?: DEFAULT_FOLDS)
                         selected = null
                     })
+                    // a wrap scanned front | spine | back: swap which side is the front
+                    if (!spineMode && a.folds != null) Chip("Flip front and back", a.flip == true, { a = a.copy(flip = a.flip != true) })
                 }
                 SectionLabel("How it will look")
                 Row(Modifier.fillMaxWidth().height(170.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                     val f = a.folds
                     if (f != null) {
-                        Panel(img, a.left, f.first, a.top, a.bottom, "Back")
+                        val flipped = a.flip == true
+                        // shown in the box's own order: back, spine, front
+                        if (flipped) Panel(img, f.second, a.right, a.top, a.bottom, "Back")
+                        else Panel(img, a.left, f.first, a.top, a.bottom, "Back")
                         Panel(img, f.first, f.second, a.top, a.bottom, "Spine")
-                        Panel(img, f.second, a.right, a.top, a.bottom, "Front")
+                        if (flipped) Panel(img, a.left, f.first, a.top, a.bottom, "Front")
+                        else Panel(img, f.second, a.right, a.top, a.bottom, "Front")
                     } else Panel(img, a.left, a.right, a.top, a.bottom, if (spineMode) "Spine" else "Front")
                 }
             }
@@ -269,7 +276,7 @@ fun BoxAlignScreen(m: AppModel, key: String, spineFrom: String? = null) {
                     colors = ButtonDefaults.buttonColors(containerColor = C.gold, contentColor = Color(0xFF1A1206))) { Text("Save") }
                 OutlinedButton(onClick = { a = start; selected = null }) { Text("Undo changes", color = C.text) }
                 OutlinedButton(onClick = {
-                    a = if (spineMode) spineDefault(a.rotate) else Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null)
+                    a = if (spineMode) spineDefault(a.rotate) else Adjust(c.sleeve, if (c.kind == "wrap") c.folds ?: DEFAULT_FOLDS else null, flip = start.flip)
                     selected = null
                 }) { Text("Start over", color = C.text) }
             }
