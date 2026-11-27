@@ -192,7 +192,7 @@ abstract class ScreensBase(private val tag: String) {
         shot("6-backs")
     }
 
-    /** All 14 printed sleeve looks for TMDB posters, at 1.5× shelf size and at real shelf size, over a stand-in poster. */
+    /** All 14 grown-up printed sleeve looks for TMDB posters, at 1.5× shelf size and at real shelf size, over a stand-in poster. */
     @Test fun sleeves() {
         val bmp = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888).apply {
             val cv = Canvas(this); val p = android.graphics.Paint()
@@ -208,7 +208,7 @@ abstract class ScreensBase(private val tag: String) {
             colors = BoxColors(androidx.compose.ui.graphics.Color(0xFF9E2A26), androidx.compose.ui.graphics.Color(0xFF1A1418),
                 androidx.compose.ui.graphics.Color(0xFF8EC8F2), androidx.compose.ui.graphics.Color(0xFF1F8BE8), androidx.compose.ui.graphics.Color(0xFF18171A)))
             .let { it.copy(art = Art(null, null, "", "1986", rating = "PG-13", runtime = 88, studio = "Columbia Pictures")) }
-        val styles = SleeveStyle.values().toList()
+        val styles = GROWN_UP_LOOKS
         show {
             androidx.compose.runtime.CompositionLocalProvider(LocalPosterStandIn provides standIn) {
                 androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(Ink.Navy).padding(16.px),
@@ -228,6 +228,72 @@ abstract class ScreensBase(private val tag: String) {
             }
         }
         shot("7-sleeves")
+    }
+
+    private fun kidsStandIn(): androidx.compose.ui.graphics.painter.BitmapPainter {
+        val bmp = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888).apply {
+            val cv = Canvas(this); val p = android.graphics.Paint()
+            p.shader = android.graphics.LinearGradient(0f, 0f, 0f, 300f, intArrayOf(0xFF58C7F3.toInt(), 0xFFBFEEFF.toInt()),
+                null, android.graphics.Shader.TileMode.CLAMP)
+            cv.drawRect(0f, 0f, 200f, 300f, p); p.shader = null
+            p.color = 0xFFFFD23A.toInt(); cv.drawCircle(150f, 78f, 30f, p)                 // a sun
+            p.color = 0xFF5FC04A.toInt(); cv.drawOval(-60f, 200f, 260f, 380f, p)          // a hill
+            p.color = 0xFFFF4F7B.toInt(); cv.drawOval(70f, 130f, 130f, 200f, p)           // a little creature
+            p.color = 0xFFFF4F7B.toInt(); cv.drawRect(25f, 22f, 175f, 52f, p)             // a title block
+        }
+        return androidx.compose.ui.graphics.painter.BitmapPainter(bmp.asImageBitmap())
+    }
+
+    private fun kidsTitle() = catalog.titles.first().copy(name = "Moonbeam Meadow", year = "1991", poster = "stand-in", box = null,
+        kidsLook = true, shots = listOf(File("a.jpg"), File("b.jpg"), File("c.jpg")),
+        colors = BoxColors(androidx.compose.ui.graphics.Color(0xFFFF4F7B), androidx.compose.ui.graphics.Color(0xFF1F5FAE),
+            androidx.compose.ui.graphics.Color(0xFFFFD23A), androidx.compose.ui.graphics.Color(0xFF58C7F3), androidx.compose.ui.graphics.Color(0xFF2F8F3A)))
+        .let { it.copy(art = Art(null, null, "A shy little creature leaves the meadow for the first time to bring the moon back " +
+            "to the night sky, with a band of new friends along for the ride.", "1991", tagline = "The biggest adventure starts with the smallest friend!",
+            cast = listOf("Sunny Day", "Pip Holloway", "Marla Brook"), director = "Ann Fields", rating = "G", runtime = 78,
+            studio = "Meadowlark Home Video", imdbId = "tt0000001")) }
+
+    /** The 6 kids' looks: fronts at 1.5× shelf size, then each look's matching spine. */
+    @Test fun kidsFrontsAndSpines() {
+        val standIn = kidsStandIn()
+        val t = kidsTitle()
+        show {
+            androidx.compose.runtime.CompositionLocalProvider(LocalPosterStandIn provides standIn) {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(Ink.Navy).padding(16.px),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.px)) {
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.px)) {
+                        for (st in KIDS_LOOKS) androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(129.px, 228.px)) {
+                            PosterSleeve(t, colorsOf(t), 1.5f, false, st); Sheen()
+                        }
+                    }
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.px)) {
+                        for (st in KIDS_LOOKS) BoxSpine(t, 54.px, 336.px, dvd = false, style = st)
+                        for (st in KIDS_LOOKS) MiniSpineFor(t, st)
+                    }
+                }
+            }
+        }
+        shot("8-kids-fronts")
+    }
+
+    @Composable private fun MiniSpineFor(t: Title, st: SleeveStyle) {
+        // the small upright spine follows the movie's own look, so give each one a key that lands on [st]
+        val k = (0 until 5000).map { "kids:$it" }.first { key -> sleeveStyle(t.copy(key = key)) == st }
+        MiniSpine(t.copy(key = k))
+    }
+
+    /** Each kids' look's back, cycling through the three kids' back layouts. */
+    @Test fun kidsBacks() {
+        val t = kidsTitle()
+        show {
+            androidx.compose.foundation.layout.Row(androidx.compose.ui.Modifier.fillMaxSize().background(Ink.Navy).padding(16.px),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.px)) {
+                KIDS_LOOKS.forEachIndexed { i, st ->
+                    BoxBack(t, "1991 VHS release", androidx.compose.ui.Modifier.size(190.px, 336.px), style = st, kidsLayout = i % 3)
+                }
+            }
+        }
+        shot("8-kids-backs")
     }
 
     /** Made-up boxes with their shelf wear: fronts, spines and backs of different movies, so no two match. */

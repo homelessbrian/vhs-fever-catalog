@@ -54,6 +54,7 @@ data class Title(
     val shots: List<File> = emptyList(),  // screenshots taken from this movie's own tape
     val colors: BoxColors? = null,   // colours picked from the poster
     val posterFrom: String = "TMDB", // where the poster came from: "btttr.cc" first, TMDB as backup
+    val kidsLook: Boolean = false,   // made-up box uses the kids' looks (see withKidsLooks)
 ) {
     /** The one store section this tape sits in (like a real rental store, never two). */
     val section: String by lazy { storeSection(genres) }

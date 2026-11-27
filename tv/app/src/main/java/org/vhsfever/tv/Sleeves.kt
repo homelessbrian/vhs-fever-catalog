@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -51,16 +53,25 @@ import coil.compose.AsyncImage
 /*
  * The printed bands around a TMDB poster on a VHS-sized sleeve. Posters (2:3) are wider than a VHS front, so the
  * whole poster sits full width and the room left above and below is printed like a real rental sleeve.
- * There are 14 looks; each movie always gets the same one (picked from its key, or its series so sequels
+ * There are 14 grown-up looks and 6 kids' ones; each movie always gets the same one (picked from its key, or its series so sequels
  * match), so the shelf has variety but a box never changes from one visit to the next. All colours come from the movie's own poster.
  */
 
-/** The sleeve looks, in the order they were designed. */
+/** The sleeve looks, in the order they were designed: 14 grown-up ones, then 6 for kids' and family movies. */
 enum class SleeveStyle { Classic, StudioHeader, ColorFade, Spectrum, Framed, BigStudio, CornerSash, SynthGrid,
-    GoldFoil, RentalStickers, WhiteLabel, Halftone, Neon, DiagonalSplit }
+    GoldFoil, RentalStickers, WhiteLabel, Halftone, Neon, DiagonalSplit,
+    Crayon, Rainbow, Storybook, Confetti, Starburst, CloudySky;
 
+    val kids: Boolean get() = this in KIDS_LOOKS
+}
+
+val KIDS_LOOKS = listOf(SleeveStyle.Crayon, SleeveStyle.Rainbow, SleeveStyle.Storybook, SleeveStyle.Confetti,
+    SleeveStyle.Starburst, SleeveStyle.CloudySky)
+val GROWN_UP_LOOKS = SleeveStyle.values().filter { it !in KIDS_LOOKS }
+
+/** Kids' and family boxes pick from the kids' looks, everything else from the grown-up ones. */
 fun sleeveStyle(t: Title): SleeveStyle =
-    SleeveStyle.values().let { it[Math.floorMod(lookKey(t).hashCode() * 131 + 29, it.size)] }
+    (if (t.kidsLook) KIDS_LOOKS else GROWN_UP_LOOKS).let { it[Math.floorMod(lookKey(t).hashCode() * 131 + 29, it.size)] }
 
 /**
  * What picks a made-up box's look: the TMDB collection when the movie has one, so a movie and all its
@@ -80,6 +91,8 @@ private val PaperInk = Color(0xFF121114)
 
 /** Everything one sleeve needs, worked out once. */
 private class Sleeve(val t: Title, val c: BoxColors, val s: Float) {
+    /** Pixels per mockup unit, for drawing. */
+    fun u(d: androidx.compose.ui.unit.Density) = s * Ui.unit * d.density
     val art = t.art
     val year = yearText(t)
     /** Year and running time; [short] is the year alone, for bands that also print HI-FI. */
@@ -121,6 +134,7 @@ internal fun PosterSleeve(t: Title, c: BoxColors, scale: Float, dvd: Boolean, st
         SleeveStyle.Halftone -> Halftone(k)
         SleeveStyle.Neon -> Neon(k)
         SleeveStyle.DiagonalSplit -> DiagonalSplit(k)
+        else -> KidsFront(k, style)
     }
 }
 
@@ -448,5 +462,140 @@ private fun DiagonalSplit(k: Sleeve) {
         }
         Poster(k)
         Band(k, 0.64f, Modifier.split(k.c.c2, k.c.c1, 0.54f)) { RatingBox(k); Info(k, text = k.short); Text("HI-FI", style = k.mono()) }
+    }
+}
+
+// ---- the kids' looks (their backs and spines are in Kids.kt) ----
+
+@Composable
+private fun KidsFront(k: Sleeve, style: SleeveStyle) {
+    val th = kidsTheme(style, k.c)
+    when (style) {
+        SleeveStyle.Crayon -> Crayon(k, th)
+        SleeveStyle.Rainbow -> RainbowLook(k, th)
+        SleeveStyle.Storybook -> Storybook(k, th)
+        SleeveStyle.Confetti -> ConfettiPop(k, th)
+        SleeveStyle.Starburst -> Starburst(k, th)
+        else -> CloudySky(k, th)
+    }
+}
+
+/** Kids' lettering on a sleeve. */
+private fun Sleeve.kid(th: KidsTheme, color: Color, size: Float, family: FontFamily = th.font) =
+    th.type(color, size, s, family).copy(lineHeight = (size * s).fs, lineHeightStyle = Tight, platformStyle = NoPadding)
+
+@Composable
+private fun KidTag(k: Sleeve, th: KidsTheme, size: Float = 5.2f) =
+    Label("VHS", k.kid(th, th.tagFg, size), k, Modifier.clip(RoundedCornerShape((1.6f * k.s).px)).background(th.tagBg), pad = 2.6f)
+
+@Composable
+private fun KidRating(k: Sleeve, th: KidsTheme, color: Color) {
+    k.rating?.let {
+        Label(it, k.kid(th, color, 5f), k, Modifier.border((0.7f * k.s).px, color, RoundedCornerShape((1.5f * k.s).px)), pad = 1.8f, room = 2.4f)
+    }
+}
+
+/** 15 · Sunny yellow with a scribbled crayon edge and chunky round letters. */
+@Composable
+private fun Crayon(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().background(Sunny)) {
+    Band(k, 0.36f, Modifier.drawBehind { scribble(th.trimColor, k.u(this), atTop = false) }, arrange = Arrangement.SpaceBetween) {
+        KidTag(k, th); Studio(k, th.ink, k.kid(th, th.ink, 4.6f))
+    }
+    Poster(k)
+    Band(k, 0.64f, Modifier.drawBehind { scribble(th.ink, k.u(this), atTop = true) }) {
+        KidRating(k, th, th.ink); Text(k.short, style = k.kid(th, th.ink, 5f)); Push()
+        Text("HI-FI", style = k.kid(th, th.accent.let(::deepen), 4.6f))
+    }
+}
+
+/** 16 · White sleeve with a rainbow hugging the picture, top and bottom. */
+@Composable
+private fun RainbowLook(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().background(Snow)) {
+    Band(k, 0.36f, arrange = Arrangement.SpaceBetween) { KidTag(k, th, 4.6f); Studio(k, th.ink, k.kid(th, th.ink, 4.4f)) }
+    Box(Modifier.fillMaxWidth().height((4.2f * k.s).px).drawBehind { rainbow(reversed = false) })
+    Poster(k)
+    Box(Modifier.fillMaxWidth().height((4.2f * k.s).px).drawBehind { rainbow(reversed = true) })
+    Band(k, 0.64f) { KidRating(k, th, RainbowColors[0]); Info(k, th.ink) }
+}
+
+/** 17 · Cream paper with a stitched border and a gold ribbon, like a bedtime-story collection. */
+@Composable
+private fun Storybook(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().background(StoryCream)) {
+    val serif = k.kid(th, StoryBrown, 5.6f, Type.Playfair)
+    Band(k, 0.4f, arrange = Arrangement.Center) {
+        FitText("A Family Favorite", serif, Modifier.weight(1f), minScale = 0.6f, align = Alignment.Center)
+    }
+    Box(Modifier.fillMaxWidth().padding(horizontal = (3.4f * k.s).px).drawWithContent {
+        drawContent(); val u = k.u(this)
+        // the stitching sits just outside the picture
+        drawRect(Color(0xFFA5753C), Offset(-u, -u), androidx.compose.ui.geometry.Size(size.width + 2 * u, size.height + 2 * u),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = maxOf(1f, 0.55f * u),
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(2f * u, 1.3f * u))))
+    }) {
+        Column {
+            Poster(k) {
+                Box(Modifier.align(Alignment.TopEnd).offset(0.px, (9 * k.s).px).clip(RibbonShape).background(StoryGold)
+                    .padding(start = (3.6f * k.s).px, end = (2.6f * k.s).px)) {
+                    Label("VHS", k.bold(Color(0xFF4A2A0A), 4f), k, Modifier, pad = 0f)
+                }
+            }
+        }
+    }
+    Band(k, 0.6f, arrange = Arrangement.Center) {
+        KidRating(k, th, StoryBrown)
+        val words = listOfNotNull(k.year.takeIf { it.isNotBlank() }, k.art?.studio ?: "Home Video").joinToString(" · ")
+        FitText(words, serif.copy(fontSize = (4.8f * k.s).fs), Modifier.weight(1f, fill = false), minScale = 0.55f, align = Alignment.Center)
+    }
+}
+
+/** 18 · Bright poster-colour bands with 90s confetti squiggles and comic letters. */
+@Composable
+private fun ConfettiPop(k: Sleeve, th: KidsTheme) {
+    val bits = listOf(Color.White, Sunny, th.tagFg)
+    val pop = Shadow(deepen(th.tagFg), Offset(0.6f * k.s * Ui.unit, 0.6f * k.s * Ui.unit), 0f)
+    Column(Modifier.fillMaxSize().background(th.flat)) {
+        Band(k, 0.36f, Modifier.drawBehind { confetti(k.u(this), bits, 0.3f, 0.62f, 0) }, arrange = Arrangement.SpaceBetween) {
+            Text("VHS", style = k.kid(th, th.ink, 6.4f).copy(shadow = pop))
+            Studio(k, th.ink, k.kid(th, th.ink, 5.6f))
+        }
+        Poster(k)
+        Band(k, 0.64f, Modifier.drawBehind { confetti(k.u(this), bits, 0.6f, 0.97f, 1) }) {
+            KidRating(k, th, th.ink)
+            Text(listOfNotNull(k.short.takeIf { it.isNotBlank() }, "HI-FI").joinToString(" · "), style = k.kid(th, th.ink, 6f).copy(shadow = pop))
+        }
+    }
+}
+
+/** 19 · Checkerboard trim and a yellow "fun for the whole family" burst on the art. */
+@Composable
+private fun Starburst(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().background(th.flat)) {
+    val board = Modifier.fillMaxWidth().height((2.4f * k.s).px).drawBehind { checker(k.u(this)) }
+    Band(k, 0.36f, arrange = Arrangement.SpaceBetween) { KidTag(k, th); Studio(k, Color.White, k.kid(th, Color.White, 4.6f)) }
+    Box(board)
+    Poster(k) {
+        Box(Modifier.align(Alignment.BottomStart).offset((2 * k.s).px, (-4 * k.s).px).size((30 * k.s).px).rotate(-12f)
+            .clip(StarburstShape).background(Sunny), contentAlignment = Alignment.Center) {
+            Text("FUN FOR\nTHE WHOLE\nFAMILY!", textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = k.kid(th, Color(0xFFD81F2C), 4.2f, Type.Bangers).copy(lineHeight = (4.3f * k.s).fs, lineHeightStyle = null))
+        }
+    }
+    Box(board)
+    Band(k, 0.64f) { KidRating(k, th, Sunny); Info(k, Color.White) }
+}
+
+/** 20 · Sky-blue bands with puffy clouds and a little sun for the VHS tag. */
+@Composable
+private fun CloudySky(k: Sleeve, th: KidsTheme) = Column(Modifier.fillMaxSize().background(SkyTop)) {
+    Band(k, 0.36f, Modifier.background(Brush.verticalGradient(listOf(SkyTop, SkyLow))).drawBehind { clouds(k.u(this), atTop = false) },
+        arrange = Arrangement.SpaceBetween) {
+        Box(Modifier.size((8.4f * k.s).px).clip(CircleShape).background(Sunny), contentAlignment = Alignment.Center) {
+            Text("VHS", style = k.kid(th, th.tagFg, 2.9f))
+        }
+        Studio(k, SkyInk, k.kid(th, SkyInk, 4.4f))
+    }
+    Poster(k)
+    Band(k, 0.64f, Modifier.background(Brush.verticalGradient(listOf(SkyLow, SkyTop))).drawBehind { clouds(k.u(this), atTop = true) }) {
+        KidRating(k, th, Color.White); Text(k.short, style = k.kid(th, Color.White, 5f)); Push()
+        Text("HI-FI", style = k.kid(th, SkyInk, 4.6f))
     }
 }

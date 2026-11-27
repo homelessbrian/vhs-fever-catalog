@@ -134,7 +134,7 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterRepo: PosterRep
     val catalog = remember(raw, version) {
         raw?.let { c ->
             fun keep(t: Title) = kept[t.key]?.takeIf { it == t } ?: t.also { kept[t.key] = it }
-            val built = Catalog(c.titles.map { t -> keep(extras.dress(t, artRepo, posterColors)) }, c.curtain.map(::keep))
+            val built = Catalog(withKidsLooks(c.titles.map { t -> extras.dress(t, artRepo, posterColors) }).map(::keep), c.curtain.map(::keep))
             last[0]?.takeIf { it == built } ?: built
         }.also { last[0] = it }
     }

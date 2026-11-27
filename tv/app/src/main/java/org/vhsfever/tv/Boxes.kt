@@ -151,9 +151,16 @@ fun Modifier.sideways(): Modifier = this
     .graphicsLayer { rotationZ = 90f }
 
 @Composable
-fun BoxSpine(t: Title, w: Dp, h: Dp, titleSize: Int = 22, modifier: Modifier = Modifier, dvd: Boolean = isDvd(t)) {
+fun BoxSpine(t: Title, w: Dp, h: Dp, titleSize: Int = 22, modifier: Modifier = Modifier, dvd: Boolean = isDvd(t),
+             style: SleeveStyle = sleeveStyle(t)) {
     val c = colorsOf(t)
     val art = t.art
+    if (style.kids && !dvd) {
+        Box(modifier.size(w, h).boxWear(t, WearFace.Spine, t.box == null)) {
+            KidsSpineBody(t, kidsTheme(style, c), w, mini = false, titleSize = titleSize); SpineSheen()
+        }
+        return
+    }
     Box(modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine, t.box == null && !dvd)) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             SpineCap(dvd, if (dvd) 28.px else 40.px, big = true)
@@ -198,7 +205,7 @@ private fun SpineCap(dvd: Boolean, height: Dp, big: Boolean) {
  * or, with no logo, the name in bold type that shrinks to fit (never cut off with "…").
  */
 @Composable
-private fun SpineTitle(t: Title, across: Float, titleSize: Int, maxLines: Int) {
+internal fun SpineTitle(t: Title, across: Float, titleSize: Int, maxLines: Int) {
     val logo = t.art?.titleLogo
     if (logo != null) {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -306,6 +313,13 @@ const val MINI_SPINE_HEIGHT = 156
 fun MiniSpine(t: Title, modifier: Modifier = Modifier) {
     val c = colorsOf(t)
     val dvd = isDvd(t)
+    val style = sleeveStyle(t)
+    if (style.kids && !dvd) {
+        Box(modifier.size(miniSpineWidth(t).px, MINI_SPINE_HEIGHT.px).clip(RoundedCornerShape(2.px)).boxWear(t, WearFace.Spine)) {
+            KidsSpineBody(t, kidsTheme(style, c), miniSpineWidth(t).px, mini = true, titleSize = 13); SpineSheen()
+        }
+        return
+    }
     Box(modifier.size(miniSpineWidth(t).px, MINI_SPINE_HEIGHT.px).clip(RoundedCornerShape(2.px))
         .background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine)) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {

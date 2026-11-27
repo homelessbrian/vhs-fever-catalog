@@ -41,7 +41,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 
 /*
- * The printed back of a box that has no real scan. Five layouts, like the different looks rental
+ * The printed back of a box that has no real scan (kids' boxes have their own, in Kids.kt). Five layouts, like the different looks rental
  * backs had; each movie always gets the same one (picked from its key), so the store looks varied
  * but a box never changes. Colours come from the movie's poster, words from TMDB, and the
  * screenshots from the movie's own tape (TMDB stills when the tape gave none).
@@ -50,9 +50,11 @@ import coil.compose.AsyncImage
 private val Paper = Color(0xFFF3EAD8)
 private val PaperInk = Color(0xFF2A261F)
 private val Night = Color(0xFF13130F)
+internal val BackPaper = Paper
+internal val BackNight = Night
 
 /** Everything a back prints, gathered once. */
-private class BackText(t: Title, val tapeText: String) {
+internal class BackText(t: Title, val tapeText: String) {
     val art = t.art
     val name = t.name.uppercase()
     val tagline = art?.tagline?.takeIf { it.isNotBlank() }
@@ -73,11 +75,13 @@ private class BackText(t: Title, val tapeText: String) {
 fun backLayout(t: Title): Int = Math.floorMod(lookKey(t).hashCode() * 31 + 7, 5)
 
 @Composable
-fun BoxBack(t: Title, tapeText: String, modifier: Modifier = Modifier, layout: Int = backLayout(t)) {
+fun BoxBack(t: Title, tapeText: String, modifier: Modifier = Modifier, layout: Int = backLayout(t),
+            style: SleeveStyle = sleeveStyle(t), kidsLayout: Int = kidsBackLayout(t)) {
     val c = colorsOf(t)
     val b = BackText(t, tapeText)
     Box(modifier) {
-        when (if (b.pictures.isEmpty()) 2 else layout) {
+        if (style.kids) KidsBack(b, c, kidsTheme(style, c), kidsLayout)
+        else when (if (b.pictures.isEmpty()) 2 else layout) {
             0 -> BackClassic(b, c)
             1 -> BackBigStill(b, c)
             2 -> BackColorBand(b, c)
@@ -100,7 +104,7 @@ private fun monoStyle(color: Color) = TextStyle(fontFamily = Type.Mono, fontSize
 
 /** "STARRING Peter Billingsley · Darren McGavin" with the label in the accent colour. */
 @Composable
-private fun BackCredits(b: BackText, label: Color, text: Color, modifier: Modifier = Modifier, stacked: Boolean = false,
+internal fun BackCredits(b: BackText, label: Color, text: Color, modifier: Modifier = Modifier, stacked: Boolean = false,
                     align: TextAlign = TextAlign.Start) {
     if (b.cast.isEmpty() && b.director == null) return
     val lab = SpanStyle(fontFamily = Type.Oswald, fontWeight = FontWeight.Medium, color = label, letterSpacing = 0.6f.fs)
@@ -143,7 +147,7 @@ private fun BackStudio(b: BackText, color: Color, modifier: Modifier = Modifier)
 
 /** Rating, facts and studio on the left; the barcode and VHS mark on the right. */
 @Composable
-private fun BackInfoRow(b: BackText, ink: Color, modifier: Modifier = Modifier, paper: Color = Color(0xFFF1F1EE)) {
+internal fun BackInfoRow(b: BackText, ink: Color, modifier: Modifier = Modifier, paper: Color = Color(0xFFF1F1EE)) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.px)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.px)) {
@@ -163,7 +167,7 @@ private fun BackInfoRow(b: BackText, ink: Color, modifier: Modifier = Modifier, 
 }
 
 @Composable
-private fun BackPic(model: Any?, modifier: Modifier, frame: Color? = null) {
+internal fun BackPic(model: Any?, modifier: Modifier, frame: Color? = null) {
     val m = if (frame != null) modifier.border(1.5f.px, frame) else modifier
     Box(m.background(Night)) {
         if (model != null) AsyncImage(model = model, contentDescription = null, contentScale = ContentScale.Crop,
