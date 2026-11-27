@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
         val repo = Repo(applicationContext)
         val artRepo = ArtRepo(applicationContext)
         val prefs = applicationContext.getSharedPreferences("store", Context.MODE_PRIVATE)
+        Shelf.load(applicationContext)
         val dm = resources.displayMetrics
         Ui.fit(dm.widthPixels / dm.density, dm.heightPixels / dm.density)
         setContent { StoreTheme { App(repo, artRepo, prefs) } }

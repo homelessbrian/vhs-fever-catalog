@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -130,6 +132,26 @@ abstract class ScreensBase(private val tag: String) {
         show { DetailScreen(tt, catalog, false, previewOn = false, onBack = {}, onOpen = {}, onToggleWatchlist = {}, startAngle = angle) }
         shot(name)
     }
+
+    /** The VCR deck over a movie; [menu] opens one of its on-screen menus. */
+    private fun player(name: String, menu: VcrMenu?) {
+        val s = VcrState("Night of the Creeps").apply {
+            loading = false; positionMs = 2_537_000; durationMs = 5_280_000; aspect = Aspect.Four3
+            audio = listOf(TrackChoice(0, "ENGLISH", "STEREO", true))
+            info = "VHS · 1986 release\nnight_of_the_creeps.mp4  ·  h264  ·  640×480  ·  marked file"
+            this.menu = menu
+        }
+        show {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(androidx.compose.ui.graphics.Color(0xFF2B1446), androidx.compose.ui.graphics.Color(0xFFE0703A))))) {
+                VcrOverlay(s, VcrActions())
+            }
+        }
+        shot(name)
+    }
+
+    @Test fun player() = player("5-player", null)
+    @Test fun playerAspectMenu() = player("5-player-aspect", VcrMenu.Aspect)
 
     @Test fun detailThreeQuarter() = detail("Bug", 24f, "2-detail-34")
     @Test fun detailSpine() = detail("Bug", 90f, "2-detail-spine")

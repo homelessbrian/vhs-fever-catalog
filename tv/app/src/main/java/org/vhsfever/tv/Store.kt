@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -212,37 +213,6 @@ private fun RailButton(n: NavItem, selected: Boolean, modifier: Modifier, onClic
     }
 }
 
-/**
- * A box on the shelf. DVDs are wider than VHS, like the real cases. Highlighting lifts it with a gold ring;
- * only the drawing lifts, so Up/Down on the remote still go between rows.
- */
-@Composable
-fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) -> Unit, onFocused: (Title) -> Unit = {}) {
-    val fr = remember { FocusRequester() }
-    var focused by remember { mutableStateOf(false) }
-    if (restore) LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
-    val w = boxWidth(t, vhsWidth)
-    val shape = RoundedCornerShape(4.px)
-    Box(Modifier.lift(if (focused) (-8).px else 0.px)) {
-        Surface(
-            onClick = { onOpen(t) },
-            modifier = Modifier.size(w.px, h.px).focusRequester(fr).onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocused(t)
-            },
-            shape = ClickableSurfaceDefaults.shape(shape),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-            colors = ClickableSurfaceDefaults.colors(containerColor = Color.Black, focusedContainerColor = Color.Black),
-            border = ClickableSurfaceDefaults.border(
-                border = Border(BorderStroke(1.dp, Color.White.alpha(0.2f)), shape = shape),
-                focusedBorder = Border(BorderStroke(Hi.ring.px, Ink.Gold), shape = shape)),
-            glow = ClickableSurfaceDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Ink.Gold.alpha(0.5f), 26.px)),
-        ) {
-            BoxFront(t, scale = vhsWidth / 86f, modifier = Modifier.fillMaxSize())
-        }
-    }
-}
-
 @Composable
 private fun RowHeader(text: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -358,19 +328,23 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
         LazyColumn(Modifier.fillMaxSize().padding(top = rowsTop), state = listState, contentPadding = PaddingValues(top = 4.px, bottom = 400.px)) {
             rows.forEachIndexed { ri, (name, list) ->
                 item(key = "row-$name") {
-                    Column(Modifier.padding(bottom = 8.px)) {
+                    Column(Modifier.padding(bottom = 4.px)) {
                         Box(Modifier.padding(start = 252.px)) { RowHeader(name) }
-                        // shelves stop at the menu's edge instead of sliding under it
-                        LazyRow(Modifier.padding(start = 232.px).clipToBounds().focusRestorer(),
-                            contentPadding = PaddingValues(start = 20.px, end = 60.px, top = 16.px, bottom = 16.px),
-                            horizontalArrangement = Arrangement.spacedBy(14.px), verticalAlignment = Alignment.Bottom) {
-                            items(list, key = { it.key }) { t ->
-                                Box(if (ri == 0 && t == list.first()) Modifier.focusRequester(first) else Modifier) {
-                                    ShelfBox(t, 86, 152, ri == restoreRow && t.key == restoreKey, onOpen,
-                                        onFocused = { highlighted = it; focusRow = ri })
+                        // a real shelf: the wall behind the boxes, the boxes standing on the plank, the plank's front edge.
+                        // Shelves stop at the menu's edge instead of sliding under it.
+                        Box(Modifier.padding(start = 232.px).fillMaxWidth().shelfWall()) {
+                            LazyRow(Modifier.fillMaxWidth().clipSides().focusRestorer(),
+                                contentPadding = PaddingValues(start = 20.px, end = 60.px, top = 26.px, bottom = 4.px),
+                                horizontalArrangement = Arrangement.spacedBy(18.px), verticalAlignment = Alignment.Bottom) {
+                                items(list, key = { it.key }) { t ->
+                                    Box(if (ri == 0 && t == list.first()) Modifier.focusRequester(first) else Modifier) {
+                                        ShelfBox(t, 86, 152, ri == restoreRow && t.key == restoreKey, onOpen,
+                                            onFocused = { highlighted = it; focusRow = ri })
+                                    }
                                 }
                             }
                         }
+                        ShelfLip(name, Modifier.padding(start = 232.px).fillMaxWidth())
                     }
                 }
             }
@@ -404,21 +378,38 @@ private fun SectionHeader(title: String, sub: String) {
     }
 }
 
-/** A grid of boxes; each cell fits a DVD, and VHS boxes stand in the middle of theirs. */
+/**
+ * A grid of boxes on shelves. Each cell fits a DVD and is a piece of shelf, so a row of cells makes one long shelf;
+ * empty pieces finish off the last shelf.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun BoxGrid(titles: List<Title>, restoreKey: String?, onOpen: (Title) -> Unit, first: FocusRequester?, top: Int) {
-    // The grid starts where the menu ends (not under it), so Right from the menu finds it, and comes back to the box you left.
-    LazyVerticalGrid(GridCells.Adaptive(150.px), Modifier.fillMaxSize().padding(start = 232.px).focusRestorer(),
-        contentPadding = PaddingValues(start = 20.px, end = 40.px, top = top.px, bottom = 40.px),
-        horizontalArrangement = Arrangement.spacedBy(10.px), verticalArrangement = Arrangement.spacedBy(26.px)) {
-        items(titles, key = { it.key }) { t ->
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
-                Box(if (first != null && t == titles.first()) Modifier.focusRequester(first) else Modifier) {
-                    ShelfBox(t, 112, 198, t.key == restoreKey, onOpen)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // same count the grid works out: what's left after the menu and the padding, in 150-wide cells
+        val cols = (((maxWidth - 232.px - 60.px) / 150.px).toInt()).coerceAtLeast(1)
+        val fill = if (titles.isEmpty()) 0 else (cols - titles.size % cols) % cols
+        // The grid starts where the menu ends (not under it), so Right from the menu finds it, and comes back to the box you left.
+        LazyVerticalGrid(GridCells.Fixed(cols), Modifier.fillMaxSize().padding(start = 232.px).focusRestorer(),
+            contentPadding = PaddingValues(start = 20.px, end = 40.px, top = top.px, bottom = 40.px),
+            verticalArrangement = Arrangement.spacedBy(6.px)) {
+            items(titles, key = { it.key }) { t ->
+                GridShelf {
+                    Box(if (first != null && t == titles.first()) Modifier.focusRequester(first) else Modifier) {
+                        ShelfBox(t, 112, 198, t.key == restoreKey, onOpen)
+                    }
                 }
             }
+            items(fill) { GridShelf {} }
         }
+    }
+}
+
+@Composable
+private fun GridShelf(content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(232.px).shelfWall().padding(bottom = 4.px), contentAlignment = Alignment.BottomCenter) { content() }
+        ShelfLip(null, Modifier.fillMaxWidth())
     }
 }
 
@@ -491,6 +482,7 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     val tapes = catalog.titles.sumOf { it.tapes.size }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     Column(Modifier.fillMaxSize()) {
         SectionHeader("Settings", "VHS FEVER TV")
         Column(Modifier.padding(start = 252.px).width(700.px)) {
@@ -521,6 +513,8 @@ private fun SettingsContent(catalog: Catalog, status: String, onRefresh: () -> U
                 GoldButton("↻ CHECK FOR NEW TAPES", Modifier.focusRequester(first), onRefresh)
                 OutlineButton("⇩ CHECK FOR APP UPDATE", onClick = onCheckUpdate)
             }
+            // cycles Wood → Black metal → Rental store blue
+            OutlineButton("SHELF STYLE: ${Shelf.look.label.uppercase()}", Modifier.padding(top = 12.px), onClick = { Shelf.next(ctx) })
             if (status.isNotBlank()) Text(status, modifier = Modifier.padding(top = 12.px),
                 style = TextStyle(fontFamily = Type.Mono, fontSize = 13.fs, color = Ink.Gold))
         }
