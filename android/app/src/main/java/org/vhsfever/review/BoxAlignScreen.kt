@@ -81,13 +81,21 @@ fun BoxAlignScreen(m: AppModel, key: String) {
     }
     var a by remember(key, c.id) { mutableStateOf(start) }
     var selected by remember { mutableStateOf<Line?>(null) }
-    var bmp by remember { mutableStateOf<ImageBitmap?>(null) }
+    var original by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     val ctx = LocalContext.current
     LaunchedEffect(c.url) {
         val r = ctx.imageLoader.execute(ImageRequest.Builder(ctx).data(c.url).allowHardware(false).size(2400).build())
         val bitmap = ((r as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
-        if (bitmap != null) bmp = bitmap.asImageBitmap() else loadError = "Couldn't load the picture."
+        if (bitmap != null) original = bitmap else loadError = "Couldn't load the picture."
+    }
+    // the picture as it will be cut: turned the way Brian turned it
+    val bmp = remember(original, a.rotate) {
+        original?.let { o ->
+            if (a.rotate == 0) o.asImageBitmap()
+            else android.graphics.Bitmap.createBitmap(o, 0, 0, o.width, o.height,
+                android.graphics.Matrix().apply { postRotate(a.rotate.toFloat()) }, true).asImageBitmap()
+        }
     }
 
     fun set(line: Line, v: Float) {
@@ -124,8 +132,8 @@ fun BoxAlignScreen(m: AppModel, key: String) {
             else {
                 val state = rememberUpdatedState(a)
                 // zoom: 1 = whole picture; pan offset in pixels of the view
-                var zoom by remember(c.id) { mutableStateOf(1f) }
-                var pan by remember(c.id) { mutableStateOf(Offset.Zero) }
+                var zoom by remember(c.id, a.rotate) { mutableStateOf(1f) }
+                var pan by remember(c.id, a.rotate) { mutableStateOf(Offset.Zero) }
                 var viewSize by remember { mutableStateOf(IntSize.Zero) }
                 fun clampPan(p: Offset, z: Float): Offset {
                     val w = viewSize.width.toFloat(); val h = viewSize.height.toFloat()
@@ -216,6 +224,14 @@ fun BoxAlignScreen(m: AppModel, key: String) {
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // a sideways or upside-down scan: turn it a quarter at a time (the lines start over)
+                    Chip("Rotate ⟳", false, {
+                        val turned = Math.floorMod(a.rotate + 90, 360)
+                        val o = original
+                        val wide = o != null && (if (turned % 180 == 0) o.width > o.height * 1.15f else o.height > o.width * 1.15f)
+                        a = Adjust(c.sleeve, if (wide) c.folds?.takeIf { turned == 0 } ?: DEFAULT_FOLDS else null, rotate = turned)
+                        selected = null
+                    })
                     Chip(if (a.folds != null) "Whole wrap: back, spine, front" else "Front only", a.folds != null, {
                         a = if (a.folds != null) a.copy(folds = null) else a.copy(folds = c.folds ?: DEFAULT_FOLDS)
                         selected = null

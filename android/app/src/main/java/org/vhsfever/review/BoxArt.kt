@@ -17,8 +17,11 @@ data class Adjust(
     val sleeve: String,
     val folds: Pair<Float, Float>?,
     val left: Float = 0f, val right: Float = 1f, val top: Float = 0f, val bottom: Float = 1f,
+    /** Quarter turns clockwise (0, 90, 180, 270); the lines are on the turned picture. */
+    val rotate: Int = 0,
 ) {
     fun toJson(): JSONObject = JSONObject().put("sleeve", sleeve).apply {
+        if (rotate != 0) put("rotate", rotate)
         folds?.let { put("folds", JSONObject().put("left", it.first.toDouble()).put("right", it.second.toDouble())) }
         put("trim", JSONObject().put("left", left.toDouble()).put("right", right.toDouble())
             .put("top", top.toDouble()).put("bottom", bottom.toDouble()))
@@ -31,7 +34,8 @@ data class Adjust(
             val f = o.optJSONObject("folds")?.let { it.optDouble("left").toFloat() to it.optDouble("right").toFloat() }
             val t = o.optJSONObject("trim")
             return Adjust(s, f, t?.optDouble("left", 0.0)?.toFloat() ?: 0f, t?.optDouble("right", 1.0)?.toFloat() ?: 1f,
-                t?.optDouble("top", 0.0)?.toFloat() ?: 0f, t?.optDouble("bottom", 1.0)?.toFloat() ?: 1f)
+                t?.optDouble("top", 0.0)?.toFloat() ?: 0f, t?.optDouble("bottom", 1.0)?.toFloat() ?: 1f,
+                Math.floorMod(o.optInt("rotate"), 360))
         }
     }
 }
