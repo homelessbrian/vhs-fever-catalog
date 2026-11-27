@@ -60,6 +60,7 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import kotlinx.coroutines.delay
 
 fun tapeRelease(tape: Tape?): String? =
     if (tape == null) null else listOfNotNull(tape.releaseYear, tape.media).joinToString(" ").ifBlank { null }
@@ -91,8 +92,21 @@ fun DetailScreen(
     val tape = t.tapes.getOrNull(tapeIndex)
     val dvd = tape?.media?.let { it == "DVD" } ?: isDvd(t)
     val play = remember { FocusRequester() }
+    val tapeButton = remember { FocusRequester() }
+    // where the highlight goes when the tape list closes: PLAY after picking a tape, the tape button after backing out
+    var refocus by remember { mutableStateOf<FocusRequester?>(null) }
     LaunchedEffect(t.key) { runCatching { play.requestFocus() } }
-    BackHandler { if (chooser) chooser = false else onBack() }
+    LaunchedEffect(chooser, refocus) {
+        val target = refocus
+        if (!chooser && target != null) {
+            for (attempt in 0 until 10) {
+                if (runCatching { target.requestFocus() }.isSuccess) break
+                delay(50)
+            }
+            refocus = null
+        }
+    }
+    BackHandler { if (chooser) { chooser = false; refocus = tapeButton } else onBack() }
 
     // the movies most like this one (same series, TMDB pairings, director, stars, themes), topped up from its shelf
     val related = remember(t.key, catalog) { Similar.pick(t, catalog.titles, count = 9) }
@@ -165,7 +179,7 @@ fun DetailScreen(
             val many = t.tapes.size > 1
             var tf by remember { mutableStateOf(false) }
             val shape = RoundedCornerShape(8.px)
-            Surface(onClick = { if (many) chooser = true }, modifier = Modifier.padding(top = 14.px).fillMaxWidth().onFocusChanged { tf = it.isFocused },
+            Surface(onClick = { if (many) chooser = true }, modifier = Modifier.padding(top = 14.px).fillMaxWidth().focusRequester(tapeButton).onFocusChanged { tf = it.isFocused },
                 shape = ClickableSurfaceDefaults.shape(shape),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color.White.alpha(0.05f), focusedContainerColor = Ink.Gold,
@@ -210,7 +224,7 @@ fun DetailScreen(
             }
         }
 
-        if (chooser) TapeChooser(t, tapeIndex, onPick = { tapeIndex = it; chooser = false })
+        if (chooser) TapeChooser(t, tapeIndex, onPick = { tapeIndex = it; chooser = false; refocus = play })
         Grain()
     }
 }

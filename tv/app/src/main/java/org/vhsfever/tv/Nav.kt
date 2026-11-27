@@ -1,6 +1,13 @@
 package org.vhsfever.tv
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -54,4 +61,28 @@ fun Modifier.pageItem(leftEdge: Boolean, entry: Boolean = false, fr: FocusReques
         .focusProperties { if (leftEdge) left = nav.rail }
         .focusRequester(fr)
         .onFocusChanged { if (it.isFocused) nav.last = fr }
+}
+
+/**
+ * A row of boxes that scrolls so the highlighted box always keeps some room ([start] on the left, [end] on the
+ * right) from the edge of the screen. Without it the row only scrolls just far enough to show the box, so the
+ * last boxes sit right up against the screen's edge.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun RowWithEdgeRoom(start: Int, end: Int, content: @Composable () -> Unit) {
+    val d = LocalDensity.current
+    val spec = remember(d.density, start, end) {
+        val s = start * Ui.unit * d.density
+        val e = end * Ui.unit * d.density
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow)
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
+                offset < s -> offset - s
+                offset + size > containerSize - e -> offset + size - (containerSize - e)
+                else -> 0f
+            }
+        }
+    }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides spec, content = content)
 }

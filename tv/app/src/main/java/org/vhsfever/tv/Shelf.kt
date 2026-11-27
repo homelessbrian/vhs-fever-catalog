@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -220,7 +221,10 @@ fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) 
     val fr = remember { FocusRequester() }
     var focused by remember { mutableStateOf(false) }
     var tilt by remember { mutableFloatStateOf(14f) }
-    if (restore) LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+    if (restore) LaunchedEffect(Unit) {
+        // the shelf may still be laying out, so try for a moment
+        for (attempt in 0 until 10) { if (runCatching { fr.requestFocus() }.isSuccess) break; delay(60) }
+    }
     val dvd = isDvd(t)
     val w = boxWidth(t, vhsWidth)
     val depth = if (dvd) w * 0.11f else vhsWidth * 0.24f

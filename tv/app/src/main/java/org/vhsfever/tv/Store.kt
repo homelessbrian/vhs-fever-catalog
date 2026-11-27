@@ -160,7 +160,7 @@ object Hi {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun StoreScreen(
-    catalog: Catalog, section: Section, status: String, watchlist: Set<String>, restoreKey: String?,
+    catalog: Catalog, section: Section, status: String, watchlist: Set<String>, restoreKey: String?, restoreGenre: String? = null,
     onSection: (Section) -> Unit, onOpen: (Title) -> Unit, onRefresh: () -> Unit,
     update: Updater.State = Updater.State.Idle, onCheckUpdate: () -> Unit = {},
     curtainPinSet: Boolean = false, onCurtainPin: (String) -> Boolean = { false }, onCurtainReset: () -> Unit = {},
@@ -171,7 +171,7 @@ fun StoreScreen(
         when (section) {
             Section.Home -> HomeContent(catalog, restoreKey, onOpen, onSection)
             Section.Browse -> GridContent("Browse All", "Every tape in the store", catalog.titles, restoreKey, onOpen)
-            Section.Genres -> GenresContent(catalog, onSection)
+            Section.Genres -> GenresContent(catalog, restoreGenre, onSection)
             is Section.Genre -> ShelfPage(section.name, catalog.shelfTitles(section.name), restoreKey, onOpen)
             Section.NewArrivals -> GridContent("New Arrivals", "Newest tapes marked good", catalog.newArrivals, restoreKey, onOpen)
             Section.Watchlist -> GridContent("My Watchlist", "Tapes you saved for later",
@@ -391,7 +391,7 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
     }
     val collapsed = focusRow > 0
     // keep the shelf you're on lined up at the top, instead of a half-cut shelf above it
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreRow.coerceAtLeast(0))
     LaunchedEffect(focusRow) { if (focusRow >= 0) runCatching { listState.animateScrollToItem(focusRow) } }
     val rowsTop by animateDpAsState(if (collapsed) 352.px else 452.px, label = "rowsTop")
     val genres = displays.map { it.first } + catalog.genreShelves.map { it.first }.take(8)
@@ -401,14 +401,16 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
         HeroInfoOf(hero) { rows.getOrNull(heroRow)?.first }
         AnimatedVisibility(!collapsed && genres.isNotEmpty(), enter = fadeIn(), exit = fadeOut(),
             modifier = Modifier.offset(0.px, 352.px)) {
+            RowWithEdgeRoom(start = 20, end = 60) {
             LazyRow(Modifier.fillMaxWidth().padding(start = 232.px).clipToBounds().focusRestorer(),
-                contentPadding = PaddingValues(start = 20.px, end = 40.px, top = 8.px, bottom = 10.px),
+                contentPadding = PaddingValues(start = 20.px, end = 60.px, top = 8.px, bottom = 10.px),
                 horizontalArrangement = Arrangement.spacedBy(12.px)) {
                 itemsIndexed(genres) { gi, g ->
                     Box(Modifier.pageItem(leftEdge = gi == 0).onFocusChanged { if (it.hasFocus) focusRow = -1 }) {
                         GenreTile(g, 150, 84) { onSection(Section.Genre(g)) }
                     }
                 }
+            }
             }
         }
         LazyColumn(Modifier.fillMaxSize().padding(top = rowsTop), state = listState, contentPadding = PaddingValues(top = 4.px, bottom = 400.px)) {
@@ -419,7 +421,10 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
                         // a real shelf: the wall behind the boxes, the boxes standing on the plank, the plank's front edge.
                         // Shelves stop at the menu's edge instead of sliding under it.
                         Box(Modifier.padding(start = 232.px).fillMaxWidth().shelfWall()) {
-                            LazyRow(Modifier.fillMaxWidth().clipSides().focusRestorer(),
+                            val backTo = if (ri == restoreRow) list.indexOfFirst { it.key == restoreKey } else -1
+                            val rowState = rememberLazyListState(initialFirstVisibleItemIndex = (backTo - 1).coerceAtLeast(0))
+                            RowWithEdgeRoom(start = 20, end = 60) {
+                            LazyRow(Modifier.fillMaxWidth().clipSides().focusRestorer(), state = rowState,
                                 contentPadding = PaddingValues(start = 20.px, end = 60.px, top = 26.px, bottom = 4.px),
                                 horizontalArrangement = Arrangement.spacedBy(18.px), verticalAlignment = Alignment.Bottom) {
                                 itemsIndexed(list, key = { _, it -> it.key }) { i, t ->
@@ -429,6 +434,7 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
                                             leftEdge = i == 0, entry = ri == 0 && i == 0)
                                     }
                                 }
+                            }
                             }
                         }
                         ShelfLip(name, Modifier.padding(start = 232.px).fillMaxWidth())
@@ -478,7 +484,8 @@ private fun BoxGrid(titles: List<Title>, restoreKey: String?, onOpen: (Title) ->
         val cols = (((maxWidth - 232.px - 60.px) / 150.px).toInt()).coerceAtLeast(1)
         val fill = if (titles.isEmpty()) 0 else (cols - titles.size % cols) % cols
         // keep the shelf you're on lined up at the top, instead of a half-cut shelf above it
-        val state = rememberLazyGridState()
+        val backTo = titles.indexOfFirst { it.key == restoreKey }
+        val state = rememberLazyGridState(initialFirstVisibleItemIndex = if (backTo > 0) backTo / cols * cols else 0)
         var focusShelf by remember { mutableIntStateOf(-1) }
         LaunchedEffect(focusShelf) { if (focusShelf >= 0) runCatching { state.animateScrollToItem(focusShelf * cols) } }
         // The grid starts where the menu ends (not under it). Left from its first column goes to the menu (Nav.kt).
@@ -545,22 +552,27 @@ private fun ShelfPage(genre: String, titles: List<Title>, restoreKey: String?, o
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun GenresContent(catalog: Catalog, onSection: (Section) -> Unit) {
+private fun GenresContent(catalog: Catalog, restoreGenre: String?, onSection: (Section) -> Unit) {
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    val shelves = remember(catalog) { catalog.displays() + catalog.genreShelves }
+    // coming back from a genre: start on that genre's tile, not the first one
+    val start = shelves.indexOfFirst { it.first == restoreGenre }.coerceAtLeast(0)
+    LaunchedEffect(Unit) {
+        for (attempt in 0 until 10) { if (runCatching { first.requestFocus() }.isSuccess) break; delay(100) }
+    }
     Column(Modifier.fillMaxSize()) {
-        val shelves = remember(catalog) { catalog.displays() + catalog.genreShelves }
         SectionHeader("Genres", "Pick a shelf · ${shelves.size}")
         if (catalog.genreShelves.isEmpty()) Text("Genres show up once the TMDB info has loaded.", modifier = Modifier.padding(start = 252.px),
             style = TextStyle(fontFamily = Type.Barlow, fontSize = 22.fs, color = Ink.Body))
         BoxWithConstraints(Modifier.fillMaxSize()) {
         // how many 210-wide tiles (20 apart) fit beside the menu, so the first column is known
         val cols = (((maxWidth - 232.px - 60.px + 20.px) / 230.px).toInt()).coerceAtLeast(1)
-        LazyVerticalGrid(GridCells.Fixed(cols), Modifier.fillMaxSize().padding(start = 232.px).focusRestorer(),
+        val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = start / cols * cols)
+        LazyVerticalGrid(GridCells.Fixed(cols), Modifier.fillMaxSize().padding(start = 232.px).focusRestorer(), state = gridState,
             contentPadding = PaddingValues(start = 20.px, end = 40.px, top = 10.px, bottom = 40.px),
             horizontalArrangement = Arrangement.spacedBy(20.px), verticalArrangement = Arrangement.spacedBy(20.px)) {
             itemsIndexed(shelves, key = { _, it -> it.first }) { i, (g, list) ->
-                Column((if (i == 0) Modifier.focusRequester(first) else Modifier).pageItem(leftEdge = i % cols == 0, entry = i == 0)) {
+                Column((if (i == start) Modifier.focusRequester(first) else Modifier).pageItem(leftEdge = i % cols == 0, entry = i == start)) {
                     GenreTile(g, 210, 118) { onSection(Section.Genre(g)) }
                     Text("${list.size} ${if (list.size == 1) "title" else "titles"}", modifier = Modifier.padding(top = 6.px),
                         style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, color = Ink.Soft))

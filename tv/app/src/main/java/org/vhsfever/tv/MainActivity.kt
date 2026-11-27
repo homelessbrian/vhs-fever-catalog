@@ -143,6 +143,7 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterRepo: PosterRep
     var section by remember { mutableStateOf<Section>(Section.Home) }
     var openKey by remember { mutableStateOf<String?>(null) }
     var restoreKey by remember { mutableStateOf<String?>(null) }
+    var restoreGenre by remember { mutableStateOf<String?>(null) }
     var watchlist by remember { mutableStateOf(prefs.getStringSet("watchlist", emptySet())!!.toSet()) }
     val ctx = LocalContext.current
     // app updates: checked a few seconds after opening, and from Settings
@@ -219,10 +220,13 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterRepo: PosterRep
             c != null -> {
                 if (section != Section.Home) BackHandler {
                     restoreKey = null
-                    section = if (section is Section.Genre) Section.Genres else Section.Home
+                    val s = section
+                    // leaving a genre: the genre pages open with that genre highlighted
+                    restoreGenre = (s as? Section.Genre)?.name
+                    section = if (s is Section.Genre) Section.Genres else Section.Home
                 }
-                StoreScreen(c, section, status, watchlist, restoreKey,
-                    onSection = { restoreKey = null; section = it },
+                StoreScreen(c, section, status, watchlist, restoreKey, restoreGenre,
+                    onSection = { restoreKey = null; restoreGenre = null; section = it },
                     onOpen = { restoreKey = it.key; openKey = it.key },
                     onRefresh = { reload() },
                     update = update, onCheckUpdate = { checkUpdate() },
