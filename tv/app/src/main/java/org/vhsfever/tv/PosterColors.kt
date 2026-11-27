@@ -35,12 +35,17 @@ class PosterColors(private val ctx: Context) {
         runCatching {
             val o = JSONObject(file.readText())
             for (k in o.keys()) o.optJSONArray(k)?.let { a ->
-                cache[k] = BoxColors(Color(a.getInt(0)), Color(a.getInt(1)), Color(a.getInt(2)))
+                // older saves have only the three colours; the poster edges are added the next time it's looked at
+                cache[k] = BoxColors(Color(a.getInt(0)), Color(a.getInt(1)), Color(a.getInt(2)),
+                    if (a.length() >= 5) Color(a.getInt(3)) else null, if (a.length() >= 5) Color(a.getInt(4)) else null)
             }
         }
     }
 
     fun cached(poster: String): BoxColors? = synchronized(cache) { cache[poster] }
+
+    /** True when nothing more needs working out: posters also need their edge colours (box scans don't). */
+    fun done(key: String): Boolean = cached(key)?.let { key.startsWith("box:") || it.top != null } == true
 
     private val gate = Semaphore(2)
 
@@ -53,14 +58,14 @@ class PosterColors(private val ctx: Context) {
     suspend fun colorsFor(poster: String): BoxColors? = colorsFor(poster, poster)
 
     private suspend fun colorsFor(poster: String, model: Any): BoxColors? {
-        cached(poster)?.let { return it }
+        if (done(poster)) cached(poster)?.let { return it }
         val c = gate.withPermit {
             withContext(Dispatchers.IO) {
                 runCatching {
                     val req = ImageRequest.Builder(ctx).data(model).allowHardware(false).size(96, 144).build()
                     val bmp = ((ctx.imageLoader.execute(req) as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
                         ?: return@runCatching null
-                    pick(Palette.from(bmp).maximumColorCount(16).generate())
+                    pick(Palette.from(bmp).maximumColorCount(16).generate()).copy(top = edge(bmp, true), bottom = edge(bmp, false))
                 }.getOrNull()
             }
         } ?: return null
@@ -80,11 +85,25 @@ class PosterColors(private val ctx: Context) {
 
     private fun save() = runCatching {
         val o = JSONObject()
-        synchronized(cache) { for ((k, c) in cache) o.put(k, JSONArray(listOf(c.c1.toArgb(), c.c2.toArgb(), c.c3.toArgb()))) }
+        synchronized(cache) {
+            for ((k, c) in cache) o.put(k, JSONArray(listOfNotNull(c.c1.toArgb(), c.c2.toArgb(), c.c3.toArgb(),
+                c.top?.toArgb(), c.bottom?.toArgb()).takeIf { it.size == 5 } ?: listOf(c.c1.toArgb(), c.c2.toArgb(), c.c3.toArgb())))
+        }
         file.writeText(o.toString())
     }
 
     companion object {
+        /** The average colour of a thin strip along the picture's top (or bottom) edge. */
+        fun edge(bmp: android.graphics.Bitmap, top: Boolean): Color {
+            val rows = maxOf(1, bmp.height / 16)
+            var r = 0L; var g = 0L; var b = 0L; var n = 0L
+            for (y in (if (top) 0 until rows else bmp.height - rows until bmp.height)) for (x in 0 until bmp.width) {
+                val p = bmp.getPixel(x, y)
+                r += (p shr 16) and 0xFF; g += (p shr 8) and 0xFF; b += p and 0xFF; n++
+            }
+            return Color((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+        }
+
         /** Main colour dark enough for cream printing on it, a deep shade, and a light accent. */
         fun pick(p: Palette): BoxColors {
             val main = p.vibrantSwatch?.rgb ?: p.dominantSwatch?.rgb ?: 0xFF4A4A58.toInt()

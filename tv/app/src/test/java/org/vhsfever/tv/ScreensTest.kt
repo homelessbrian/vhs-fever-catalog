@@ -2,6 +2,7 @@ package org.vhsfever.tv
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
@@ -133,6 +134,44 @@ abstract class ScreensBase(private val tag: String) {
             }
         }
         shot("6-backs")
+    }
+
+    /** All 14 printed sleeve looks for TMDB posters, at 1.5× shelf size and at real shelf size, over a stand-in poster. */
+    @Test fun sleeves() {
+        val bmp = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888).apply {
+            val cv = Canvas(this); val p = android.graphics.Paint()
+            p.shader = android.graphics.LinearGradient(0f, 0f, 0f, 300f, intArrayOf(0xFF1F8BE8.toInt(), 0xFF8EC8F2.toInt(),
+                0xFF3B3328.toInt(), 0xFF18171A.toInt()), floatArrayOf(0f, 0.45f, 0.75f, 1f), android.graphics.Shader.TileMode.CLAMP)
+            cv.drawRect(0f, 0f, 200f, 300f, p); p.shader = null
+            p.color = 0xFFD7262B.toInt(); cv.drawRect(20f, 30f, 180f, 70f, p)          // a title block
+            p.color = 0xFF2A2522.toInt(); cv.drawOval(60f, 110f, 140f, 290f, p)         // a figure
+            p.color = 0xFFF0E6D8.toInt(); cv.drawCircle(100f, 105f, 22f, p)
+        }
+        val standIn = androidx.compose.ui.graphics.painter.BitmapPainter(bmp.asImageBitmap())
+        val t = catalog.titles.first().copy(name = "Armed and Dangerous", year = "1986", poster = "stand-in", box = null,
+            colors = BoxColors(androidx.compose.ui.graphics.Color(0xFF9E2A26), androidx.compose.ui.graphics.Color(0xFF1A1418),
+                androidx.compose.ui.graphics.Color(0xFF8EC8F2), androidx.compose.ui.graphics.Color(0xFF1F8BE8), androidx.compose.ui.graphics.Color(0xFF18171A)))
+            .let { it.copy(art = Art(null, null, "", "1986", rating = "PG-13", runtime = 88, studio = "Columbia Pictures")) }
+        val styles = SleeveStyle.values().toList()
+        show {
+            androidx.compose.runtime.CompositionLocalProvider(LocalPosterStandIn provides standIn) {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(Ink.Navy).padding(16.px),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.px)) {
+                    for (row in styles.chunked(7)) androidx.compose.foundation.layout.Row(
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.px)) {
+                        for (st in row) androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(129.px, 228.px)) {
+                            PosterSleeve(t, colorsOf(t), 1.5f, false, st); Sheen()
+                        }
+                    }
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.px)) {
+                        for (st in styles) androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(86.px, 152.px)) {
+                            PosterSleeve(t, colorsOf(t), 1f, false, st); Sheen()
+                        }
+                    }
+                }
+            }
+        }
+        shot("7-sleeves")
     }
 
     @Test fun genres() {
