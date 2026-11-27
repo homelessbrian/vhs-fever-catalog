@@ -42,7 +42,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 
@@ -77,12 +77,15 @@ private class Sleeve(val t: Title, val c: BoxColors, val s: Float) {
     val info = listOfNotNull(year.takeIf { it.isNotBlank() }, art?.runtime?.let { "$it MIN" }).joinToString(" · ")
     val rating = art?.rating?.takeIf { it.isNotBlank() }
     val studio = (art?.studio ?: "HOME VIDEO").uppercase()
-    fun mono(color: Color = Cream, size: Float = 6.2f) = TextStyle(fontFamily = Type.Mono, fontSize = (size * s).fs,
-        lineHeight = (size * s).fs, letterSpacing = (0.7f * s).fs, color = color)
-    fun bold(color: Color = Cream, size: Float = 7.5f, family: FontFamily = Type.Oswald, spacing: Float = 0.5f) =
+    fun mono(color: Color = Cream, size: Float = 5.6f) = TextStyle(fontFamily = Type.Mono, fontSize = (size * s).fs,
+        lineHeight = (size * s).fs, letterSpacing = (0.5f * s).fs, color = color, lineHeightStyle = Tight)
+    fun bold(color: Color = Cream, size: Float = 6f, family: FontFamily = Type.Oswald, spacing: Float = 0.5f) =
         TextStyle(fontFamily = family, fontWeight = FontWeight.Bold, fontSize = (size * s).fs, lineHeight = (size * s).fs,
-            letterSpacing = (spacing * s).fs, color = color)
+            letterSpacing = (spacing * s).fs, color = color, lineHeightStyle = Tight)
 }
+
+/** Text boxes only as tall as the letters, so they sit inside the thin bands. */
+private val Tight = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)
 
 /** Cream on dark colours, near-black on light ones. */
 private fun inkOn(bg: Color) = if (bg.luminance() > 0.55f) PaperInk else Cream
@@ -139,31 +142,31 @@ private fun ColumnScope.Band(k: Sleeve, share: Float, modifier: Modifier = Modif
 
 @Composable
 private fun VhsTag(k: Sleeve, bg: Color = Cream, fg: Color = PaperInk) {
-    Text("VHS", style = k.bold(fg), modifier = Modifier.background(bg).padding(horizontal = (3 * k.s).px))
+    Text("VHS", style = k.bold(fg), modifier = Modifier.background(bg).padding(horizontal = (2.5f * k.s).px, vertical = (0.8f * k.s).px))
 }
 
 @Composable
 private fun RatingBox(k: Sleeve, color: Color = Cream) {
     k.rating?.let {
-        Text(it, style = k.bold(color, 7f), maxLines = 1,
-            modifier = Modifier.border((0.8f * k.s).px, color).padding(horizontal = (2.5f * k.s).px))
+        Text(it, style = k.bold(color, 5.6f), maxLines = 1,
+            modifier = Modifier.border((0.7f * k.s).px, color).padding(horizontal = (2f * k.s).px, vertical = (0.8f * k.s).px))
     }
 }
 
 @Composable
 private fun RowScope.Info(k: Sleeve, color: Color = Cream, text: String = k.info) {
-    Text(text, style = k.mono(color), maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.weight(1f))
+    FitText(text, k.mono(color), Modifier.weight(1f), minScale = 0.55f, align = Alignment.CenterStart)
 }
 
 /** The studio: its logo printed in one colour, or its name when TMDB has no logo. */
 @Composable
-private fun Studio(k: Sleeve, color: Color, style: TextStyle = k.mono(color), logoHeight: Float = 0.62f,
-                   logoWidth: Float = 0.42f, modifier: Modifier = Modifier) {
+private fun RowScope.Studio(k: Sleeve, color: Color, style: TextStyle = k.mono(color), logoHeight: Float = 0.62f,
+                            logoWidth: Float = 0.42f, modifier: Modifier = Modifier) {
     val logo = k.art?.studioLogo
     if (logo != null && LocalPosterStandIn.current == null) AsyncImage(model = logo, contentDescription = k.art?.studio,
         colorFilter = ColorFilter.tint(color), contentScale = ContentScale.Fit,
         modifier = modifier.fillMaxHeight(logoHeight).fillMaxWidth(logoWidth))
-    else Text(k.studio, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
+    else FitText(k.studio, style, modifier.weight(1f, fill = false), minScale = 0.5f, align = Alignment.Center)
 }
 
 @Composable
@@ -198,7 +201,7 @@ private fun Classic(k: Sleeve) = Column(Modifier.fillMaxSize()) {
 private fun StudioHeader(k: Sleeve) = Column(Modifier.fillMaxSize().background(Color(0xFF0B0B0C))) {
     Band(k, 0.34f, arrange = Arrangement.SpaceBetween) {
         VhsTag(k)
-        Studio(k, Cream, k.bold(Cream, 6.5f, spacing = 1.2f).copy(fontWeight = FontWeight.Medium))
+        Studio(k, Cream, k.bold(Cream, 5.6f, spacing = 1f).copy(fontWeight = FontWeight.Medium))
     }
     Box(Modifier.fillMaxWidth().height((0.8f * k.s).px).background(k.c.c1))
     Box(Modifier.fillMaxWidth().height((0.8f * k.s).px).background(k.c.c3))
@@ -206,7 +209,7 @@ private fun StudioHeader(k: Sleeve) = Column(Modifier.fillMaxSize().background(C
     Box(Modifier.fillMaxWidth().height((1f * k.s).px).background(k.c.c1))
     Band(k, 0.66f) {
         RatingBox(k); Info(k)
-        Text("HI-FI", style = k.bold(Cream, 6f), modifier = Modifier.background(k.c.c1).padding(horizontal = (2 * k.s).px))
+        Text("HI-FI", style = k.bold(Cream, 5.2f), modifier = Modifier.background(k.c.c1).padding(horizontal = (2 * k.s).px, vertical = (0.7f * k.s).px))
     }
 }
 
@@ -218,7 +221,7 @@ private fun ColorFade(k: Sleeve) {
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to top, 0.5f to lerp(top, bottom, 0.5f), 1f to bottom))) {
         Band(k, 0.36f, arrange = Arrangement.SpaceBetween) {
             VhsTag(k, bg = inkOn(top), fg = top)
-            Studio(k, inkOn(top), k.bold(inkOn(top), 6f, spacing = 1.2f).copy(fontWeight = FontWeight.Medium))
+            Studio(k, inkOn(top), k.bold(inkOn(top), 5.6f, spacing = 1f).copy(fontWeight = FontWeight.Medium))
         }
         Poster(k) {
             Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).align(Alignment.TopCenter)
@@ -252,14 +255,15 @@ private fun Framed(k: Sleeve) = Column(Modifier.fillMaxSize().background(k.c.c2)
     val side = (4 * k.s).px
     Band(k, 0.34f, arrange = Arrangement.SpaceBetween) {
         VhsTag(k, fg = k.c.c2)
-        Text(listOfNotNull(k.rating, k.year.takeIf { it.isNotBlank() }).joinToString(" · "), style = k.mono(), maxLines = 1)
+        Info(k, text = listOfNotNull(k.rating, k.year.takeIf { it.isNotBlank() }).joinToString(" · "))
     }
     Box(Modifier.padding(horizontal = side).fillMaxWidth().border((1.1f * k.s).px, Cream).padding((1.1f * k.s).px)) {
         Column { Poster(k) }
     }
     Band(k, 0.66f, arrange = Arrangement.SpaceBetween) {
-        Studio(k, Cream, k.bold(Cream, 6f, spacing = 0.9f).copy(fontWeight = FontWeight.Medium))
-        Text(listOfNotNull(k.art?.runtime?.let { "$it MIN" }, "HI-FI").joinToString(" · "), style = k.mono(), maxLines = 1)
+        Studio(k, Cream, k.bold(Cream, 5.4f, spacing = 0.8f).copy(fontWeight = FontWeight.Medium))
+        Text(listOfNotNull(k.art?.runtime?.let { "$it MIN" }, "HI-FI").joinToString(" · "), style = k.mono(), maxLines = 1,
+            modifier = Modifier.padding(start = (3 * k.s).px))
     }
 }
 
@@ -299,7 +303,7 @@ private fun SynthGrid(k: Sleeve) {
     val cyan = Color(0xFF59E6FF)
     Column(Modifier.fillMaxSize().background(Color(0xFF1B0B2E))) {
         Band(k, 0.36f, grid, arrange = Arrangement.SpaceBetween) {
-            Text("VHS", style = k.bold(cyan, 6.5f, Type.Orbitron, 1f).copy(fontWeight = FontWeight.ExtraBold,
+            Text("VHS", style = k.bold(cyan, 5.6f, Type.Orbitron, 0.8f).copy(fontWeight = FontWeight.ExtraBold,
                 shadow = Shadow(cyan, Offset.Zero, 6f)))
             Studio(k, Color(0xFFFFD6F0))
         }
@@ -327,7 +331,8 @@ private fun GoldFoil(k: Sleeve) {
         Poster(k)
         Band(k, 0.62f, Modifier.rules(atTop = true), arrange = Arrangement.spacedBy((5 * k.s).px, Alignment.CenterHorizontally)) {
             RatingBox(k, Gold)
-            Text(listOfNotNull(k.info.takeIf { it.isNotBlank() }, "VHS").joinToString(" · "), style = k.mono(Gold), maxLines = 1)
+            FitText(listOfNotNull(k.info.takeIf { it.isNotBlank() }, "VHS").joinToString(" · "), k.mono(Gold),
+                Modifier.weight(1f, fill = false), minScale = 0.55f)
         }
     }
 }
@@ -377,7 +382,7 @@ private fun Halftone(k: Sleeve) {
     Column(Modifier.fillMaxSize().background(k.c.c1)) {
         Band(k, 0.36f, dots, arrange = Arrangement.SpaceBetween) {
             VhsTag(k, bg = k.c.c2, fg = Cream)
-            Studio(k, Cream, k.bold(Cream, 6.5f, spacing = 1f))
+            Studio(k, Cream, k.bold(Cream, 5.6f, spacing = 0.8f))
         }
         Poster(k)
         Band(k, 0.64f, dots) { RatingBox(k); Info(k) }
@@ -394,7 +399,7 @@ private fun Neon(k: Sleeve) {
     }
     Column(Modifier.fillMaxSize().background(Color(0xFF07060C))) {
         Band(k, 0.36f, Modifier.tube(NeonPink, atTop = false), arrange = Arrangement.SpaceBetween) {
-            Text("VHS", style = k.bold(Color(0xFFFFD6F0), 7f, spacing = 1f).copy(shadow = Shadow(NeonPink, Offset.Zero, 8f)))
+            Text("VHS", style = k.bold(Color(0xFFFFD6F0), 6.2f, spacing = 1f).copy(shadow = Shadow(NeonPink, Offset.Zero, 8f)))
             Studio(k, Color(0xFFBFF4FF))
         }
         Poster(k)
@@ -416,7 +421,7 @@ private fun DiagonalSplit(k: Sleeve) {
     Column(Modifier.fillMaxSize().background(k.c.c2)) {
         Band(k, 0.36f, Modifier.split(k.c.c1, k.c.c2, 0.46f), arrange = Arrangement.SpaceBetween) {
             VhsTag(k, fg = k.c.c1)
-            Studio(k, Cream, k.bold(Cream, 6.5f, spacing = 1f))
+            Studio(k, Cream, k.bold(Cream, 5.6f, spacing = 0.8f))
         }
         Poster(k)
         Band(k, 0.64f, Modifier.split(k.c.c2, k.c.c1, 0.54f)) { RatingBox(k); Info(k); Text("HI-FI", style = k.mono()) }
