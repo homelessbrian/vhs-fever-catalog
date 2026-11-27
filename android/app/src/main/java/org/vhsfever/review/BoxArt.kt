@@ -12,6 +12,35 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 
+/** Brian's line-up of a box: the spine lines (wraps) and trimmed edges, all fractions of the picture. */
+data class Adjust(
+    val sleeve: String,
+    val folds: Pair<Float, Float>?,
+    val left: Float = 0f, val right: Float = 1f, val top: Float = 0f, val bottom: Float = 1f,
+) {
+    fun toJson(): JSONObject = JSONObject().put("sleeve", sleeve).apply {
+        folds?.let { put("folds", JSONObject().put("left", it.first.toDouble()).put("right", it.second.toDouble())) }
+        put("trim", JSONObject().put("left", left.toDouble()).put("right", right.toDouble())
+            .put("top", top.toDouble()).put("bottom", bottom.toDouble()))
+    }
+
+    companion object {
+        fun parse(o: JSONObject?, sleeve: String? = null): Adjust? {
+            if (o == null) return null
+            val s = o.optStringOrNull("sleeve") ?: sleeve ?: return null
+            val f = o.optJSONObject("folds")?.let { it.optDouble("left").toFloat() to it.optDouble("right").toFloat() }
+            val t = o.optJSONObject("trim")
+            return Adjust(s, f, t?.optDouble("left", 0.0)?.toFloat() ?: 0f, t?.optDouble("right", 1.0)?.toFloat() ?: 1f,
+                t?.optDouble("top", 0.0)?.toFloat() ?: 0f, t?.optDouble("bottom", 1.0)?.toFloat() ?: 1f)
+        }
+    }
+}
+
+fun foldsOf(o: JSONObject?): Pair<Float, Float>? = o?.let {
+    val l = it.optDouble("left"); val r = it.optDouble("right")
+    if (l.isNaN() || r.isNaN() || l >= r) null else l.toFloat() to r.toFloat()
+}
+
 /** One box the finder bot found for a movie: a videotapes.io sleeve or an image on the Archive. */
 data class ArtCandidate(
     val id: String,
@@ -26,7 +55,12 @@ data class ArtCandidate(
     val hasBack: Boolean,
     val item: String? = null,
     val itemTitle: String? = null,
+    /** Where the spine starts and ends, as fractions of the picture's width (wraps only). */
+    val folds: Pair<Float, Float>? = null,
 ) {
+    /** The name the box job gives this box's folder ("vt:uk7" → "uk7", "ia:ab12" → "ia-ab12"). */
+    val sleeve: String get() = if (id.startsWith("vt:")) id.removePrefix("vt:") else "ia-" + id.removePrefix("ia:")
+
     /** What's saved with a pick Brian found himself, so the box job can use it. */
     fun toJson(): JSONObject = JSONObject().put("id", id).put("source", source).put("url", url).put("thumb", thumb)
         .put("kind", kind).put("item", item).put("item_title", itemTitle)
@@ -110,14 +144,21 @@ class BoxArtRepo(private val token: String) {
     } catch (e: HttpError) { if (e.code == 404) null else throw e }
 
     /** Saves one pick, merged into whatever choices.json holds now (two phones never undo each other). */
-    fun savePick(key: String, pick: String?, candidate: ArtCandidate? = null) {
+    fun savePick(key: String, pick: String?, candidate: ArtCandidate? = null, adjust: Adjust? = null) {
         repeat(3) { attempt ->
             val s = sha("choices.json")
             val now = (if (s != null) read("choices.json") else null)?.let { JSONObject(it) } ?: JSONObject()
             val titles = now.optJSONObject("titles") ?: JSONObject().also { now.put("titles", it) }
             if (pick == null) titles.remove(key)
             else titles.put(key, JSONObject().put("pick", pick).put("at", Instant.now().toString())
-                .apply { if (candidate != null) put("candidate", candidate.toJson()) })
+                .apply {
+                    val before = titles.optJSONObject(key)
+                    if (candidate != null) put("candidate", candidate.toJson())
+                    else before?.optJSONObject("candidate")?.takeIf { it.optString("id") == pick }?.let { put("candidate", it) }
+                    // a line-up stays with its box
+                    if (adjust != null) put("adjust", adjust.toJson())
+                    else before?.optJSONObject("adjust")?.let { put("adjust", it) }
+                })
             now.put("about", "Box art picked in the review app. \"none\" = show the TMDB poster.")
             val body = JSONObject().put("message", "Box art pick from phone").put("branch", "main")
                 .put("content", Base64.encodeToString(now.toString(1).toByteArray(), Base64.NO_WRAP))
@@ -141,6 +182,11 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     private var tvBoxes: Map<String, Pair<ArtTitle, ArtCandidate>> = emptyMap()
     var status by mutableStateOf(""); private set
     var loaded by mutableStateOf(false); private set
+    /** Brian's line-ups: title key → adjustment (only used while that box is the one shown). */
+    var adjusts by mutableStateOf<Map<String, Adjust>>(emptyMap()); private set
+    /** Line-ups the TV boxes were cut with. */
+    private var tvAdjusts: Map<String, Adjust> = emptyMap()
+
     /** Boxes Brian found with his own search and picked: title key → that box. */
     var custom by mutableStateOf<Map<String, ArtCandidate>>(emptyMap()); private set
     var searchResults by mutableStateOf<List<ArtCandidate>>(emptyList()); private set
@@ -168,6 +214,8 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 titles = found + tvBoxes.filterKeys { it !in foundKeys }.values.map { it.first }
                 picks = choices?.let { parsePicks(it) } ?: emptyMap()
                 custom = choices?.let { parseCustom(it) } ?: emptyMap()
+                adjusts = choices?.let { parseAdjusts(it) } ?: emptyMap()
+                tvAdjusts = index?.let { parseTvAdjusts(it) } ?: emptyMap()
                 onTv = index?.let { parseOnTv(it) } ?: emptyMap()
                 if (!loaded && filter == ArtFilter.REVIEW && count(ArtFilter.REVIEW) == 0) filter = ArtFilter.ON_TV
                 loaded = true
@@ -192,6 +240,25 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
             val r = withContext(Dispatchers.IO) { runCatching { BoxArtRepo(token()).savePick(key, id, found) } }
             status = r.fold({ "Saved. The TV shows it after its next refresh, in a few minutes." },
                 { picks = before; "Couldn't save: ${it.message}" })
+        }
+    }
+
+    /** The line-up to start from for a box: Brian's saved one, else the one the TV box was cut with. */
+    fun adjustFor(key: String, c: ArtCandidate): Adjust? =
+        (adjusts[key] ?: tvAdjusts[key])?.takeIf { it.sleeve == c.sleeve }
+
+    /** Save a line-up: the box is cut again (from the kept picture) and the TV shows it after its next refresh. */
+    fun saveAdjust(key: String, c: ArtCandidate, a: Adjust) {
+        val beforePicks = picks; val beforeAdj = adjusts
+        picks = picks + (key to c.id)
+        adjusts = adjusts + (key to a)
+        status = "Saving…"
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching { BoxArtRepo(token()).savePick(key, c.id, c.takeIf { it.source == "manual" }, a) }
+            }
+            status = r.fold({ "Saved. The box is cut again and the TV shows it after its next refresh, in a few minutes." },
+                { picks = beforePicks; adjusts = beforeAdj; "Couldn't save: ${it.message}" })
         }
     }
 
@@ -262,7 +329,8 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
             val link = if (src == "vt") null else c.optStringOrNull("item")?.let { "https://archive.org/details/$it" }
             return ArtCandidate(c.optString("id"), src, c.optStringOrNull("thumb") ?: c.optString("url"), c.optString("url"),
                 c.optString("kind", "unknown"), c.optInt("score"), c.optJSONArray("why").strings(), label, link,
-                c.optStringOrNull("back_url") != null)
+                c.optStringOrNull("back_url") != null, item = c.optStringOrNull("item"),
+                itemTitle = c.optStringOrNull("item_title"), folds = foldsOf(c.optJSONObject("folds")))
         }
 
         fun parsePicks(text: String): Map<String, String> {
@@ -288,7 +356,9 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                         e.opt("tape_year")?.takeIf { it != JSONObject.NULL }?.toString()).joinToString(" · ")
                 val kind = when (e.optStringOrNull("layout")) { "spread" -> "wrap"; "front_only" -> "front"; else -> "unknown" }
                 val c = ArtCandidate(id, if (archive) "search" else "vt", img, img, kind, 0, emptyList(), label,
-                    e.optStringOrNull("item")?.let { "https://archive.org/details/$it" }, e.optStringOrNull("back_image") != null)
+                    e.optStringOrNull("item")?.let { "https://archive.org/details/$it" }, e.optStringOrNull("back_image") != null,
+                    item = e.optStringOrNull("item"), itemTitle = e.optStringOrNull("title_on_sleeve"),
+                    folds = foldsOf(e.optJSONObject("folds")))
                 val name = e.optStringOrNull("name") ?: e.optStringOrNull("title_on_sleeve")?.let(::titleCase) ?: k
                 k to (ArtTitle(k, name, e.optStringOrNull("year"), k.removePrefix("tmdb:").toIntOrNull().takeIf { k.startsWith("tmdb:") },
                     emptyList(), null, false) to c)
@@ -297,6 +367,19 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
 
         private fun titleCase(s: String) = if (s != s.uppercase()) s else
             s.lowercase().split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+
+        fun parseAdjusts(text: String): Map<String, Adjust> {
+            val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k -> Adjust.parse(o.optJSONObject(k)?.optJSONObject("adjust"))?.let { k to it } }.toMap()
+        }
+
+        fun parseTvAdjusts(text: String): Map<String, Adjust> {
+            val o = JSONObject(text).optJSONObject("boxes") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k ->
+                val e = o.optJSONObject(k) ?: return@mapNotNull null
+                Adjust.parse(e.optJSONObject("adjust"), e.optStringOrNull("sleeve"))?.let { k to it }
+            }.toMap()
+        }
 
         fun parseCustom(text: String): Map<String, ArtCandidate> {
             val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()

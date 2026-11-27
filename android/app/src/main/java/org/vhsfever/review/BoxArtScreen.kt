@@ -141,7 +141,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
         if (b.status.isNotEmpty()) Text(b.status, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
         LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item(span = { GridItemSpan(2) }) {
+            item(span = { GridItemSpan(2) }) { Column {
                 Text(when {
                     picked == "none" -> "You picked the TMDB poster for this one."
                     picked != null -> "You picked this movie's box. Tap another to change it."
@@ -150,11 +150,15 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                     listed.isEmpty() -> "No boxes found yet; the TV shows the TMDB poster. Try searching below."
                     else -> "The bot isn't sure. Tap the right box (a full wrap gives the TV a real back and spine too)."
                 }, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
-            }
+                // straighten up the box that's showing: spine lines and trimmed edges
+                if (b.shown(t) != null && picked != "none") TextButton(onClick = { m.open(Screen.BoxAlign(key)) }) {
+                    Text("Line up this box (spine and edges)", color = C.gold)
+                }
+            } }
             items(listed, key = { it.id }) { c ->
-                ArtCard(c, chosen = picked == c.id || (picked == null && onTv == c.id),
-                    bot = t.botPick == c.id && t.sure, onTv = onTv == c.id,
-                    onPick = { b.pick(key, c.id, c.takeIf { it.source == "manual" }) }, onLook = { big = c })
+                val chosen = picked == c.id || (picked == null && onTv == c.id)
+                ArtCard(c, chosen = chosen, bot = t.botPick == c.id && t.sure, onTv = onTv == c.id,
+                    onPick = { if (!chosen) b.pick(key, c.id, c.takeIf { it.source == "manual" }) }, onLook = { big = c })
             }
             item {
                 // keep the TMDB poster instead of any box
@@ -230,6 +234,6 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
             Tag(c.sourceName)
             Tag(when (c.kind) { "wrap" -> "Full wrap"; "front" -> if (c.hasBack) "Front + back" else "Front"; else -> "Picture" })
         }
-        if (c.source != "manual") Text("Match ${c.score}", color = if (c.score >= 70) C.good else C.muted, fontSize = 11.sp)
+        if (c.score > 0) Text("Match ${c.score}", color = if (c.score >= 70) C.good else C.muted, fontSize = 11.sp)
     }
 }

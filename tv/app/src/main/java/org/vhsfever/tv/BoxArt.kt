@@ -37,7 +37,7 @@ class BoxArtRepo(private val ctx: Context) {
 
     /** TMDB id → the sleeve to use and its panel paths in the repo. */
     private data class Entry(val sleeve: String, val files: Map<String, String>, val label: String?,
-                             val region: String?, val tapeYear: String?, val source: String)
+                             val region: String?, val tapeYear: String?, val source: String, val rev: String = "")
 
     /**
      * Title key ("tmdb:603" or "title:…") → its box. Picks from the review app are already applied:
@@ -57,7 +57,7 @@ class BoxArtRepo(private val ctx: Context) {
             if (e.optString("sleeve").let { it.isBlank() || it.contains("/") || it.contains("..") }) continue
             out[id] = Entry(e.optString("sleeve"), files, e.str("label"), e.str("region"),
                 e.opt("tape_year")?.takeIf { it != JSONObject.NULL }?.toString(),
-                if (e.str("source") == "archive") "Internet Archive" else "videotapes.io")
+                if (e.str("source") == "archive") "Internet Archive" else "videotapes.io", e.str("rev") ?: "")
         }
         return out
     }
@@ -91,6 +91,14 @@ class BoxArtRepo(private val ctx: Context) {
         val keep = index.values.map { it.sleeve }.toSet()
         dir.listFiles()?.filter { it.isDirectory && it.name !in keep }?.forEach { it.deleteRecursively() }
 
+        // a box cut again (lined up in the review app) is fetched again
+        for (e in index.values.distinctBy { it.sleeve }) {
+            val marker = File(dir, "${e.sleeve}/.rev")
+            if (e.rev.isEmpty() || !File(dir, e.sleeve).exists()) continue
+            // boxes saved before boxes could be lined up are the current cut
+            if (!marker.exists()) marker.writeText(e.rev)
+            else if (marker.readText() != e.rev) File(dir, e.sleeve).listFiles()?.forEach { it.delete() }
+        }
         val gate = Semaphore(3)
         index.filterKeys { it in wanted }.map { (id, e) ->
             async {
@@ -105,6 +113,7 @@ class BoxArtRepo(private val ctx: Context) {
                             tmp.writeBytes(get(base + path))
                             tmp.renameTo(f)
                         }
+                        if (e.rev.isNotEmpty()) File(dir, "${e.sleeve}/.rev").writeText(e.rev)
                     }
                 }
                 scan(e)?.let { onBox(id, it) }

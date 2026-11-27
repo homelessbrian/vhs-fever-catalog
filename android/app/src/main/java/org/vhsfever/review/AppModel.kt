@@ -25,6 +25,7 @@ sealed interface Screen {
     data object Settings : Screen
     data object BoxArt : Screen
     data class BoxArtPick(val key: String) : Screen
+    data class BoxAlign(val key: String) : Screen
 }
 
 enum class QueueMode(val label: String) {

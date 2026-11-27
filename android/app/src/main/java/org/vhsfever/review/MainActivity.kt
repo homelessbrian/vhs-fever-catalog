@@ -81,5 +81,6 @@ fun App(m: AppModel, installApk: (File) -> Unit) {
         Screen.Settings -> SettingsScreen(m, installApk)
         Screen.BoxArt -> BoxArtListScreen(m)
         is Screen.BoxArtPick -> BoxArtPickScreen(m, s.key)
+        is Screen.BoxAlign -> BoxAlignScreen(m, s.key)
     }
 }
