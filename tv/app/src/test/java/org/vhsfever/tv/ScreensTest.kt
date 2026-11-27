@@ -116,6 +116,62 @@ abstract class ScreensBase(private val tag: String) {
         assertTrue("second Down moved sideways, from $after to $third", kotlin.math.abs(third.left - after.left) < after.width / 2)
     }
 
+    /** Puts the highlight on the top-left box of the page (boxes are the tallest buttons). */
+    private fun focusFirstBox() {
+        rule.mainClock.advanceTimeBy(1000)
+        val clickable = rule.onAllNodes(hasClickAction())
+        val nodes = clickable.fetchSemanticsNodes()
+        val tall = nodes.maxOf { it.boundsInRoot.height } * 0.8f
+        val boxes = nodes.withIndex().filter { (_, n) -> n.boundsInRoot.height >= tall && n.boundsInRoot.width > 10f }
+        // boxes lean a little, so the top shelf is every box within a few pixels of the highest one
+        val top = boxes.minOf { it.value.boundsInRoot.top }
+        val box = boxes.filter { it.value.boundsInRoot.top < top + tall / 4 }.minBy { it.value.boundsInRoot.left }.index
+        clickable[box].performSemanticsAction(SemanticsActions.RequestFocus)
+        rule.mainClock.advanceTimeBy(1000)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    private fun press(k: Key) { rule.onRoot().performKeyInput { pressKey(k) }; rule.mainClock.advanceTimeBy(800) }
+
+    /**
+     * Scrolled down the page: Right one box, Left back to the first box, Left again into the menu, then Right
+     * must land on that same box again. Left from a box in the first column must never move up or down a row.
+     */
+    private fun menuRoundTrip(section: Section, name: String) {
+        show { StoreScreen(catalog, section, "", emptySet(), null, {}, {}, {}) }
+        focusFirstBox()
+        val (start, startAt) = focused()
+        press(Key.DirectionDown)
+        val (down1, down1At) = focused()
+        assertTrue("Down didn't move", down1 != start)
+        assertTrue("Down moved sideways, from $startAt to $down1At", kotlin.math.abs(down1At.left - startAt.left) < startAt.width / 2)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        val (second, secondAt) = focused()
+        press(Key.DirectionLeft)
+        val (firstBox, firstAt) = focused()
+        assertTrue("Left didn't move to the box beside it", firstBox != second)
+        assertTrue("Left moved to another row, from $secondAt to $firstAt", kotlin.math.abs(firstAt.top - secondAt.top) < secondAt.height / 4)
+        press(Key.DirectionLeft)
+        shot("$name-menu")
+        val (menu, menuAt) = focused()
+        val screen = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue("Left from the first box didn't go to the menu (on $menuAt)", menu != firstBox && menuAt.right < screen.width * 0.2f)
+        press(Key.DirectionRight)
+        shot("$name-back")
+        val (back, backAt) = focused()
+        assertTrue("Right from the menu didn't come back to the box (on $backAt, expected $firstAt)", back == firstBox)
+    }
+
+    @Test fun homeMenuAndBack() = menuRoundTrip(Section.Home, "8-nav-home")
+    @Test fun browseMenuAndBack() = menuRoundTrip(Section.Browse, "8-nav-browse")
+    @Test fun genreMenuAndBack() = menuRoundTrip(Section.Genre(catalog.genreShelves.first().first), "8-nav-genre")
+
+    @Test fun genrePage() {
+        show { StoreScreen(catalog, Section.Genre(catalog.genreShelves.first().first), "", emptySet(), null, {}, {}, {}) }
+        shot("3-genre-page")
+    }
+
     /** The five printed backs for a box with no VHS scan (pictures don't load here, so they show as dark frames). */
     @Test fun backs() {
         val t = catalog.titles.first().copy(name = "A Christmas Story", year = "1983",

@@ -215,7 +215,8 @@ private fun quadPath(q: FloatArray) = Path().apply {
  * side shows. Only the drawing moves, so Up/Down on the remote still go straight between rows.
  */
 @Composable
-fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) -> Unit, onFocused: (Title) -> Unit = {}) {
+fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) -> Unit, onFocused: (Title) -> Unit = {},
+             leftEdge: Boolean = false, entry: Boolean = false) {
     val fr = remember { FocusRequester() }
     var focused by remember { mutableStateOf(false) }
     var tilt by remember { mutableFloatStateOf(14f) }
@@ -241,7 +242,7 @@ fun ShelfBox(t: Title, vhsWidth: Int, h: Int, restore: Boolean, onOpen: (Title) 
             }
             focused = it.isFocused
         }
-        .focusRequester(fr)
+        .pageItem(leftEdge, entry, fr)
         .onKeyEvent { e ->
             val ok = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
             if (ok && e.type == KeyEventType.KeyUp) onOpen(t)

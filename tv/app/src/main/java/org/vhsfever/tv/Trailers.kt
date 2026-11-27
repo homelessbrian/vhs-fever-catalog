@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -19,9 +18,13 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.ComposeView
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -113,6 +116,9 @@ object Trailers {
         return c.inputStream.bufferedReader().use { it.readText() }
     }
 
+    /** Looks up trailers ahead of time (for the boxes next to the one you're on), so they start sooner. */
+    suspend fun prefetch(ctx: Context, titles: List<Title>) { for (t in titles) runCatching { find(ctx, t) } }
+
     private const val API = "https://api.themoviedb.org/3"
 }
 
@@ -133,7 +139,7 @@ fun rememberTrailers(t: Title?): List<String>? {
  * allows outside its site, moving on to the next if one is blocked.
  */
 @SuppressLint("SetJavaScriptEnabled")
-class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: Boolean) {
+class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: Boolean, private val pageWidth: Int? = null) {
     val view = WebView(ctx)
     private val main = Handler(Looper.getMainLooper())
     private var ready = false
@@ -145,6 +151,8 @@ class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: 
     var onState: (Int) -> Unit = {}
     var onFailed: () -> Unit = {}
     var time = 0f; private set
+    /** How long the trailer is, in seconds (0 until YouTube says). */
+    var duration = 0f; private set
     val key get() = keys.getOrNull(index)
 
     init {
@@ -156,6 +164,13 @@ class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: 
         view.settings.javaScriptEnabled = true
         view.settings.domStorageEnabled = true
         view.settings.mediaPlaybackRequiresUserGesture = false
+        if (pageWidth != null) {
+            // YouTube won't reliably play in a player smaller than 200×200 web pixels, and the little TVs are
+            // smaller than that. So the page is laid out wider and shrunk to fit the TV.
+            view.settings.useWideViewPort = true
+            view.settings.loadWithOverviewMode = true
+            view.settings.setSupportZoom(false)
+        }
         view.webChromeClient = WebChromeClient()
         view.addJavascriptInterface(object {
             @JavascriptInterface fun ready() = main.post { ready = true; startCurrent() }.let { }
@@ -163,7 +178,7 @@ class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: 
                 if (s == 1) onShowing(true)
                 onState(s)
             }.let { }
-            @JavascriptInterface fun time(t: Float) = main.post { time = t; onTime(t) }.let { }
+            @JavascriptInterface fun time(t: Float, d: Float) = main.post { time = t; if (d > 0) duration = d; onTime(t) }.let { }
             // 2 bad id, 5 can't play here, 100 removed, 101/150 the owner doesn't allow it outside YouTube,
             // 152/153 YouTube couldn't tell which page it's on
             @JavascriptInterface fun error(code: Int) = main.post { next() }.let { }
@@ -200,42 +215,60 @@ class YouTubePlayer(ctx: Context, private val muted: Boolean, private val loop: 
 
     fun toggle() = js("toggle()")
     fun seek(sec: Int) = js("seek($sec)")
+    fun seekTo(sec: Float) { time = sec; js("seekTo($sec)") }
     fun pause() = js("pause()")
     fun resume() = js("resume()")
+    /** Plays whatever state it's in (paused, stopped or finished). */
+    fun playNow() = js("playNow()")
+    /** Closed captions on or off. They start off. */
+    fun captions(on: Boolean) = js("captions($on)")
     fun release() { view.stopLoading(); view.destroy() }
 
     private fun js(code: String) = view.evaluateJavascript("try{$code}catch(e){}", null)
 
     private fun page() = """
-<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html><html><head><meta name="viewport" content="${pageWidth?.let { "width=$it" } ?: "width=device-width, initial-scale=1"}">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}
 #p,iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;pointer-events:none}</style></head>
 <body><iframe id="p" src="about:blank" referrerpolicy="strict-origin-when-cross-origin"
   allow="autoplay; encrypted-media; picture-in-picture"></iframe>
 <script>
-var player=null, muted=$muted, loop=$loop, origin='$ORIGIN';
+var player=null, ready=false, pending=null, ccOn=false, muted=$muted, loop=$loop, origin='$ORIGIN';
 function onYouTubeIframeAPIReady(){ Android.ready(); }
+// captions stay off unless asked for (YouTube sometimes turns them on by itself)
+function cc(p){ try{ if(ccOn){ p.loadModule('captions'); p.setOption('captions','track',{languageCode:'en'}); }
+  else { p.unloadModule('captions'); p.unloadModule('cc'); } }catch(e){} }
+function captions(on){ ccOn=on; if(player && ready) cc(player); }
 function start(id, at){
-  if(player && player.loadVideoById){ player.loadVideoById({videoId:id, startSeconds:at}); return; }
+  // a new trailer before YouTube's player is ready waits for it, instead of making a second player
+  if(player){ if(ready) player.loadVideoById({videoId:id, startSeconds:at}); else pending={videoId:id, startSeconds:at}; return; }
   // our own player frame (so it sends where it's from), then YouTube's controls hooked onto it
   var q={enablejsapi:1, autoplay:1, controls:0, disablekb:1, fs:0, rel:0, iv_load_policy:3, modestbranding:1, playsinline:1,
-    cc_load_policy:0, start:Math.floor(at), mute:muted?1:0, origin:origin, widget_referrer:origin};
+    start:Math.floor(at), mute:muted?1:0, origin:origin, widget_referrer:origin};
   var f=document.getElementById('p');
   f.src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?'+Object.keys(q).map(function(k){return k+'='+encodeURIComponent(q[k]);}).join('&');
   player=new YT.Player('p',{
     events:{
-      onReady:function(e){ if(muted) e.target.mute(); else { e.target.unMute(); e.target.setVolume(100); } e.target.playVideo(); },
-      onStateChange:function(e){ Android.state(e.data); if(e.data===0 && loop){ e.target.seekTo(0); e.target.playVideo(); } },
+      onReady:function(e){
+        ready=true;
+        if(muted) e.target.mute(); else { e.target.unMute(); e.target.setVolume(100); }
+        cc(e.target);
+        var p=pending; pending=null;
+        if(p && p.videoId) e.target.loadVideoById(p); else if(p) e.target.stopVideo(); else e.target.playVideo();
+      },
+      onStateChange:function(e){ if(e.data===1) cc(e.target); Android.state(e.data); if(e.data===0 && loop){ e.target.seekTo(0); e.target.playVideo(); } },
       onError:function(e){ Android.error(e.data); }
     }});
 }
-function stop(){ if(player && player.stopVideo) player.stopVideo(); }
-function toggle(){ if(!player) return; if(player.getPlayerState()===1) player.pauseVideo(); else player.playVideo(); }
-function seek(d){ if(player && player.getCurrentTime) player.seekTo(Math.max(0, player.getCurrentTime()+d), true); }
-function pause(){ if(player && player.pauseVideo) player.pauseVideo(); }
-function resume(){ if(player && player.playVideo && player.getPlayerState()===2) player.playVideo(); }
-setInterval(function(){ if(player && player.getCurrentTime && player.getPlayerState()===1) Android.time(player.getCurrentTime()); }, 500);
+function stop(){ if(!player) return; if(ready) player.stopVideo(); else pending={}; }
+function toggle(){ if(!player || !ready) return; if(player.getPlayerState()===1) player.pauseVideo(); else player.playVideo(); }
+function seek(d){ if(player && ready) player.seekTo(Math.max(0, player.getCurrentTime()+d), true); }
+function seekTo(s){ if(player && ready) player.seekTo(Math.max(0, s), true); }
+function pause(){ if(player && ready) player.pauseVideo(); }
+function resume(){ if(player && ready && player.getPlayerState()===2) player.playVideo(); }
+function playNow(){ if(player && ready) player.playVideo(); }
+setInterval(function(){ if(player && ready && player.getCurrentTime) Android.time(player.getCurrentTime(), player.getDuration()||0); }, 500);
 </script>
 <script src="https://www.youtube.com/iframe_api"></script>
 </body></html>"""
@@ -265,7 +298,7 @@ fun TrailerVideo(keys: List<String>, onShowing: (Boolean) -> Unit, onTime: (Floa
     val showing by rememberUpdatedState(onShowing)
     val time by rememberUpdatedState(onTime)
     val failed by rememberUpdatedState(onFailed)
-    val yt = remember { YouTubePlayer(ctx, muted = true, loop = true) }
+    val yt = remember { YouTubePlayer(ctx, muted = true, loop = true, pageWidth = 640) }
     yt.onShowing = { showing(it) }; yt.onTime = { time(it) }; yt.onFailed = { failed() }
     LaunchedEffect(yt) { onPlayer(yt) }
     LaunchedEffect(keys) { yt.play(keys) }
@@ -280,35 +313,76 @@ fun TrailerVideo(keys: List<String>, onShowing: (Boolean) -> Unit, onTime: (Floa
     AndroidView(factory = { yt.view }, modifier = modifier.fillMaxSize())
 }
 
-/** A trailer full screen with sound. OK pauses, ◀ ▶ skip 10 seconds, Back goes back to the tape. */
+/**
+ * A trailer full screen with sound, with the same VCR deck and on-screen display as a tape (see Vcr.kt):
+ * the loading screens, PLAY/PAUSE/STOP, REW/F.FWD 10 seconds, the tape bar, aspect and zoom, and closed
+ * captions (off to start with). Back tucks the deck away, then goes back to the tape page.
+ */
 class TrailerActivity : ComponentActivity() {
     private lateinit var yt: YouTubePlayer
-    private lateinit var hint: TextView
-    private val main = Handler(Looper.getMainLooper())
+    private lateinit var vcr: VcrState
+    private lateinit var frame: FrameLayout
+    /** A key whose press we used (e.g. to bring up the deck), so its release doesn't also press a button. */
+    private var swallowUp = -1
+    private val look = LoadingLook.entries.random()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val keys = intent.getStringArrayListExtra("keys") ?: arrayListOf()
         val title = intent.getStringExtra("title") ?: ""
-        yt = YouTubePlayer(this, muted = false, loop = false)
-        hint = TextView(this).apply {
-            setTextColor(AColor.WHITE); textSize = 16f
-            setShadowLayer(6f, 0f, 0f, AColor.BLACK)
-            setBackgroundColor(0x99000000.toInt())
-            setPadding(40, 20, 40, 20)
-            text = "$title · TRAILER      OK pause  ·  ◀ ▶ skip  ·  BACK to the tape"
+        val dm = resources.displayMetrics
+        Ui.fit(dm.widthPixels / dm.density, dm.heightPixels / dm.density)
+        vcr = VcrState("$title · trailer").apply {
+            audio = listOf(TrackChoice(0, "TRAILER", "STEREO", true))
+            subs = listOf(TrackChoice(0, "ENGLISH", "CC", false))
         }
-        val root = FrameLayout(this).apply { setBackgroundColor(AColor.BLACK) }
-        root.addView(yt.view, ViewGroup.LayoutParams(-1, -1))
-        root.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = 48 })
+        yt = YouTubePlayer(this, muted = false, loop = false)
+        frame = FrameLayout(this).apply {
+            setBackgroundColor(AColor.BLACK)
+            clipChildren = true
+            addView(yt.view, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> layoutPicture() }
+        }
+        val deck = ComposeView(this).apply {
+            setContent {
+                StoreTheme {
+                    Box(Modifier.fillMaxSize()) {
+                        VcrOverlay(vcr, actions())
+                        val starting = !vcr.started && !vcr.gaveUp
+                        val cover by animateFloatAsState(if (starting) 1f else 0f, tween(if (starting) 0 else 450), label = "loading")
+                        if (cover > 0f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = cover }) { LoadingScreen(look) }
+                        else if (vcr.loading && !vcr.ended && !vcr.stopped) BufferingTape()
+                        // the tape counter
+                        LaunchedEffect(Unit) {
+                            while (true) {
+                                vcr.positionMs = (yt.time * 1000).toLong()
+                                vcr.durationMs = (yt.duration * 1000).toLong()
+                                delay(250)
+                            }
+                        }
+                        // the deck tucks away after a few seconds of playing with nothing pressed
+                        LaunchedEffect(vcr.touched, vcr.visible, vcr.playing, vcr.menu, vcr.loading, vcr.stopped, vcr.ended) {
+                            if (vcr.visible && vcr.playing && !vcr.stopped && !vcr.ended && vcr.menu == null && !vcr.loading) {
+                                delay(5000); vcr.visible = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val root = FrameLayout(this)
+        root.addView(frame, ViewGroup.LayoutParams(-1, -1))
+        root.addView(deck, ViewGroup.LayoutParams(-1, -1))
         setContentView(root)
-        showHint()
+
+        // YouTube's states: -1 not started, 0 ended, 1 playing, 2 paused, 3 loading, 5 ready
         yt.onState = { s ->
             when (s) {
-                0 -> finish()                                  // trailer over: back to the tape page
-                2 -> { hint.text = "‖ PAUSED      OK play  ·  ◀ ▶ skip  ·  BACK to the tape"; hint.visibility = View.VISIBLE; main.removeCallbacksAndMessages(null) }
-                1 -> if (hint.text.startsWith("‖")) { hint.text = "$title · TRAILER"; showHint() }
+                1 -> { vcr.started = true; vcr.playing = true; vcr.loading = false; vcr.ended = false; vcr.stopped = false }
+                2 -> { vcr.playing = false; vcr.loading = false }
+                3 -> vcr.loading = true
+                0 -> { vcr.ended = true; vcr.playing = false; vcr.loading = false; vcr.show("eject") }
             }
         }
         yt.onFailed = {
@@ -316,29 +390,98 @@ class TrailerActivity : ComponentActivity() {
             finish()
         }
         yt.play(keys, intent.getIntExtra("index", 0).coerceIn(0, (keys.size - 1).coerceAtLeast(0)), intent.getFloatExtra("at", 0f))
+        vcr.show("pause")
     }
 
-    private fun showHint() {
-        hint.visibility = View.VISIBLE
-        main.removeCallbacksAndMessages(null)
-        main.postDelayed({ hint.visibility = View.GONE }, 4000)
+    private fun play() {
+        if (vcr.ended) yt.seekTo(0f)
+        vcr.stopped = false; vcr.ended = false
+        yt.playNow()
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val action = when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> { { yt.toggle() } }
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { { yt.seek(-10); showHint() } }
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { { yt.seek(10); showHint() } }
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { { showHint() } }
-            else -> return super.dispatchKeyEvent(event)
+    private fun seekBy(ms: Long) {
+        val dur = vcr.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
+        val to = (vcr.positionMs + ms).coerceIn(0L, dur)
+        yt.seekTo(to / 1000f)
+        vcr.positionMs = to
+    }
+
+    private fun actions() = VcrActions(
+        play = { play() },
+        pause = { yt.pause() },
+        stop = { yt.pause(); vcr.stopped = true },
+        rew = { seekBy(-10_000); vcr.flash("◀◀ REW") },
+        ff = { seekBy(10_000); vcr.flash("FF ▶▶") },
+        eject = { finish() },
+        seekBy = { seekBy(it) },
+        aspect = { a -> vcr.aspect = a; layoutPicture() },
+        zoom = { z -> vcr.zoom = z; layoutPicture() },
+        subs = { id ->
+            val on = id != null
+            yt.captions(on)
+            vcr.subs = listOf(TrackChoice(0, "ENGLISH", "CC", on))
+        },
+    )
+
+    /**
+     * YouTube fits the trailer inside its own picture, so the settings work on the whole picture: 4:3 squeezes
+     * it to a 4:3 shape, FILL enlarges it to cut off black bars, and zoom enlarges it further.
+     */
+    private fun layoutPicture() {
+        val fw = frame.width.toFloat(); val fh = frame.height.toFloat()
+        if (fw <= 0f || fh <= 0f) return
+        val screen = fw / fh
+        val (sx, sy) = when (vcr.aspect) {
+            Aspect.Four3 -> (4f / 3f) / screen to 1f
+            Aspect.Fill -> 4f / 3f to 4f / 3f
+            else -> 1f to 1f
         }
-        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) action()
-        return true
+        val z = vcr.zoom / 100f
+        yt.view.scaleX = sx * z
+        yt.view.scaleY = sy * z
+    }
+
+    override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        val down = e.action == KeyEvent.ACTION_DOWN
+        val code = e.keyCode
+        if (!down && code == swallowUp) { swallowUp = -1; return true }
+        // While the loading screen covers everything, Back leaves and the other keys wait.
+        if (!vcr.started) {
+            if (code == KeyEvent.KEYCODE_BACK && down && e.repeatCount == 0) finish()
+            return true
+        }
+        fun used(block: () -> Unit): Boolean { if (down) { if (e.repeatCount == 0) swallowUp = code; block() }; return true }
+        when (code) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK ->
+                return used { if (e.repeatCount == 0) { if (vcr.playing && !vcr.stopped) yt.pause() else play(); vcr.show() } }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> return used { if (e.repeatCount == 0) { play(); vcr.show() } }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> return used { if (e.repeatCount == 0) { yt.pause(); vcr.show() } }
+            KeyEvent.KEYCODE_MEDIA_STOP -> return used { if (e.repeatCount == 0) { yt.pause(); vcr.stopped = true; vcr.show("play") } }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> return used { seekBy(-10_000); vcr.flash("◀◀ REW") }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> return used { seekBy(10_000); vcr.flash("FF ▶▶") }
+            KeyEvent.KEYCODE_BACK -> {
+                // Back closes a menu, then tucks the deck away, then leaves.
+                if (vcr.menu != null) return used { if (e.repeatCount == 0) { vcr.menu = null; vcr.touched++ } }
+                if (vcr.visible && !vcr.ended) return used { if (e.repeatCount == 0) vcr.visible = false }
+            }
+        }
+        if (!vcr.visible) {
+            val dpad = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_DPAD_UP ||
+                code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
+            if (dpad) return used {
+                when (code) {
+                    // Left/Right while watching jump back/ahead 10 seconds, with the tape bar showing where you are
+                    KeyEvent.KEYCODE_DPAD_LEFT -> { seekBy(-10_000); vcr.show("bar") }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> { seekBy(10_000); vcr.show("bar") }
+                    else -> if (e.repeatCount == 0) vcr.show(if (vcr.playing && !vcr.stopped) "pause" else "play")
+                }
+            }
+        } else vcr.touched++
+        return super.dispatchKeyEvent(e)
     }
 
     override fun onPause() { super.onPause(); yt.pause() }
-    override fun onDestroy() { super.onDestroy(); main.removeCallbacksAndMessages(null); yt.release() }
+    override fun onDestroy() { super.onDestroy(); yt.release() }
 
     companion object {
         fun intent(ctx: Context, title: String, keys: List<String>, index: Int, atSec: Float): Intent =
