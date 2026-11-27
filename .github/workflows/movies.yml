@@ -45,7 +45,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run tests
-        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items
+        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items tests.test_unsure_kinds
 
       - name: What the bot found and read before
         run: |

@@ -34,6 +34,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import not_movies  # noqa: E402
+import unsure_kinds  # noqa: E402
 
 MIN_SECONDS = 40 * 60
 DROP_CATEGORIES = {"tv_recording", "vhs_opening_or_previews", "other_media_release"}
@@ -331,6 +332,11 @@ def tv_feed(feed: dict[str, Any]) -> dict[str, Any]:
     return {"generated_at": feed.get("generated_at"), "titles": titles}
 
 
+def _foreign_name(name: str) -> str | None:
+    import auto_sort  # noqa: E402
+    return auto_sort.foreign_reason(name)
+
+
 def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_path: Path | None,
            pages_read: int | None) -> dict[str, Any]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -390,6 +396,27 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
             else:
                 sure_files.add(r["file_id"])
             out_rows.append(r)
+    # Kids' TV / series tapes, home videos, instructional and foreign-language
+    # tapes stay only when the bot is sure about them; the rest are left out.
+    for rid in sorted(keep_recs - adult_recs):
+        group = rows_by_rec[rid]
+        if any(r["file_id"] in sure_files for r in group):
+            continue
+        title = titles.get(group[0].get("title_suggestion_id")) or {}
+        # A page title only counts when the page is about this one video.
+        page_titles = [(pages.get(p) or {}).get("archive_title") for p in rec_pages.get(rid, set())
+                       if 0 < ((pages.get(p) or {}).get("video_file_count") or 0) <= 2]
+        cand, conf = best_candidate(title)
+        mins = max((r.get("duration_seconds") or 0) for r in group) / 60
+        rt = cand.get("runtime") or 0
+        feature = (conf in {"sure", "likely"} and cand.get("media_type") == "movie" and rt >= 70
+                   and abs(mins - rt) <= 0.25 * rt)
+        why = unsure_kinds.reason(title.get("display_title"), *page_titles, foreign_check=_foreign_name,
+                                  file_names=[r.get("name") for r in group], feature_film=feature)
+        if why:
+            keep_recs.discard(rid)
+            dropped[why + " (not bot sure)"] += 1
+    out_rows = [r for r in out_rows if r["recording_id"] in keep_recs]
     out_rows.sort(key=lambda r: (r.get("title") or "").casefold())
 
     trimmed = trim_model(model, keep_recs)
