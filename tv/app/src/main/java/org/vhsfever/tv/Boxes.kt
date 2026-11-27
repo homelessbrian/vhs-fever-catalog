@@ -308,7 +308,7 @@ fun Box3D(t: Title, angle: Float, tapeText: String, dvd: Boolean, modifier: Modi
 fun miniSpineWidth(t: Title) = if (isDvd(t)) 30 else 48
 const val MINI_SPINE_HEIGHT = 156
 
-/** The little upright spine used in "Also in the store" (DVDs thinner, like the real thing). */
+/** The little upright spine used in "Similar movies" (DVDs thinner, like the real thing). */
 @Composable
 fun MiniSpine(t: Title, modifier: Modifier = Modifier) {
     val c = colorsOf(t)

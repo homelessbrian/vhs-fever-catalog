@@ -74,11 +74,8 @@ fun DetailScreen(
     LaunchedEffect(t.key) { runCatching { play.requestFocus() } }
     BackHandler { if (chooser) chooser = false else onBack() }
 
-    val related = remember(t.key, catalog) {
-        // a random handful from the same shelf (not always the first six A to Z), topped up from elsewhere if it's small
-        val same = catalog.titles.filter { it.key != t.key && it.section == t.section }.shuffled()
-        (same + catalog.titles.filter { it.key != t.key && it.section != t.section }.shuffled()).take(6)
-    }
+    // the movies most like this one (same series, TMDB pairings, director, stars, themes), topped up from its shelf
+    val related = remember(t.key, catalog) { Similar.pick(t, catalog.titles) }
 
     Box(Modifier.fillMaxSize().background(Ink.Navy)) {
         Image(painterResource(R.drawable.store_blur), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -97,7 +94,7 @@ fun DetailScreen(
                 letterSpacing = 1f.fs, color = Ink.Gold, shadow = Shadow(Ink.BadgeShadow, Offset(2f, 2f), 0f)))
         }
 
-        // left: the box on its shelf, the view buttons, and a few other spines
+        // left: the box on its shelf, the view buttons, and spines of similar movies
         Column(Modifier.offset(40.px, 84.px).width(352.px)) {
             Box(Modifier.size(352.px, 376.px), contentAlignment = Alignment.Center) {
                 Box(Modifier.align(Alignment.BottomCenter).size(380.px, 100.px).drawBehind {
@@ -126,7 +123,7 @@ fun DetailScreen(
                     StoreButton(label, Modifier, Color.White.alpha(0.45f), Ink.RailText, { angle = a }, size = 17, chosen = angle == a)
                 }
             }
-            Text("ALSO IN THE STORE", modifier = Modifier.padding(top = 12.px),
+            Text("SIMILAR MOVIES", modifier = Modifier.padding(top = 12.px),
                 style = TextStyle(fontFamily = Type.Mono, fontSize = 12.fs, letterSpacing = 1.7f.fs, color = Ink.Soft))
             Row(Modifier.padding(top = 8.px), horizontalArrangement = Arrangement.spacedBy(12.px)) {
                 for (r in related) {

@@ -33,12 +33,21 @@ data class Art(
     val imdbId: String? = null,
     val collection: Int? = null,       // TMDB collection (a movie and its sequels), so the series' boxes match
     val collectionChecked: Boolean = true,  // false for art saved before collections were looked up
+    // for "Similar movies": the movie's own TMDB id, more of its cast, its theme tags, and what TMDB pairs it with
+    val id: Int? = null,
+    val people: List<String> = emptyList(),
+    val keywords: List<Int> = emptyList(),
+    val recs: List<Int> = emptyList(),      // TMDB "people also liked", best first
+    val similar: List<Int> = emptyList(),   // TMDB "similar", best first
+    val matchChecked: Boolean = true,       // false for art saved before the similar-movie info was looked up
 ) {
     fun toJson(): JSONObject = JSONObject().put("poster", poster).put("backdrop", backdrop).put("overview", overview)
         .put("year", year).put("genres", JSONArray(genres)).put("tagline", tagline).put("cast", JSONArray(cast))
         .put("director", director).put("rating", rating).put("runtime", runtime).put("studio", studio)
         .put("studioLogo", studioLogo).put("titleLogo", titleLogo).put("stills", JSONArray(stills)).put("imdbId", imdbId)
         .put("collection", collection ?: 0)
+        .put("id", id ?: 0).put("people", JSONArray(people)).put("keywords", JSONArray(keywords))
+        .put("recs", JSONArray(recs)).put("similar", JSONArray(similar))
 
     companion object {
         fun fromJson(o: JSONObject) = Art(
@@ -47,6 +56,9 @@ data class Art(
             o.optInt("runtime").takeIf { it > 0 }, o.s("studio"), o.s("studioLogo"), o.s("titleLogo"),
             o.optJSONArray("stills").list(), o.s("imdbId"),
             collection = o.optInt("collection").takeIf { it > 0 }, collectionChecked = o.has("collection"),
+            id = o.optInt("id").takeIf { it > 0 }, people = o.optJSONArray("people").list(),
+            keywords = o.optJSONArray("keywords").ints(), recs = o.optJSONArray("recs").ints(),
+            similar = o.optJSONArray("similar").ints(), matchChecked = o.has("recs"),
         )
     }
 }
@@ -75,8 +87,8 @@ class ArtRepo(ctx: Context) {
      */
     suspend fun loadAll(titles: List<Title>, onArt: (String, Art) -> Unit) = withContext(Dispatchers.IO) {
         if (!available) return@withContext
-        // art saved before collections were looked up is fetched again (the old art shows meanwhile)
-        val todo = titles.filter { cached(it).let { a -> a == null || !a.collectionChecked } }
+        // art saved before collections or similar-movie info were looked up is fetched again (the old art shows meanwhile)
+        val todo = titles.filter { cached(it).let { a -> a == null || !a.collectionChecked || !a.matchChecked } }
         if (todo.isEmpty()) return@withContext
         val gate = Semaphore(4)
         var sinceSave = 0
@@ -99,8 +111,8 @@ class ArtRepo(ctx: Context) {
             names.firstNotNullOfOrNull { search(it, t.searchYear) } ?: return Art(null, null, null, null)
         }
         // One call brings everything: details, logos and stills, cast and crew, ratings.
-        val extra = if (type == "tv") "images,aggregate_credits,content_ratings,external_ids"
-            else "images,credits,release_dates"
+        val extra = if (type == "tv") "images,aggregate_credits,content_ratings,external_ids,keywords,recommendations,similar"
+            else "images,credits,release_dates,keywords,recommendations,similar"
         val o = JSONObject(get("$API/$type/$id?append_to_response=$extra&include_image_language=en,null"))
         val images = o.optJSONObject("images")
         val credits = o.optJSONObject("credits") ?: o.optJSONObject("aggregate_credits")
@@ -128,6 +140,13 @@ class ArtRepo(ctx: Context) {
                 .take(4).mapNotNull { it.s("file_path")?.let { p -> "$IMG/w780$p" } },
             imdbId = o.s("imdb_id") ?: o.optJSONObject("external_ids")?.s("imdb_id"),
             collection = o.optJSONObject("belongs_to_collection")?.optInt("id")?.takeIf { it > 0 },
+            id = id,
+            people = credits?.optJSONArray("cast").objs().take(8).mapNotNull { it.s("name") },
+            // movies keep their tags under "keywords", TV under "results"
+            keywords = o.optJSONObject("keywords")?.let { k -> k.optJSONArray("keywords") ?: k.optJSONArray("results") }
+                .objs().mapNotNull { it.optInt("id").takeIf { n -> n > 0 } },
+            recs = o.optJSONObject("recommendations")?.optJSONArray("results").objs().mapNotNull { it.optInt("id").takeIf { n -> n > 0 } },
+            similar = o.optJSONObject("similar")?.optJSONArray("results").objs().mapNotNull { it.optInt("id").takeIf { n -> n > 0 } },
         )
     }
 
@@ -193,4 +212,5 @@ private fun JSONObject.s(k: String): String? =
     if (isNull(k)) null else optString(k).takeIf { it.isNotBlank() && it != "null" }
 
 private fun JSONArray?.objs(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
+private fun JSONArray?.ints(): List<Int> = if (this == null) emptyList() else (0 until length()).map { optInt(it) }.filter { it > 0 }
 private fun JSONArray?.list(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { optString(it).takeIf { s -> s.isNotBlank() } }
