@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -74,18 +75,21 @@ private val PaperInk = Color(0xFF121114)
 private class Sleeve(val t: Title, val c: BoxColors, val s: Float) {
     val art = t.art
     val year = yearText(t)
+    /** Year and running time; [short] is the year alone, for bands that also print HI-FI. */
     val info = listOfNotNull(year.takeIf { it.isNotBlank() }, art?.runtime?.let { "$it MIN" }).joinToString(" · ")
+    val short = year
     val rating = art?.rating?.takeIf { it.isNotBlank() }
     val studio = (art?.studio ?: "HOME VIDEO").uppercase()
     fun mono(color: Color = Cream, size: Float = 5.6f) = TextStyle(fontFamily = Type.Mono, fontSize = (size * s).fs,
-        lineHeight = (size * s).fs, letterSpacing = (0.5f * s).fs, color = color, lineHeightStyle = Tight)
+        lineHeight = (size * s).fs, letterSpacing = (0.5f * s).fs, color = color, lineHeightStyle = Tight, platformStyle = NoPadding)
     fun bold(color: Color = Cream, size: Float = 6f, family: FontFamily = Type.Oswald, spacing: Float = 0.5f) =
         TextStyle(fontFamily = family, fontWeight = FontWeight.Bold, fontSize = (size * s).fs, lineHeight = (size * s).fs,
-            letterSpacing = (spacing * s).fs, color = color, lineHeightStyle = Tight)
+            letterSpacing = (spacing * s).fs, color = color, lineHeightStyle = Tight, platformStyle = NoPadding)
 }
 
 /** Text boxes only as tall as the letters, so they sit inside the thin bands. */
 private val Tight = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)
+private val NoPadding = PlatformTextStyle(includeFontPadding = false)
 
 /** Cream on dark colours, near-black on light ones. */
 private fun inkOn(bg: Color) = if (bg.luminance() > 0.55f) PaperInk else Cream
@@ -142,14 +146,14 @@ private fun ColumnScope.Band(k: Sleeve, share: Float, modifier: Modifier = Modif
 
 @Composable
 private fun VhsTag(k: Sleeve, bg: Color = Cream, fg: Color = PaperInk) {
-    Text("VHS", style = k.bold(fg), modifier = Modifier.background(bg).padding(horizontal = (2.5f * k.s).px, vertical = (0.8f * k.s).px))
+    Text("VHS", style = k.bold(fg), modifier = Modifier.background(bg).padding(horizontal = (2.5f * k.s).px, vertical = (0.5f * k.s).px))
 }
 
 @Composable
 private fun RatingBox(k: Sleeve, color: Color = Cream) {
     k.rating?.let {
         Text(it, style = k.bold(color, 5.6f), maxLines = 1,
-            modifier = Modifier.border((0.7f * k.s).px, color).padding(horizontal = (2f * k.s).px, vertical = (0.8f * k.s).px))
+            modifier = Modifier.border((0.7f * k.s).px, color).padding(horizontal = (2f * k.s).px, vertical = (0.5f * k.s).px))
     }
 }
 
@@ -192,7 +196,7 @@ private fun Classic(k: Sleeve) = Column(Modifier.fillMaxSize()) {
     Poster(k)
     Box(Modifier.fillMaxWidth().height((1.5f * k.s).px).background(k.c.c3))
     Band(k, 0.64f, Modifier.background(k.c.c1)) {
-        RatingBox(k); Info(k); Text("HI-FI", style = k.mono(k.c.c3))
+        RatingBox(k); Info(k, text = k.short); Text("HI-FI", style = k.mono(k.c.c3))
     }
 }
 
@@ -208,7 +212,7 @@ private fun StudioHeader(k: Sleeve) = Column(Modifier.fillMaxSize().background(C
     Poster(k)
     Box(Modifier.fillMaxWidth().height((1f * k.s).px).background(k.c.c1))
     Band(k, 0.66f) {
-        RatingBox(k); Info(k)
+        RatingBox(k); Info(k, text = k.short)
         Text("HI-FI", style = k.bold(Cream, 5.2f), modifier = Modifier.background(k.c.c1).padding(horizontal = (2 * k.s).px, vertical = (0.7f * k.s).px))
     }
 }
@@ -230,7 +234,7 @@ private fun ColorFade(k: Sleeve) {
                 .background(Brush.verticalGradient(listOf(Color.Transparent, bottom))))
         }
         Band(k, 0.64f) {
-            RatingBox(k, inkOn(bottom)); Info(k, inkOn(bottom))
+            RatingBox(k, inkOn(bottom)); Info(k, inkOn(bottom), k.short)
             Text("HI-FI", style = k.mono(inkOn(bottom)))
         }
     }
@@ -241,11 +245,11 @@ private fun ColorFade(k: Sleeve) {
 private fun Spectrum(k: Sleeve) {
     val stripes = listOf(k.c.c1, lerp(k.c.c1, k.c.c3, 0.5f), k.c.c3)
     Column(Modifier.fillMaxSize().background(Color(0xFF0D0C0E))) {
-        Band(k, 0.27f, arrange = Arrangement.SpaceBetween) { VhsTag(k); Studio(k, Cream) }
+        Band(k, 0.34f, arrange = Arrangement.SpaceBetween) { VhsTag(k); Studio(k, Cream) }
         Stripes(k, stripes)
         Poster(k)
         Stripes(k, stripes.reversed())
-        Band(k, 0.5f) { RatingBox(k); Info(k); Text("HI-FI", style = k.mono(k.c.c3)) }
+        Band(k, 0.5f) { RatingBox(k); Info(k, text = k.short); Text("HI-FI", style = k.mono(k.c.c3)) }
     }
 }
 
@@ -262,7 +266,7 @@ private fun Framed(k: Sleeve) = Column(Modifier.fillMaxSize().background(k.c.c2)
     }
     Band(k, 0.66f, arrange = Arrangement.SpaceBetween) {
         Studio(k, Cream, k.bold(Cream, 5.4f, spacing = 0.8f).copy(fontWeight = FontWeight.Medium))
-        Text(listOfNotNull(k.art?.runtime?.let { "$it MIN" }, "HI-FI").joinToString(" · "), style = k.mono(), maxLines = 1,
+        Text(k.art?.runtime?.let { "$it MIN" } ?: "HI-FI", style = k.mono(), maxLines = 1,
             modifier = Modifier.padding(start = (3 * k.s).px))
     }
 }
@@ -288,7 +292,7 @@ private fun CornerSash(k: Sleeve) = Column(Modifier.fillMaxSize().background(k.c
         }
     }
     Box(Modifier.fillMaxWidth().height((0.7f * k.s).px).background(k.c.c3))
-    Band(k, 0.7f) { RatingBox(k); Info(k); Text("HI-FI", style = k.mono(k.c.c3)) }
+    Band(k, 0.7f) { RatingBox(k); Info(k, text = k.short); Text("HI-FI", style = k.mono(k.c.c3)) }
 }
 
 /** 8 · Glowing purple grid bands, late-80s sci-fi and music video. */
@@ -363,7 +367,7 @@ private fun WhiteLabel(k: Sleeve) = Column(Modifier.fillMaxSize().background(Pap
     Band(k, 0.36f, arrange = Arrangement.SpaceBetween) { VhsTag(k, bg = PaperInk, fg = Paper); Studio(k, PaperInk) }
     Poster(k)
     Box(Modifier.fillMaxWidth().height((1.2f * k.s).px).background(k.c.c1))
-    Band(k, 0.64f) { RatingBox(k, PaperInk); Info(k, PaperInk); Text("HI-FI", style = k.mono(k.c.c1)) }
+    Band(k, 0.64f) { RatingBox(k, PaperInk); Info(k, PaperInk, k.short); Text("HI-FI", style = k.mono(k.c.c1)) }
 }
 
 /** 12 · Poster-colour bands with a printed dot texture, like cheap 80s print runs. */
@@ -424,6 +428,6 @@ private fun DiagonalSplit(k: Sleeve) {
             Studio(k, Cream, k.bold(Cream, 5.6f, spacing = 0.8f))
         }
         Poster(k)
-        Band(k, 0.64f, Modifier.split(k.c.c2, k.c.c1, 0.54f)) { RatingBox(k); Info(k); Text("HI-FI", style = k.mono()) }
+        Band(k, 0.64f, Modifier.split(k.c.c2, k.c.c1, 0.54f)) { RatingBox(k); Info(k, text = k.short); Text("HI-FI", style = k.mono()) }
     }
 }
