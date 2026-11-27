@@ -302,14 +302,6 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
         /** index.json boxes → candidate ids ("covers/uk7" → "vt:uk7", "ia-ab12" → "ia:ab12"). */
         fun parseOnTv(text: String): Map<String, String> = parseTvBoxes(text).mapValues { it.value.second.id }
 
-        @Suppress("unused")
-        private fun parseOnTvOld(text: String): Map<String, String> {
-            val o = JSONObject(text).optJSONObject("boxes") ?: return emptyMap()
-            return o.keys().asSequence().mapNotNull { k ->
-                val s = o.optJSONObject(k)?.optStringOrNull("sleeve") ?: return@mapNotNull null
-                k to (if (s.startsWith("ia-")) "ia:" + s.removePrefix("ia-") else "vt:$s")
-            }.toMap()
-        }
 
         private fun JSONArray?.strings(): List<String> =
             if (this == null) emptyList() else (0 until length()).map { optString(it) }.filter { it.isNotBlank() }
