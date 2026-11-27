@@ -17,6 +17,10 @@ class Holiday(
     val date: (Int) -> LocalDate,
     val tags: Set<String>,
     val words: Regex,
+    /** The first day the display is up, for a holiday that doesn't go up the usual 3 weeks before. */
+    val opens: ((Int) -> LocalDate)? = null,
+    /** How many days after the holiday the display stays up. */
+    val after: Long = Holidays.AFTER,
 )
 
 object Holidays {
@@ -46,9 +50,10 @@ object Holidays {
         Holiday("Halloween", { y -> LocalDate.of(y, 10, 31) },
             setOf("halloween", "trick or treating", "jack-o'-lantern", "halloween party", "halloween costume"),
             words("halloween", "trick[- ]or[- ]treat\\w*", "jack-o'?-lanterns?")),
-        Holiday("Thanksgiving", { y -> LocalDate.of(y, 11, 1).with(TemporalAdjusters.dayOfWeekInMonth(4, DayOfWeek.THURSDAY)) },
+        // Like a real store, Thanksgiving comes down the next morning and Christmas goes straight up.
+        Holiday("Thanksgiving", ::thanksgiving,
             setOf("thanksgiving", "thanksgiving dinner", "thanksgiving day"),
-            words("thanksgiving")),
+            words("thanksgiving"), after = 0),
         Holiday("Christmas", { y -> LocalDate.of(y, 12, 25) },
             setOf("christmas", "christmas eve", "christmas party", "christmas tree", "santa claus", "christmas carol",
                 "christmas gift", "christmas spirit", "christmas holiday", "scrooge", "grinch",
@@ -56,7 +61,11 @@ object Holidays {
             // plain "Santa" would catch Santa Fe and Santa Monica
             words("christmas", "x-?mas", "santa claus", "santa'?s", "the santa clause", "scrooge", "grinch", "yuletide",
                 "rudolph the red-nosed")),
+            opens = { y -> thanksgiving(y).plusDays(1) }),
     )
+
+    /** Thanksgiving: the fourth Thursday of November. */
+    fun thanksgiving(y: Int): LocalDate = LocalDate.of(y, 11, 1).with(TemporalAdjusters.dayOfWeekInMonth(4, DayOfWeek.THURSDAY))
 
     /** Easter Sunday (the Western church's reckoning). */
     fun easter(y: Int): LocalDate {
@@ -79,7 +88,8 @@ object Holidays {
     fun active(today: LocalDate): List<Holiday> = ALL.mapNotNull { h ->
         val d = nearest(h, today)
         val until = ChronoUnit.DAYS.between(today, d)  // days to go; negative once it's passed
-        if (until in -AFTER..BEFORE) h to (if (until >= 0) until * 2 else -until * 2 + 1) else null
+        val first = h.opens?.invoke(d.year) ?: d.minusDays(BEFORE)
+        if (!today.isBefore(first) && until >= -h.after) h to (if (until >= 0) until * 2 else -until * 2 + 1) else null
     }.sortedBy { it.second }.map { it.first }
 
     /** Whether [t] is about [h]: TMDB tags it so, or the holiday is named in its title or summary. */

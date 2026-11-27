@@ -117,6 +117,8 @@ data class FileDecision(
     val robot: String? = null,
     /** Brian chose this copy to play first on the TV. */
     val playFirst: Boolean = false,
+    /** Brian put this movie on the Manager's Picks shelf. */
+    val managerPick: Boolean = false,
     val extra: JSONObject? = null,
 ) {
     fun toJson(): JSONObject {
@@ -125,10 +127,11 @@ data class FileDecision(
             .put("other_reason", otherReason).put("notes", notes)
             .put("movie", movie?.toJson()).put("release", release?.toJson()).put("updated_at", updatedAt)
             .put("robot", robot).apply { if (playFirst) put("play_first", true) else remove("play_first") }
+            .apply { if (managerPick) put("manager_pick", true) else remove("manager_pick") }
     }
 
     companion object {
-        private val OWN = setOf("status", "reasons", "other_reason", "notes", "movie", "release", "updated_at", "robot", "play_first")
+        private val OWN = setOf("status", "reasons", "other_reason", "notes", "movie", "release", "updated_at", "robot", "play_first", "manager_pick")
 
         fun fromJson(o: JSONObject): FileDecision {
             val extra = JSONObject()
@@ -137,7 +140,7 @@ data class FileDecision(
                 o.optStringOrNull("status"), o.optJSONArray("reasons").strings(), o.optString("other_reason", ""),
                 o.optString("notes", ""), Movie.fromJson(o.optJSONObject("movie")),
                 ReleaseInfo.fromJson(o.optJSONObject("release")), o.optString("updated_at", ""),
-                o.optStringOrNull("robot"), o.optBoolean("play_first"), extra.takeIf { it.length() > 0 })
+                o.optStringOrNull("robot"), o.optBoolean("play_first"), o.optBoolean("manager_pick"), extra.takeIf { it.length() > 0 })
         }
     }
 }

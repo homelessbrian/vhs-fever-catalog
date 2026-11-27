@@ -388,8 +388,34 @@ class AppModel(private val ctx: Context) {
         }
     }
 
+    /** Whether this file's movie is on the Manager's Picks shelf (any copy of it counts). */
+    fun isManagerPick(f: FileItem): Boolean {
+        if (decisions[f.id]?.managerPick == true) return true
+        val movie = movieFor(f).first?.tmdbId ?: return false
+        return files.any { it.id != f.id && decisions[it.id]?.managerPick == true && movieFor(it).first?.tmdbId == movie }
+    }
+
+    /**
+     * Put this movie on the Manager's Picks shelf (or take it off). Putting it there marks this copy
+     * good, since it has to be on the shelf; taking it off clears every copy of the movie.
+     */
+    fun toggleManagerPick(f: FileItem) {
+        val on = !isManagerPick(f)
+        if (!on) {
+            val movie = movieFor(f).first?.tmdbId
+            files.filter { it.id != f.id && decisions[it.id]?.managerPick == true }
+                .filter { o -> if (movie != null) movieFor(o).first?.tmdbId == movie else o.titleId == f.titleId }
+                .forEach { o -> update(o.id) { it.copy(managerPick = false) } }
+        }
+        val shown = shownMovieToSave(f)
+        update(f.id, if (on) "Manager's pick" else "Not a pick") {
+            if (on) it.copy(managerPick = true, status = "good", reasons = emptyList(), otherReason = "", movie = it.movie ?: shown)
+            else it.copy(managerPick = false)
+        }
+    }
+
     fun markBad(f: FileItem, reasons: List<String>, other: String, notes: String) {
-        update(f.id, "Marked bad") { it.copy(status = "bad", reasons = reasons, otherReason = other, notes = notes, playFirst = false) }
+        update(f.id, "Marked bad") { it.copy(status = "bad", reasons = reasons, otherReason = other, notes = notes, playFirst = false, managerPick = false) }
     }
 
     /** Copies are hidden unless their sound/picture check differs from the original's. */

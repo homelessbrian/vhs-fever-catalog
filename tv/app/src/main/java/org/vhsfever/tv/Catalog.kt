@@ -55,6 +55,7 @@ data class Title(
     val colors: BoxColors? = null,   // colours picked from the poster
     val posterFrom: String = "TMDB", // where the poster came from: "btttr.cc" first, TMDB as backup
     val kidsLook: Boolean = false,   // made-up box uses the kids' looks (see withKidsLooks)
+    val managerPick: Boolean = false, // Brian hand-picked it in the review app for Manager's Picks
 ) {
     /** The one store section this tape sits in (like a real rental store, never two). */
     val section: String by lazy { storeSection(genres, year) }
@@ -86,10 +87,24 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
             listOfNotNull(bySection[OTHER]?.let { OTHER to it })
     }
 
-    /** The tapes on a genre shelf, or on a holiday display when [name] is a holiday. */
-    fun shelfTitles(name: String): List<Title> =
-        Holidays.ALL.firstOrNull { it.name == name }?.let { h -> titles.filter { Holidays.matches(it, h) } }
+    /** Brian's hand-picked tapes (marked in the review app). A pick still sits on its own genre shelf too. */
+    val managerPicks: List<Title> by lazy { titles.filter { it.managerPick } }
+
+    /** Cult favourites, going by TMDB's tags. Like the holiday racks, it's a display: the tape keeps its genre shelf. */
+    val cultClassics: List<Title> by lazy { titles.filter { isCultClassic(it) } }
+
+    /** The tapes on a genre shelf, or on a display (holiday, Manager's Picks, Cult Classics) when [name] is one. */
+    fun shelfTitles(name: String): List<Title> = when (name) {
+        MANAGERS_PICKS -> managerPicks
+        CULT_CLASSICS -> cultClassics
+        else -> Holidays.ALL.firstOrNull { it.name == name }?.let { h -> titles.filter { Holidays.matches(it, h) } }
             ?: titles.filter { it.section == name }
+    }
+
+    /** The displays at the front of the store right now: holidays first, then Manager's Picks and Cult Classics. */
+    fun displays(today: java.time.LocalDate = java.time.LocalDate.now()): List<Pair<String, List<Title>>> =
+        holidayShelves(today).map { it.first.name to it.second } +
+            listOf(MANAGERS_PICKS to managerPicks, CULT_CLASSICS to cultClassics).filter { it.second.isNotEmpty() }
 
     /** The holiday displays up right now (about 3 weeks before each holiday to a week after), nearest first. */
     fun holidayShelves(today: java.time.LocalDate = java.time.LocalDate.now()): List<Pair<Holiday, List<Title>>> =
@@ -97,6 +112,13 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
 
     companion object {
         const val OTHER = "Other"
+        const val MANAGERS_PICKS = "Manager's Picks"
+        const val CULT_CLASSICS = "Cult Classics"
+
+        /** TMDB tags that mean a movie has a cult following. */
+        val CULT_TAGS = setOf("cult film", "cult classic", "cult favorite", "midnight movie")
+
+        fun isCultClassic(t: Title): Boolean = !t.adult && t.art?.tags.orEmpty().any { it.lowercase() in CULT_TAGS }
 
         /** Everything on the shelves is a VHS movie now. */
         const val SHELF = "VHS Movies"
@@ -115,10 +137,12 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
             val good = HashMap<String, JSONObject>()
             val bad = HashSet<String>()
             val pinned = HashMap<String, String>()   // file -> when Brian chose it to play first
+            val picks = HashSet<String>()             // files of movies Brian put on Manager's Picks
             for (k in decisions.keys()) {
                 val d = decisions.optJSONObject(k) ?: continue
                 when (d.optString("status")) { "good" -> good[k] = d; "bad" -> bad += k }
                 if (d.optBoolean("play_first")) pinned[k] = d.optString("updated_at")
+                if (d.optBoolean("manager_pick")) picks += k
             }
             val found = mutableListOf<Triple<String, Tape, Meta>>()
             val seen = HashSet<String>()
@@ -248,6 +272,7 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                     // Tape years are release years of the tape, not the film, so they are not used here.
                     searchYear = searchQuery(metas.firstNotNullOfOrNull { it.feedName } ?: best.name).second,
                     adult = metas.any { it.adult },
+                    managerPick = list.any { it.first.fileId in picks },
                 )
             }.sortedBy { sortKey(it.name) }
             return Catalog(titles.filter { !it.adult }, titles.filter { it.adult })

@@ -367,11 +367,12 @@ private fun HeroInfo(t: Title?, label: String?) {
 @Composable
 private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -> Unit, onSection: (Section) -> Unit) {
     val first = remember { FocusRequester() }
-    val holidays = remember(catalog) { catalog.holidayShelves() }
-    val rows = remember(catalog, holidays) {
+    val displays = remember(catalog) { catalog.displays() }
+    val rows = remember(catalog, displays) {
         buildList {
             // holiday displays go at the front of the store while they're up
-            for ((h, list) in holidays) add(h.name to list)
+            // holiday racks, Manager's Picks and Cult Classics go at the front of the store
+            for (d in displays) add(d)
             add("New Arrivals" to catalog.newArrivals.take(16))
             // Every genre gets its own shelf, biggest first.
             for ((g, list) in catalog.genreShelves) add(g to list)
@@ -393,7 +394,7 @@ private fun HomeContent(catalog: Catalog, restoreKey: String?, onOpen: (Title) -
     val listState = rememberLazyListState()
     LaunchedEffect(focusRow) { if (focusRow >= 0) runCatching { listState.animateScrollToItem(focusRow) } }
     val rowsTop by animateDpAsState(if (collapsed) 352.px else 452.px, label = "rowsTop")
-    val genres = holidays.map { it.first.name } + catalog.genreShelves.map { it.first }.take(8)
+    val genres = displays.map { it.first } + catalog.genreShelves.map { it.first }.take(8)
 
     Box(Modifier.fillMaxSize()) {
         HeroPhotoOf(hero)
@@ -548,7 +549,7 @@ private fun GenresContent(catalog: Catalog, onSection: (Section) -> Unit) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     Column(Modifier.fillMaxSize()) {
-        val shelves = remember(catalog) { catalog.holidayShelves().map { it.first.name to it.second } + catalog.genreShelves }
+        val shelves = remember(catalog) { catalog.displays() + catalog.genreShelves }
         SectionHeader("Genres", "Pick a shelf · ${shelves.size}")
         if (catalog.genreShelves.isEmpty()) Text("Genres show up once the TMDB info has loaded.", modifier = Modifier.padding(start = 252.px),
             style = TextStyle(fontFamily = Type.Barlow, fontSize = 22.fs, color = Ink.Body))

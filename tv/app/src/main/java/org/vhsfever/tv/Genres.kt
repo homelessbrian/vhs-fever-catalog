@@ -1,5 +1,6 @@
 package org.vhsfever.tv
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +17,8 @@ import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -108,9 +111,47 @@ private val TWO_LINES = mapOf(
     "Valentine's Day" to "Valentine's\nDay", "St. Patrick's Day" to "St. Patrick's\nDay",
 )
 
-/** The painted genre sign on a tile (the tile's frame and focus ring are drawn by the caller). */
+/** Brian's printed shelf cards, one per genre and display. */
+fun genreCard(name: String): Int? = when (name) {
+    "Action" -> R.drawable.genre_action
+    "Adventure" -> R.drawable.genre_adventure
+    "Animation" -> R.drawable.genre_animation
+    "Comedy" -> R.drawable.genre_comedy
+    "Drama" -> R.drawable.genre_drama
+    "Romance" -> R.drawable.genre_romance
+    "Thriller" -> R.drawable.genre_thriller
+    "Horror" -> R.drawable.genre_horror
+    "Science Fiction", "Sci-Fi" -> R.drawable.genre_scifi
+    "Fantasy" -> R.drawable.genre_fantasy
+    "Mystery" -> R.drawable.genre_mystery
+    "Crime" -> R.drawable.genre_crime
+    "Family" -> R.drawable.genre_family
+    "Western" -> R.drawable.genre_western
+    "War" -> R.drawable.genre_war
+    "Music & Musicals", "Music" -> R.drawable.genre_music
+    "Documentary" -> R.drawable.genre_documentary
+    "Classics" -> R.drawable.genre_classics
+    "Other" -> R.drawable.genre_other
+    "Manager's Picks" -> R.drawable.genre_managers_picks
+    "Cult Classics" -> R.drawable.genre_cult_classics
+    "New Year's" -> R.drawable.genre_new_years
+    "Valentine's Day" -> R.drawable.genre_valentines
+    "St. Patrick's Day" -> R.drawable.genre_st_patricks
+    "Easter" -> R.drawable.genre_easter
+    "4th of July" -> R.drawable.genre_fourth_of_july
+    "Halloween" -> R.drawable.genre_halloween
+    "Thanksgiving" -> R.drawable.genre_thanksgiving
+    "Christmas" -> R.drawable.genre_christmas
+    else -> null
+}
+
+/** The genre sign on a tile: Brian's printed card, or a painted sign for anything without one (the tile's frame and focus ring are drawn by the caller). */
 @Composable
 fun GenreArt(name: String, scale: Float = 1f) {
+    genreCard(name)?.let { res ->
+        Image(painterResource(res), contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        return
+    }
     val g = genreLook(name)
     Box(Modifier.fillMaxSize().drawBehind { drawRect(g.bg(size.width, size.height)) }, contentAlignment = Alignment.Center) {
         val shown = TWO_LINES[name] ?: name

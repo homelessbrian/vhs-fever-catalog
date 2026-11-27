@@ -233,7 +233,20 @@ private fun MovieCard(m: AppModel, f: FileItem, onFix: () -> Unit) {
             (movie?.overview ?: f.botMovie?.overview ?: f.guess?.overview)?.let {
                 Text(it, color = C.muted, fontSize = 12.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
             }
-            Text("Change movie ›", color = C.gold, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Change movie ›", color = C.gold, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                // Hand-picked for the Manager's Picks shelf on the TV
+                if (m.decisionFor(f)?.status != "bad") {
+                    val pick = m.isManagerPick(f)
+                    Text(if (pick) "♛ Manager's pick" else "♔ Manager's pick", color = if (pick) Color(0xFF0D2416) else C.gold,
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                            .background(if (pick) C.good else Color.Transparent)
+                            .border(1.dp, if (pick) C.good else C.gold, RoundedCornerShape(10.dp))
+                            .clickable { m.toggleManagerPick(f) }.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+            }
         }
     }
 }

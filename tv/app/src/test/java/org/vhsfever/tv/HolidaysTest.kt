@@ -29,16 +29,29 @@ class HolidaysTest {
         // a week after Halloween it's still up, and Thanksgiving's display (from Nov 5) is up too
         assertEquals(listOf("Halloween", "Thanksgiving"), names("2026-11-07"))
         assertEquals(listOf("Thanksgiving"), names("2026-11-08"))     // Halloween is down, Thanksgiving is up
-        // the day after Thanksgiving: Thanksgiving still up, Christmas not up until Dec 4
-        assertEquals(listOf("Thanksgiving"), names("2026-11-27"))
-        assertEquals(listOf("Thanksgiving"), names("2026-12-03"))
-        assertEquals(listOf("Christmas"), names("2026-12-04"))
+        // Thanksgiving itself is up; the next morning it comes down and Christmas goes straight up
+        assertEquals(listOf("Thanksgiving"), names("2026-11-26"))
+        assertEquals(listOf("Christmas"), names("2026-11-27"))
+        assertEquals(listOf("Christmas"), names("2026-12-03"))
+        assertEquals(listOf<String>(), names("2027-11-01"))
+        assertEquals(listOf("Christmas"), names("2027-11-26"))   // Thanksgiving 2027 is Nov 25
         // between Christmas and New Year's both are up; the nearer one leads
         assertEquals(listOf("Christmas", "New Year's"), names("2026-12-27"))
         assertEquals(listOf("New Year's", "Christmas"), names("2026-12-30"))
         assertEquals(listOf("New Year's"), names("2027-01-08"))
         assertEquals(listOf<String>(), names("2027-01-09"))
         assertEquals(listOf("4th of July"), names("2027-06-20"))
+    }
+
+    @Test fun managersPicksAndCultClassics() {
+        val c = Catalog(listOf(
+            title("A Christmas Story").copy(managerPick = true),
+            title("Repo Man", tags = listOf("Cult Film", "punk")),
+            title("Airplane!")))
+        assertEquals(listOf("A Christmas Story"), c.shelfTitles(Catalog.MANAGERS_PICKS).map { it.name })
+        assertEquals(listOf("Repo Man"), c.shelfTitles(Catalog.CULT_CLASSICS).map { it.name })
+        assertEquals(listOf("Christmas", Catalog.MANAGERS_PICKS, Catalog.CULT_CLASSICS), c.displays(d("2026-12-10")).map { it.first })
+        assertEquals(listOf<String>(), Catalog(listOf(title("Airplane!"))).displays(d("2026-12-10")).map { it.first })
     }
 
     @Test fun whatGoesOnTheDisplay() {
