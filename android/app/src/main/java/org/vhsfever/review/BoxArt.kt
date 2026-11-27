@@ -24,8 +24,14 @@ data class ArtCandidate(
     val label: String,       // "videotapes.io · US · Paramount" or the Archive item's title
     val link: String?,       // where to see it on the web
     val hasBack: Boolean,
+    val item: String? = null,
+    val itemTitle: String? = null,
 ) {
-    val sourceName get() = when (source) { "vt" -> "videotapes.io"; "page" -> "This tape's page"; else -> "Archive" }
+    /** What's saved with a pick Brian found himself, so the box job can use it. */
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("source", source).put("url", url).put("thumb", thumb)
+        .put("kind", kind).put("item", item).put("item_title", itemTitle)
+
+    val sourceName get() = when (source) { "vt" -> "videotapes.io"; "page" -> "This tape's page"; "manual" -> "Your search"; else -> "Archive" }
 }
 
 data class ArtTitle(
@@ -34,6 +40,52 @@ data class ArtTitle(
 )
 
 enum class ArtFilter(val label: String) { REVIEW("Needs a look"), BOT("Bot picked"), MINE("Your picks"), NONE("Nothing found"), ALL("All") }
+
+/**
+ * Brian's own searches of the Archive, straight from the phone: any words, or an Archive link / item id.
+ * Lists the pictures on the matching pages (the Archive's own thumbnails and video frames left out).
+ */
+object ArchiveArt {
+    private val IMAGE = Regex("\\.(jpe?g|png|webp|gif|tiff?)$", RegexOption.IGNORE_CASE)
+    private val ITEM_LINK = Regex("archive\\.org/(?:details|download)/([^/?#\\s]+)")
+
+    fun search(query: String): List<ArtCandidate> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val item = ITEM_LINK.find(q)?.groupValues?.get(1)
+            ?: q.takeIf { !it.contains(' ') && it.length > 3 && it.any { c -> c == '-' || c == '_' } }
+        val items: List<Pair<String, String>> = if (item != null) listOf(item to item) else {
+            val url = "https://archive.org/advancedsearch.php?q=" + enc("($q) AND (mediatype:image OR collection:vhsvault)") +
+                "&fl[]=identifier&fl[]=title&rows=12&output=json"
+            JSONObject(Http.request(url)).optJSONObject("response")?.optJSONArray("docs").objects()
+                .map { it.optString("identifier") to (it.optStringOrNull("title") ?: it.optString("identifier")) }
+        }
+        val out = mutableListOf<ArtCandidate>()
+        for ((ident, title) in items.take(8)) {
+            val meta = runCatching { JSONObject(Http.request("https://archive.org/metadata/${enc(ident)}")) }.getOrNull() ?: continue
+            val itemTitle = meta.optJSONObject("metadata")?.optStringOrNull("title") ?: title
+            meta.optJSONArray("files").objects()
+                .filter { f -> val n = f.optString("name")
+                    IMAGE.containsMatchIn(n) && f.optString("source") != "derivative" && !n.contains("__ia_thumb") &&
+                        f.optString("size").toLongOrNull()?.let { it > 15000 } != false }
+                .sortedByDescending { it.optString("size").toLongOrNull() ?: 0 }
+                .take(6)
+                .forEach { f ->
+                    val name = f.optString("name")
+                    val url = "https://archive.org/download/${enc(ident)}/" + name.split('/').joinToString("/") { enc(it).replace("+", "%20") }
+                    val w = f.optString("width").toIntOrNull(); val h = f.optString("height").toIntOrNull()
+                    val kind = if (w == null || h == null) "unknown" else (w.toFloat() / h).let { r ->
+                        if (r in 1.15f..2.0f) "wrap" else if (r in 0.48f..0.82f) "front" else "unknown" }
+                    out += ArtCandidate("ia:" + sha1(url).take(16), "manual", url, url, kind, 0, emptyList(),
+                        "$itemTitle · $name", "https://archive.org/details/$ident", false, item = ident, itemTitle = itemTitle)
+                }
+        }
+        return out
+    }
+
+    private fun sha1(s: String) = java.security.MessageDigest.getInstance("SHA-1").digest(s.toByteArray())
+        .joinToString("") { "%02x".format(it) }
+}
 
 /** The private box-art repository: the finder bot's lists, and Brian's picks (choices.json). */
 class BoxArtRepo(private val token: String) {
@@ -51,13 +103,14 @@ class BoxArtRepo(private val token: String) {
     } catch (e: HttpError) { if (e.code == 404) null else throw e }
 
     /** Saves one pick, merged into whatever choices.json holds now (two phones never undo each other). */
-    fun savePick(key: String, pick: String?) {
+    fun savePick(key: String, pick: String?, candidate: ArtCandidate? = null) {
         repeat(3) { attempt ->
             val s = sha("choices.json")
             val now = (if (s != null) read("choices.json") else null)?.let { JSONObject(it) } ?: JSONObject()
             val titles = now.optJSONObject("titles") ?: JSONObject().also { now.put("titles", it) }
             if (pick == null) titles.remove(key)
-            else titles.put(key, JSONObject().put("pick", pick).put("at", Instant.now().toString()))
+            else titles.put(key, JSONObject().put("pick", pick).put("at", Instant.now().toString())
+                .apply { if (candidate != null) put("candidate", candidate.toJson()) })
             now.put("about", "Box art picked in the review app. \"none\" = show the TMDB poster.")
             val body = JSONObject().put("message", "Box art pick from phone").put("branch", "main")
                 .put("content", Base64.encodeToString(now.toString(1).toByteArray(), Base64.NO_WRAP))
@@ -77,6 +130,11 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     var onTv by mutableStateOf<Map<String, String>>(emptyMap()); private set
     var status by mutableStateOf(""); private set
     var loaded by mutableStateOf(false); private set
+    /** Boxes Brian found with his own search and picked: title key → that box. */
+    var custom by mutableStateOf<Map<String, ArtCandidate>>(emptyMap()); private set
+    var searchResults by mutableStateOf<List<ArtCandidate>>(emptyList()); private set
+    var searching by mutableStateOf(false); private set
+    var searchNote by mutableStateOf(""); private set
     var filter by mutableStateOf(ArtFilter.REVIEW)
     var search by mutableStateOf("")
 
@@ -93,6 +151,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
             r.onSuccess { (cands, choices, index) ->
                 titles = cands?.let { parseTitles(it) } ?: emptyList()
                 picks = choices?.let { parsePicks(it) } ?: emptyMap()
+                custom = choices?.let { parseCustom(it) } ?: emptyMap()
                 onTv = index?.let { parseOnTv(it) } ?: emptyMap()
                 loaded = true
                 status = if (cands == null) "The box art bot hasn't finished its first search yet. Check back soon." else ""
@@ -105,16 +164,36 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     }
 
     /** Pick a box for a movie (or "none" for the TMDB poster; null goes back to the bot's choice). */
-    fun pick(key: String, id: String?) {
+    fun pick(key: String, id: String?, found: ArtCandidate? = null) {
         val before = picks
         picks = if (id == null) picks - key else picks + (key to id)
+        if (found != null) custom = custom + (key to found)
         status = "Saving…"
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { BoxArtRepo(token()).savePick(key, id) } }
+            val r = withContext(Dispatchers.IO) { runCatching { BoxArtRepo(token()).savePick(key, id, found) } }
             status = r.fold({ "Saved. The TV shows it after its next refresh, in a few minutes." },
                 { picks = before; "Couldn't save: ${it.message}" })
         }
     }
+
+    /** Search the Archive for a movie's box with Brian's own words, or an Archive link. */
+    fun searchArchive(query: String) {
+        if (query.isBlank()) return
+        searching = true
+        searchNote = "Searching the Archive…"
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { ArchiveArt.search(query) } }
+            searching = false
+            r.onSuccess { searchResults = it; searchNote = if (it.isEmpty()) "No pictures found. Try other words or paste an Archive link." else "" }
+                .onFailure { searchNote = "Couldn't search: ${it.message}" }
+        }
+    }
+
+    fun clearSearch() { searchResults = emptyList(); searchNote = "" }
+
+    /** The boxes listed for a movie: the bot's finds, plus one Brian found himself. */
+    fun candidatesOf(t: ArtTitle): List<ArtCandidate> =
+        custom[t.key]?.takeIf { c -> t.candidates.none { it.id == c.id } }?.let { listOf(it) + t.candidates } ?: t.candidates
 
     fun stateOf(t: ArtTitle): ArtFilter = when {
         t.key in picks -> ArtFilter.MINE
@@ -134,7 +213,7 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     /** The box that shows (or will show) for a movie: Brian's pick, else what the TV has, else the bot's pick. */
     fun shown(t: ArtTitle): ArtCandidate? {
         val id = picks[t.key] ?: onTv[t.key] ?: t.botPick.takeIf { t.sure }
-        return t.candidates.firstOrNull { it.id == id }
+        return candidatesOf(t).firstOrNull { it.id == id }
     }
 
     companion object {
@@ -161,6 +240,17 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
         fun parsePicks(text: String): Map<String, String> {
             val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
             return o.keys().asSequence().mapNotNull { k -> o.optJSONObject(k)?.optStringOrNull("pick")?.let { k to it } }.toMap()
+        }
+
+        fun parseCustom(text: String): Map<String, ArtCandidate> {
+            val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k ->
+                val c = o.optJSONObject(k)?.optJSONObject("candidate") ?: return@mapNotNull null
+                k to ArtCandidate(c.optString("id"), "manual", c.optString("thumb", c.optString("url")), c.optString("url"),
+                    c.optString("kind", "unknown"), 0, emptyList(), c.optStringOrNull("item_title") ?: c.optString("item"),
+                    c.optStringOrNull("item")?.let { "https://archive.org/details/$it" }, false,
+                    item = c.optStringOrNull("item"), itemTitle = c.optStringOrNull("item_title"))
+            }.toMap()
         }
 
         /** index.json boxes → candidate ids ("covers/uk7" → "vt:uk7", "ia-ab12" → "ia:ab12"). */

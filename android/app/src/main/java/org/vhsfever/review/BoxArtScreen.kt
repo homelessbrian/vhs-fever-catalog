@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -128,9 +131,12 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
     val picked = b.picks[key]
     val onTv = b.onTv[key]
     var big by remember { mutableStateOf<ArtCandidate?>(null) }
+    var query by remember(key) { mutableStateOf("${t.name} VHS") }
+    LaunchedEffect(key) { b.clearSearch() }
+    val listed = b.candidatesOf(t)
     val uri = LocalUriHandler.current
     Column(Modifier.fillMaxSize()) {
-        TopBar(t.name, listOfNotNull(t.year, "${t.candidates.size} boxes found").joinToString(" · "), { m.back() })
+        TopBar(t.name, listOfNotNull(t.year, "${listed.size} boxes found").joinToString(" · "), { m.back() })
         if (b.status.isNotEmpty()) Text(b.status, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
         LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -143,10 +149,10 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                     else -> "The bot isn't sure. Tap the right box (a full wrap gives the TV a real back and spine too)."
                 }, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
             }
-            items(t.candidates, key = { it.id }) { c ->
+            items(listed, key = { it.id }) { c ->
                 ArtCard(c, chosen = picked == c.id || (picked == null && onTv == c.id),
                     bot = t.botPick == c.id && t.sure, onTv = onTv == c.id,
-                    onPick = { b.pick(key, c.id) }, onLook = { big = c })
+                    onPick = { b.pick(key, c.id, c.takeIf { it.source == "manual" }) }, onLook = { big = c })
             }
             item {
                 // keep the TMDB poster instead of any box
@@ -162,6 +168,26 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
             if (picked != null) item(span = { GridItemSpan(2) }) {
                 TextButton(onClick = { b.pick(key, null) }) { Text("Let the bot choose again", color = C.gold) }
             }
+            // look for a box yourself: any words, or paste an Archive link or item id
+            item(span = { GridItemSpan(2) }) {
+                Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionLabel("Search the Archive yourself")
+                    OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
+                        placeholder = { Text("Words, or paste an Archive link") },
+                        trailingIcon = { IconButton(onClick = { b.searchArchive(query) }, enabled = !b.searching) {
+                            Icon(Icons.Filled.Search, "Search", tint = C.gold) } },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { b.searchArchive(query) }),
+                        colors = fieldColors(), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
+                    if (b.searchNote.isNotEmpty()) Text(b.searchNote, color = C.muted, fontSize = 12.sp)
+                    if (b.searchResults.isNotEmpty()) Text("Tap a picture to use it. A tall picture becomes the front; " +
+                        "a wide scan of the whole sleeve gives the back and spine too.", color = C.muted, fontSize = 12.sp)
+                }
+            }
+            items(b.searchResults.filter { r -> listed.none { it.id == r.id } }, key = { "s-" + it.id }) { c ->
+                ArtCard(c, chosen = picked == c.id, bot = false, onTv = false,
+                    onPick = { b.pick(key, c.id, c) }, onLook = { big = c })
+            }
         }
     }
     big?.let { c ->
@@ -173,7 +199,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                 Text(c.label, color = C.text, fontSize = 13.sp)
                 Text(c.why.joinToString(" · "), color = C.muted, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { b.pick(key, c.id); big = null }) { Text("Use this box", color = C.gold) }
+                    TextButton(onClick = { b.pick(key, c.id, c.takeIf { it.source == "manual" }); big = null }) { Text("Use this box", color = C.gold) }
                     c.link?.let { l -> TextButton(onClick = { uri.openUri(l) }) { Text("Open on Archive", color = C.blue) } }
                     TextButton(onClick = { big = null }) { Text("Close", color = C.muted) }
                 }
@@ -202,6 +228,6 @@ private fun ArtCard(c: ArtCandidate, chosen: Boolean, bot: Boolean, onTv: Boolea
             Tag(c.sourceName)
             Tag(when (c.kind) { "wrap" -> "Full wrap"; "front" -> if (c.hasBack) "Front + back" else "Front"; else -> "Picture" })
         }
-        Text("Match ${c.score}", color = if (c.score >= 70) C.good else C.muted, fontSize = 11.sp)
+        if (c.source != "manual") Text("Match ${c.score}", color = if (c.score >= 70) C.good else C.muted, fontSize = 11.sp)
     }
 }
