@@ -1183,12 +1183,18 @@ def summarize(model: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
 
 
 def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
-                delay: float = 0.2, max_age_days: float = 14, workers: int = 6) -> list[dict[str, Any]]:
+                delay: float = 0.2, max_age_days: float = 14, workers: int = 6,
+                time_budget_minutes: float | None = None) -> list[dict[str, Any]]:
     """Read-only Archive /metadata fetch (keeps md5 checksums). Cached on disk.
 
     A saved copy is reused until it is ``max_age_days`` old, so a nightly
     rebuild doesn't download every page again; pages rarely change. Pages that
-    need downloading are read a few at a time (``workers``), politely spaced."""
+    need downloading are read a few at a time (``workers``), politely spaced.
+
+    ``time_budget_minutes``: stop downloading after this long. Pages not yet
+    downloaded are left out of this run (they are not lost: the caller lists them
+    again next run, and by then the saved copies of this run's downloads are kept).
+    This stops a run with no saved copies from running out of time and starting over."""
     import sys
     import threading
     import time
@@ -1214,8 +1220,11 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
 
     lock = threading.Lock()
     last_start = [0.0]
+    deadline = time.time() + time_budget_minutes * 60 if time_budget_minutes else None
 
     def download(ident: str):
+        if deadline and time.time() > deadline:
+            return None
         # Space out the starts a little so the Archive isn't hit all at once.
         with lock:
             wait = last_start[0] + delay - time.time()
@@ -1246,8 +1255,12 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
             for ident, data in zip(todo, pool.map(download, todo)):
                 pages[ident] = data
     items = []
+    skipped = 0
     for ident in idents:
         data = pages[ident]
+        if data is None:
+            skipped += 1
+            continue
         md = data.get("metadata") or {}
         col = md.get("collection")
         items.append({
@@ -1259,8 +1272,12 @@ def fetch_items(identifiers: Iterable[str], cache_dir: str | None = None,
             "access_restricted": bool(data.get("is_dark")) or str(md.get("access-restricted-item", "")).lower() == "true",
             "files": data.get("files") or [],
         })
-    print(f"Archive pages: {len(todo)} downloaded, {len(items) - len(todo)} reused from the saved copy",
+    downloaded = len(todo) - skipped
+    print(f"Archive pages: {downloaded} downloaded, {len(items) - downloaded} reused from the saved copy",
           file=sys.stderr)
+    if skipped:
+        print(f"Archive pages: {skipped} left for the next run (ran out of the {time_budget_minutes} minute "
+              f"download budget)", file=sys.stderr)
     return items
 
 
@@ -1343,6 +1360,8 @@ def main() -> None:
     src.add_argument("--identifiers", help="text file, one Archive identifier per line (# for notes); read live")
     ap.add_argument("--cache-dir", help="where to cache Archive metadata responses")
     ap.add_argument("--max-age-days", type=float, default=14, help="re-download a saved page once it is this old")
+    ap.add_argument("--time-budget-minutes", type=float, default=None,
+                    help="stop downloading pages after this long; the rest are left for the next run")
     ap.add_argument("--output-dir")
     args = ap.parse_args()
     if args.feed_from:
@@ -1359,7 +1378,8 @@ def main() -> None:
     elif args.identifiers:
         with open(args.identifiers, encoding="utf-8") as fh:
             idents = [x.strip() for x in fh if x.strip() and not x.lstrip().startswith("#")]
-        items = fetch_items(idents, args.cache_dir, max_age_days=args.max_age_days)
+        items = fetch_items(idents, args.cache_dir, max_age_days=args.max_age_days,
+                            time_budget_minutes=args.time_budget_minutes)
     elif args.fetch_from_inventory:
         idents = [i["identifier"] for i in items_from_inventory(_read_jsonl(args.fetch_from_inventory))]
         items = fetch_items(idents, args.cache_dir)

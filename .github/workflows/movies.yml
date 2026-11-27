@@ -55,8 +55,11 @@ jobs:
           for f in prev/bot/*.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
           ls -la prev/bot
 
+      # The saved Archive pages are what keeps a run short: reading them back takes minutes, downloading
+      # them all again takes close to two hours. They are saved right after the pages are read (even if
+      # a later step fails or runs out of time), so a bad run never throws away what it downloaded.
       - name: Restore saved Archive pages
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: work/archive-cache
           key: archive-pages-${{ github.run_id }}
@@ -111,9 +114,17 @@ jobs:
         run: |
           grep -hv '^#' data/batches/batch-*.txt | sed '/^\s*$/d' | sort -u > all-pages.txt
           echo "$(wc -l < all-pages.txt) Archive pages in all"
+          # If the saved pages are ever gone, download for at most 75 minutes; pages not reached are
+          # picked up next run (the ones downloaded are saved first), so a run can't run out of time.
           python scripts/catalog_model.py --identifiers all-pages.txt --cache-dir work/archive-cache \
-            --max-age-days 120 --output-dir model
+            --max-age-days 120 --time-budget-minutes 75 --output-dir model
           python scripts/vhs_movies.py keep-long --model-dir model
+      - name: Save the Archive pages
+        if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: work/archive-cache
+          key: archive-pages-${{ github.run_id }}
       - name: Install English word list
         run: (sudo apt-get update -qq && sudo apt-get install -y -qq wamerican) || true
       - name: Match them on TMDB (suggestions only)
@@ -196,7 +207,7 @@ jobs:
           python scripts/auto_sort.py --model-dir model --audio model/audio-checks.jsonl --output-dir sorted
           python scripts/vhs_movies.py finish --model-dir model --auto-sort sorted/auto-sort.jsonl \
             --audio model/audio-checks.jsonl --output-dir site --tmdb-cache prev/bot/tmdb-movies.json \
-            --pages-read "$(wc -l < all-pages.txt)"
+            --pages-read "$(python -c 'import json;print(json.load(open("model/catalog-model.summary.json"))["pages_read"])' 2>/dev/null || wc -l < all-pages.txt)"
           # Name every tape ("1992 VHS · Full screen") and pick the copy that plays first. New files get a
           # quick look for black bars first (earlier looks are reused; anything left over is done next run).
           mkdir -p prev/bot && touch prev/bot/picture-checks.jsonl

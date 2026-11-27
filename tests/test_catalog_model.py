@@ -273,6 +273,31 @@ class ReviewerFeed(unittest.TestCase):
         self.assertEqual(files, sum(f["kind"] == "video" for f in m["archive_files"]))
 
 
+class DownloadBudget(unittest.TestCase):
+    def test_pages_past_the_budget_are_left_for_next_run(self):
+        import io
+        import tempfile
+        import time
+        from unittest import mock
+        from catalog_model import fetch_items
+
+        def slow_urlopen(req, timeout=0):
+            time.sleep(0.05)
+            return io.BytesIO(json.dumps({"metadata": {"title": "T"}, "files": []}).encode())
+
+        ids = [f"page-{n}" for n in range(8)]
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("urllib.request.urlopen", slow_urlopen):
+            first = fetch_items(ids, tmp, delay=0, workers=1, time_budget_minutes=0.001)
+            self.assertGreaterEqual(len(first), 1)
+            self.assertLess(len(first), len(ids))
+            # The pages that were downloaded are saved, so the next run carries on from there.
+            second = fetch_items(ids, tmp, delay=0, workers=1, time_budget_minutes=0.001)
+            self.assertGreater(len(second), len(first))
+            # No budget: everything is read.
+            everything = fetch_items(ids, tmp, delay=0, workers=1)
+            self.assertEqual(len(everything), len(ids))
+
+
 if __name__ == "__main__":
     unittest.main()
 
