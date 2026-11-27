@@ -44,11 +44,12 @@ class MainActivity : ComponentActivity() {
         val artRepo = ArtRepo(applicationContext)
         val boxRepo = BoxArtRepo(applicationContext)
         val posterColors = PosterColors(applicationContext)
+        val posterRepo = PosterRepo(applicationContext)
         val prefs = applicationContext.getSharedPreferences("store", Context.MODE_PRIVATE)
         Shelf.load(applicationContext)
         val dm = resources.displayMetrics
         Ui.fit(dm.widthPixels / dm.density, dm.heightPixels / dm.density)
-        setContent { StoreTheme { App(repo, artRepo, boxRepo, posterColors, prefs) } }
+        setContent { StoreTheme { App(repo, artRepo, boxRepo, posterRepo, posterColors, prefs) } }
     }
 
     /** Leaving the app closes the red curtain again. */
@@ -62,8 +63,10 @@ class MainActivity : ComponentActivity() {
  * Things the store fills in after the movie list has loaded, kept by title key. Written from loading threads,
  * read when the shelves are put together.
  */
-class Extras(cachedBoxes: Map<String, BoxScan>, cachedShots: Map<String, List<java.io.File>>) {
+class Extras(cachedBoxes: Map<String, BoxScan>, cachedShots: Map<String, List<java.io.File>>,
+             cachedPosters: Map<String, java.io.File> = emptyMap()) {
     val art = ConcurrentHashMap<String, Art>()
+    val posters = ConcurrentHashMap(cachedPosters)   // btttr.cc posters on the TV, by IMDb id
     val boxes = ConcurrentHashMap(cachedBoxes)
     val shots = ConcurrentHashMap(cachedShots)
     val picking: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -73,11 +76,26 @@ class Extras(cachedBoxes: Map<String, BoxScan>, cachedShots: Map<String, List<ja
     fun dress(t: Title, artRepo: ArtRepo, posterColors: PosterColors): Title {
         val a = t.withArt(art[t.key] ?: artRepo.cached(t))
             .let { a -> if (a.adult) a else a.copy(box = boxes[a.key] ?: a.tmdbId?.takeIf { a.tmdbType == "movie" }?.let { boxes["tmdb:$it"] }) }
+        // no real box: the btttr.cc poster when there is one, TMDB's otherwise
+        val p = if (a.box == null && !a.adult) a.art?.imdbId?.let { posters[it] } else null
+        val poster = p?.let(::posterUri) ?: a.poster
         return a.copy(
+            poster = poster,
+            posterFrom = if (p != null) "btttr.cc" else "TMDB",
             shots = shots[a.key] ?: a.tmdbId?.let { shots["tmdb:$it"] } ?: emptyList(),
             // colours for a made-up spine and back: from the real box front when there is one, else the poster
-            colors = a.box?.front?.let { f -> posterColors.cached(posterColors.keyOf(f)) } ?: a.poster?.let { posterColors.cached(it) },
+            colors = a.box?.front?.let { f -> posterColors.cached(posterColors.keyOf(f)) } ?: poster?.let { posterColors.cached(it) },
         )
+    }
+
+    /** IMDb ids of the movies that have no real box yet, for btttr.cc posters. */
+    fun wantsPoster(titles: List<Title>, artRepo: ArtRepo): List<String> = titles.mapNotNull { t ->
+        if (t.adult || boxes[t.key] != null || t.tmdbId?.let { boxes["tmdb:$it"] } != null) null
+        else (art[t.key] ?: artRepo.cached(t))?.imdbId
+    }
+
+    companion object {
+        fun posterUri(f: java.io.File) = "file://" + f.path
     }
 }
 
@@ -100,11 +118,11 @@ fun StoreTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterColors, prefs: android.content.SharedPreferences) {
+fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterRepo: PosterRepo, posterColors: PosterColors, prefs: android.content.SharedPreferences) {
     var raw by remember { mutableStateOf<Catalog?>(null) }
     // What arrives while the store loads (TMDB info, real box scans, tape screenshots, box colours) is collected here,
     // and the shelves are refreshed from it every so often instead of once for every single movie.
-    val extras = remember { Extras(boxRepo.cached(), boxRepo.cachedShots()) }
+    val extras = remember { Extras(boxRepo.cached(), boxRepo.cachedShots(), posterRepo.cached()) }
     var version by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val changed: () -> Unit = remember {
@@ -145,20 +163,29 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
         repo.cached()?.let { raw = it }
         reload()
     }
+    fun pickColors(key: String, model: Any) {
+        if (posterColors.done(key) || !extras.picking.add(key)) return
+        scope.launch {
+            val got = if (model is java.io.File) posterColors.colorsFor(model) else posterColors.colorsFor(model as String)
+            if (got != null) changed()
+            extras.picking.remove(key)
+        }
+    }
+    // btttr.cc posters for movies with no real box (each downloaded once), TMDB's poster staying as the backup.
+    suspend fun fetchPosters(c: Catalog) = runCatching {
+        posterRepo.fetch(extras.wantsPoster(c.titles, artRepo)) { imdb, f ->
+            extras.posters[imdb] = f; changed()
+            Extras.posterUri(f).let { pickColors(it, it) }
+        }
+    }
     // TMDB posters, summaries and genres for movies not looked up yet, and box colours picked from each poster.
     LaunchedEffect(raw) {
         val c = raw ?: return@LaunchedEffect
-        fun pickColors(key: String, model: Any) {
-            if (posterColors.done(key) || !extras.picking.add(key)) return
-            scope.launch {
-                val got = if (model is java.io.File) posterColors.colorsFor(model) else posterColors.colorsFor(model as String)
-                if (got != null) changed()
-                extras.picking.remove(key)
-            }
-        }
         c.titles.forEach { t -> (t.poster ?: artRepo.cached(t)?.poster)?.let { pickColors(it, it) } }
+        extras.posters.values.forEach { f -> Extras.posterUri(f).let { pickColors(it, it) } }
         extras.boxes.values.forEach { b -> pickColors(posterColors.keyOf(b.front), b.front) }
         artRepo.loadAll(c.titles) { key, a -> extras.art[key] = a; changed(); a.poster?.let { pickColors(it, it) } }
+        fetchPosters(c)
     }
     LaunchedEffect(raw) {
         val c = raw ?: return@LaunchedEffect
@@ -170,6 +197,8 @@ fun App(repo: Repo, artRepo: ArtRepo, boxRepo: BoxArtRepo, posterColors: PosterC
             }
         } }
         runCatching { boxRepo.refreshShots(keys) { k, f -> if (extras.shots.put(k, f) != f) changed() } }
+        // only once the real boxes are in, so movies that have one never ask btttr.cc
+        fetchPosters(c)
     }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Ink.NavyTop, Ink.Navy)))) {

@@ -84,7 +84,7 @@ fun boxWidth(t: Title, vhsWidth: Int): Int =
 private val coverShadow = Shadow(Color(0xD9000000), Offset(0f, 3f), 5f)
 
 /**
- * The front of a rental box: the TMDB poster (or the box colours and title when there is no art),
+ * The front of a rental box: the poster (or the box colours and title when there is no art),
  * a dark fade at the bottom, little VHS/year printing at the top and the plastic-sleeve shine.
  * [scale] is 1 for the 86×152 shelf box and grows with bigger boxes.
  */
@@ -120,6 +120,8 @@ fun BoxFront(t: Title, scale: Float, modifier: Modifier = Modifier, dvd: Boolean
                     maxLines = 5, minScale = 0.55f, wordsWhole = true, align = Alignment.BottomStart)
             }
         }
+        // shelf wear on made-up boxes (real scans have their own)
+        if (scan == null && !dvd) Box(Modifier.fillMaxSize().boxWear(t, WearFace.Front))
         if (dvd) {
             // the plastic keep-case: dark rim and the hinge down the left side
             Box(Modifier.fillMaxSize().border((3 * scale).px, Color(0xFF0B1030), RoundedCornerShape((4 * scale).px)))
@@ -149,7 +151,7 @@ fun Modifier.sideways(): Modifier = this
 fun BoxSpine(t: Title, w: Dp, h: Dp, titleSize: Int = 22, modifier: Modifier = Modifier, dvd: Boolean = isDvd(t)) {
     val c = colorsOf(t)
     val art = t.art
-    Column(modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c1, c.c2))),
+    Column(modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine, t.box == null && !dvd),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height(28.px).background(c.c3), contentAlignment = Alignment.Center) {
             Text(if (dvd) "DVD" else "VHS", style = TextStyle(fontFamily = Type.Mono, fontWeight = FontWeight.Medium,
@@ -265,7 +267,7 @@ fun miniSpineWidth(t: Title) = if (isDvd(t)) 28 else 44
 fun MiniSpine(t: Title, modifier: Modifier = Modifier) {
     val c = colorsOf(t)
     Box(modifier.size(miniSpineWidth(t).px, 112.px).clip(RoundedCornerShape(2.px))
-        .background(Brush.horizontalGradient(listOf(c.c1, c.c2))), contentAlignment = Alignment.Center) {
+        .background(Brush.horizontalGradient(listOf(c.c1, c.c2))).boxWear(t, WearFace.Spine), contentAlignment = Alignment.Center) {
         Box(Modifier.fillMaxHeight().width(3.px).align(Alignment.CenterStart).background(c.c3))
         Text(coverText(t).uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.offset(x = 1.px).sideways(),

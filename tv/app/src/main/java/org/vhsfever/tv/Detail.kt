@@ -166,8 +166,8 @@ fun DetailScreen(
                     scan != null -> listOfNotNull("VHS box scan", scan.label?.let(::titleCase), scan.region, scan.tapeYear,
                         if (t.posterIsSuggestion) "match not confirmed" else null, scan.source).joinToString(" · ")
                     t.poster == null -> "Placeholder · no tape scan yet"
-                    t.posterIsSuggestion -> "TMDB poster · match not confirmed"
-                    else -> "TMDB poster · no tape scan yet"
+                    t.posterIsSuggestion -> "${t.posterFrom} poster · match not confirmed"
+                    else -> "${t.posterFrom} poster · no tape scan yet"
                 }
                 InfoRow("FILM", t.year ?: "—")
                 val tapeText = listOfNotNull(tape?.let { tapeName(t, tapeIndex) }, tape?.minutes?.let { "$it min" }).joinToString(" · ").ifBlank { "—" }

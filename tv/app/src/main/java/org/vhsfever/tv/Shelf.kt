@@ -296,7 +296,7 @@ private fun FloatArray.scaled(s: Float) = FloatArray(size) { this[it] * s }
 @Composable
 fun ShelfSpine(t: Title, w: Dp, h: Dp, dvd: Boolean, scale: Float) {
     val c = colorsOf(t)
-    Column(Modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c2, c.c1))),
+    Column(Modifier.size(w, h).background(Brush.horizontalGradient(listOf(c.c2, c.c1))).boxWear(t, WearFace.Spine, t.box == null && !dvd),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height((18 * scale).px).background(c.c3), contentAlignment = Alignment.Center) {
             Text(if (dvd) "DVD" else "VHS", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Type.Mono,

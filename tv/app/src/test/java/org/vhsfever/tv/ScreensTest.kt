@@ -230,6 +230,40 @@ abstract class ScreensBase(private val tag: String) {
         shot("7-sleeves")
     }
 
+    /** Made-up boxes with their shelf wear: fronts, spines and backs of different movies, so no two match. */
+    @Test fun worn() {
+        val bmp = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888).apply {
+            val cv = Canvas(this); val p = android.graphics.Paint()
+            p.shader = android.graphics.LinearGradient(0f, 0f, 0f, 300f, intArrayOf(0xFF2B1A4A.toInt(), 0xFFB0342C.toInt(),
+                0xFF1A1018.toInt()), floatArrayOf(0f, 0.55f, 1f), android.graphics.Shader.TileMode.CLAMP)
+            cv.drawRect(0f, 0f, 200f, 300f, p); p.shader = null
+            p.color = 0xFFF2C94C.toInt(); cv.drawRect(20f, 230f, 180f, 275f, p)
+            p.color = 0xFF120C10.toInt(); cv.drawOval(55f, 60f, 145f, 230f, p)
+        }
+        val standIn = androidx.compose.ui.graphics.painter.BitmapPainter(bmp.asImageBitmap())
+        val base = catalog.titles.first().copy(name = "Night of the Creeps", year = "1986", poster = "stand-in", box = null,
+            colors = BoxColors(androidx.compose.ui.graphics.Color(0xFF8E2A2A), androidx.compose.ui.graphics.Color(0xFF1A1016),
+                androidx.compose.ui.graphics.Color(0xFFF2C94C), androidx.compose.ui.graphics.Color(0xFF2B1A4A), androidx.compose.ui.graphics.Color(0xFF1A1018)))
+            .let { it.copy(art = Art(null, null, "A college campus is invaded by alien slugs.", "1986", rating = "R", runtime = 88,
+                studio = "TriStar Pictures", imdbId = "tt0091630")) }
+        val boxes = (0 until 8).map { i -> base.copy(key = "tmdb:${1000 + i * 7919}") }
+        show {
+            androidx.compose.runtime.CompositionLocalProvider(LocalPosterStandIn provides standIn) {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(Ink.Navy).padding(16.px),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.px)) {
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.px)) {
+                        for (t in boxes) BoxFront(t, 1.5f, androidx.compose.ui.Modifier.size(129.px, 228.px), dvd = false)
+                    }
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.px)) {
+                        for (t in boxes) BoxSpine(t, 46.px, 336.px, dvd = false)
+                        for (t in boxes.take(3)) BoxBack(t, "1986 VHS release", androidx.compose.ui.Modifier.size(190.px, 336.px), layout = 2)
+                    }
+                }
+            }
+        }
+        shot("7-worn")
+    }
+
     @Test fun genres() {
         show { StoreScreen(catalog, Section.Genres, "", emptySet(), null, {}, {}, {}) }
         shot("3-genres")

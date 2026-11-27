@@ -84,6 +84,7 @@ fun BoxBack(t: Title, tapeText: String, modifier: Modifier = Modifier, layout: I
             3 -> BackFilmStrip(b, c)
             else -> BackSnapshots(b, c)
         }
+        Box(Modifier.fillMaxSize().boxWear(t, WearFace.Back))
         Sheen()
     }
 }
