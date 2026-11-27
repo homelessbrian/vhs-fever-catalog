@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
@@ -157,7 +158,8 @@ private fun VhsTag(k: Sleeve, bg: Color = Cream, fg: Color = PaperInk) {
 private fun Label(text: String, style: TextStyle, k: Sleeve, modifier: Modifier, pad: Float = 2.5f) {
     Box(modifier.height((style.fontSize.value / Ui.unit + 1.2f * k.s).px).padding(horizontal = (pad * k.s).px),
         contentAlignment = Alignment.Center) {
-        Text(text, style = style, maxLines = 1, softWrap = false)
+        // measured at its natural height and centred on the block, letting the font's spare room spill over
+        Text(text, style = style, maxLines = 1, softWrap = false, modifier = Modifier.wrapContentHeight(unbounded = true))
     }
 }
 
