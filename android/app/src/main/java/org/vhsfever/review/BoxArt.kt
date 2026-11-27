@@ -39,7 +39,9 @@ data class ArtTitle(
     val candidates: List<ArtCandidate>, val botPick: String?, val sure: Boolean,
 )
 
-enum class ArtFilter(val label: String) { REVIEW("Needs a look"), BOT("Bot picked"), MINE("Your picks"), NONE("Nothing found"), ALL("All") }
+enum class ArtFilter(val label: String) {
+    REVIEW("Needs a look"), ON_TV("Has a box"), MINE("Your picks"), NONE("Nothing found"), ALL("All")
+}
 
 /**
  * Brian's own searches of the Archive, straight from the phone: any words, or an Archive link / item id.
@@ -128,6 +130,8 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     var picks by mutableStateOf<Map<String, String>>(emptyMap()); private set
     /** What each movie shows on the TV right now (candidate id). */
     var onTv by mutableStateOf<Map<String, String>>(emptyMap()); private set
+    /** The box each movie shows on the TV now, with its picture: title key → box. */
+    private var tvBoxes: Map<String, Pair<ArtTitle, ArtCandidate>> = emptyMap()
     var status by mutableStateOf(""); private set
     var loaded by mutableStateOf(false); private set
     /** Boxes Brian found with his own search and picked: title key → that box. */
@@ -149,12 +153,17 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
                 }
             }
             r.onSuccess { (cands, choices, index) ->
-                titles = cands?.let { parseTitles(it) } ?: emptyList()
+                tvBoxes = index?.let { parseTvBoxes(it) } ?: emptyMap()
+                // every movie the bot searched, plus every movie that already has a box on the TV
+                val found = cands?.let { parseTitles(it) } ?: emptyList()
+                val foundKeys = found.map { it.key }.toSet()
+                titles = found + tvBoxes.filterKeys { it !in foundKeys }.values.map { it.first }
                 picks = choices?.let { parsePicks(it) } ?: emptyMap()
                 custom = choices?.let { parseCustom(it) } ?: emptyMap()
                 onTv = index?.let { parseOnTv(it) } ?: emptyMap()
+                if (!loaded && filter == ArtFilter.REVIEW && count(ArtFilter.REVIEW) == 0) filter = ArtFilter.ON_TV
                 loaded = true
-                status = if (cands == null) "The box art bot hasn't finished its first search yet. Check back soon." else ""
+                status = if (cands == null) "The bot is still on its first search for other boxes. Movies that already have one are listed." else ""
             }.onFailure { e ->
                 status = if (e is HttpError && (e.code == 404 || e.code == 403))
                     "Your GitHub key can't open vhs-fever-boxart. Give it access (Contents: Read and write) on GitHub."
@@ -192,15 +201,24 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
     fun clearSearch() { searchResults = emptyList(); searchNote = "" }
 
     /** The boxes listed for a movie: the bot's finds, plus one Brian found himself. */
-    fun candidatesOf(t: ArtTitle): List<ArtCandidate> =
-        custom[t.key]?.takeIf { c -> t.candidates.none { it.id == c.id } }?.let { listOf(it) + t.candidates } ?: t.candidates
+    fun candidatesOf(t: ArtTitle): List<ArtCandidate> {
+        var list = t.candidates
+        // the box on the TV now, even if the bot's list doesn't have it
+        tvBoxes[t.key]?.second?.let { c -> if (list.none { it.id == c.id }) list = listOf(c) + list }
+        custom[t.key]?.let { c -> if (list.none { it.id == c.id }) list = listOf(c) + list }
+        return list
+    }
 
     fun stateOf(t: ArtTitle): ArtFilter = when {
         t.key in picks -> ArtFilter.MINE
+        t.key in onTv -> ArtFilter.ON_TV
         t.candidates.isEmpty() -> ArtFilter.NONE
-        t.sure -> ArtFilter.BOT
         else -> ArtFilter.REVIEW
     }
+
+    /** "videotapes.io box", "Bot's pick" or "Your pick": who chose the box the TV shows. */
+    fun whoChose(t: ArtTitle): String? = tvBoxes[t.key]?.let { (_, c) ->
+        when { c.id in custom.values.map { it.id } -> "Your pick"; c.source == "vt" -> "videotapes.io box"; else -> "Bot's pick" } }
 
     fun count(f: ArtFilter) = if (f == ArtFilter.ALL) titles.size else titles.count { stateOf(it) == f }
 
@@ -241,6 +259,30 @@ class BoxArtModel(private val scope: CoroutineScope, private val token: () -> St
             val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()
             return o.keys().asSequence().mapNotNull { k -> o.optJSONObject(k)?.optStringOrNull("pick")?.let { k to it } }.toMap()
         }
+
+        /** index.json boxes, as listings with the picture of the box shown now. */
+        fun parseTvBoxes(text: String): Map<String, Pair<ArtTitle, ArtCandidate>> {
+            val o = JSONObject(text).optJSONObject("boxes") ?: return emptyMap()
+            return o.keys().asSequence().mapNotNull { k ->
+                val e = o.optJSONObject(k) ?: return@mapNotNull null
+                val sleeve = e.optStringOrNull("sleeve") ?: return@mapNotNull null
+                val img = e.optStringOrNull("source_image") ?: return@mapNotNull null
+                val archive = sleeve.startsWith("ia-")
+                val id = if (archive) "ia:" + sleeve.removePrefix("ia-") else "vt:$sleeve"
+                val label = if (archive) e.optStringOrNull("title_on_sleeve") ?: e.optString("item")
+                    else listOfNotNull("videotapes.io", e.optStringOrNull("region"), e.optStringOrNull("label"),
+                        e.opt("tape_year")?.takeIf { it != JSONObject.NULL }?.toString()).joinToString(" · ")
+                val kind = when (e.optStringOrNull("layout")) { "spread" -> "wrap"; "front_only" -> "front"; else -> "unknown" }
+                val c = ArtCandidate(id, if (archive) "search" else "vt", img, img, kind, 0, emptyList(), label,
+                    e.optStringOrNull("item")?.let { "https://archive.org/details/$it" }, e.optStringOrNull("back_image") != null)
+                val name = e.optStringOrNull("name") ?: e.optStringOrNull("title_on_sleeve")?.let(::titleCase) ?: k
+                k to (ArtTitle(k, name, e.optStringOrNull("year"), k.removePrefix("tmdb:").toIntOrNull().takeIf { k.startsWith("tmdb:") },
+                    emptyList(), null, false) to c)
+            }.toMap()
+        }
+
+        private fun titleCase(s: String) = if (s != s.uppercase()) s else
+            s.lowercase().split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
 
         fun parseCustom(text: String): Map<String, ArtCandidate> {
             val o = JSONObject(text).optJSONObject("titles") ?: return emptyMap()

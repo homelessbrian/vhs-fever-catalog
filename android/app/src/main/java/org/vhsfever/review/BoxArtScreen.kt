@@ -85,7 +85,7 @@ fun BoxArtListScreen(m: AppModel) {
             if (b.status.isNotEmpty()) Text(b.status, color = C.muted, fontSize = 13.sp)
             when (b.filter) {
                 ArtFilter.REVIEW -> "The bot found boxes for these but isn't sure which is right."
-                ArtFilter.BOT -> "The bot picked these by itself. Tap one to check it or pick another."
+                ArtFilter.ON_TV -> "These already show a real box on the TV. Tap one to see other versions the bot found, or search for a better one."
                 ArtFilter.NONE -> "Nothing found yet. These show the TMDB poster on a VHS sleeve. The bot looks again every two weeks."
                 else -> null
             }?.let { Text(it, color = C.muted, fontSize = 12.sp) }
@@ -111,10 +111,11 @@ private fun ArtRow(m: AppModel, t: ArtTitle) {
             Text(t.name, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 3.dp)) {
                 t.year?.let { Tag(it) }
-                Tag("${t.candidates.size} found")
+                val n = b.candidatesOf(t).size
+                Tag(if (n == 1) "1 version" else "$n versions")
                 when (b.stateOf(t)) {
                     ArtFilter.MINE -> Tag(if (b.picks[t.key] == "none") "You: TMDB poster" else "Your pick", C.blueBg, C.blue)
-                    ArtFilter.BOT -> Tag("Bot picked", C.panel2, C.good)
+                    ArtFilter.ON_TV -> Tag(b.whoChose(t) ?: "On TV", C.panel2, C.good)
                     ArtFilter.REVIEW -> Tag("Needs a look", C.warnBg, C.warn)
                     else -> {}
                 }
@@ -136,7 +137,7 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
     val listed = b.candidatesOf(t)
     val uri = LocalUriHandler.current
     Column(Modifier.fillMaxSize()) {
-        TopBar(t.name, listOfNotNull(t.year, "${listed.size} boxes found").joinToString(" · "), { m.back() })
+        TopBar(t.name, listOfNotNull(t.year, if (listed.size == 1) "1 version" else "${listed.size} versions").joinToString(" · "), { m.back() })
         if (b.status.isNotEmpty()) Text(b.status, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
         LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -144,8 +145,9 @@ fun BoxArtPickScreen(m: AppModel, key: String) {
                 Text(when {
                     picked == "none" -> "You picked the TMDB poster for this one."
                     picked != null -> "You picked this movie's box. Tap another to change it."
+                    onTv != null -> "The box marked ON TV is showing now. Tap another to use it instead, or search below for a better one."
                     t.sure -> "The bot picked the box marked BOT. Tap any box to use it instead."
-                    t.candidates.isEmpty() -> "No boxes found yet; the TV shows the TMDB poster."
+                    listed.isEmpty() -> "No boxes found yet; the TV shows the TMDB poster. Try searching below."
                     else -> "The bot isn't sure. Tap the right box (a full wrap gives the TV a real back and spine too)."
                 }, color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
             }
