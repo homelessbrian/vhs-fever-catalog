@@ -187,7 +187,7 @@ class GitHub(private val token: String) {
     /** Newest successful app build, if newer than this one. */
     fun findUpdate(current: Int): Update? {
         val runs = JSONObject(Http.request(
-            "$api/actions/workflows/android-app.yml/runs?status=success&branch=main&per_page=1",
+            "$api/actions/workflows/android-app.yml/runs?status=success&branch=feat%2Fmanual-vidrock-review&per_page=1",
             headers = auth)).optJSONArray("workflow_runs").objects()
         val run = runs.firstOrNull() ?: return null
         if (run.optInt("run_number") <= current) return null
