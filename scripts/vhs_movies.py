@@ -35,6 +35,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import not_movies  # noqa: E402
 import kids_tapes  # noqa: E402
+import imdb_genres  # noqa: E402
 import unsure_kinds  # noqa: E402
 
 MIN_SECONDS = 40 * 60
@@ -127,7 +128,7 @@ def tmdb_details(ids: list[int], cache: dict[str, Any], token: str | None, delay
     """Fills cache[str(id)] for every id not looked up yet. Returns lookups made."""
     calls = 0
     for i in ids:
-        if str(i) in cache or not token:
+        if not token or (str(i) in cache and "imdb_id" in cache[str(i)]):
             continue
         url = f"{TMDB}/movie/{i}?" + urllib.parse.urlencode({"language": "en-US"})
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
@@ -144,7 +145,7 @@ def tmdb_details(ids: list[int], cache: dict[str, Any], token: str | None, delay
         if d is None:
             continue
         cache[str(i)] = {
-            "tmdb_id": i, "title": d.get("title"), "year": (d.get("release_date") or "")[:4] or None,
+            "tmdb_id": i, "imdb_id": d.get("imdb_id") or None, "title": d.get("title"), "year": (d.get("release_date") or "")[:4] or None,
             "genres": [GENRE_NAMES.get(g["name"], g["name"]) for g in d.get("genres") or [] if g.get("name")],
             "runtime": d.get("runtime") or None,
             "poster": IMG + "w342" + d["poster_path"] if d.get("poster_path") else None,
@@ -338,8 +339,12 @@ def _foreign_name(name: str) -> str | None:
     return auto_sort.foreign_reason(name)
 
 
+DEFAULT_OVERRIDES = Path(__file__).resolve().parent.parent / "data" / "genre-overrides.json"
+
+
 def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_path: Path | None,
-           pages_read: int | None) -> dict[str, Any]:
+           pages_read: int | None, imdb_cache_path: Path | None = None,
+           overrides_path: Path | None = DEFAULT_OVERRIDES) -> dict[str, Any]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import catalog_model  # noqa: E402
 
@@ -382,6 +387,26 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
                    for c, conf in [best_candidate(titles.get(r.get("title_suggestion_id")))]
                    if c.get("media_type") == "movie" and c.get("tmdb_id") and conf in {"sure", "likely", "several"}})
     calls = tmdb_details(want, cache, os.environ.get("TMDB_API_READ_ACCESS_TOKEN"))
+
+    # IMDb's genres for the same movies (see imdb_genres.py); TMDB's are the fallback.
+    imdb_cache: dict[str, list[str]] = {}
+    if imdb_cache_path and imdb_cache_path.is_file():
+        imdb_cache = json.loads(imdb_cache_path.read_text(encoding="utf-8"))
+    imdb_lookups = imdb_genres.fetch_missing(
+        [(cache.get(str(i)) or {}).get("imdb_id") for i in want], imdb_cache)
+    overrides = imdb_genres.load_overrides(overrides_path) if overrides_path else {}
+    genre_source: Counter[str] = Counter()
+
+    def genres_of(info: dict[str, Any]) -> list[str]:
+        """The movie's genres: a hand-written override, else IMDb's with TMDB's order, else TMDB's."""
+        imdb_id = info.get("imdb_id")
+        hand = imdb_genres.override_for(overrides, info.get("tmdb_id"), imdb_id)
+        if hand is not None:
+            genre_source["hand-written override"] += 1
+            return hand
+        theirs = imdb_cache.get(imdb_id or "")
+        genre_source["IMDb" if theirs else "TMDB (nothing from IMDb)"] += 1
+        return imdb_genres.merge(info.get("genres") or [], theirs)
 
     # The bot's call per file: "good" only when it's sure, otherwise "review".
     sure_files: set[str] = set()
@@ -468,14 +493,15 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
             kids_count[why_kids.split(" (")[0]] += 1
         if any_sure and info:
             t["t"] = info["title"] or cand.get("title") or clean_title(t["t"])
-            t["movie"] = info
-            t["genres"] = info["genres"]
+            genres = genres_of(info)
+            t["movie"] = dict(info, genres=genres)
+            t["genres"] = genres
             sure_titles += 1
-            genre_count.update(info["genres"] or ["No genre on TMDB"])
+            genre_count.update(genres or ["No genre"])
         else:
             t["t"] = clean_title(t["t"])
             if info:
-                t["guess"] = info    # TMDB's best guess, for the review screen; not confirmed
+                t["guess"] = dict(info, genres=genres_of(info))    # TMDB's best guess, for the review screen; not confirmed
             t["genres"] = []
     feed["titles"].sort(key=lambda t: t["t"].casefold())
     feed["summary"] = {
@@ -484,6 +510,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
         "behind_the_curtain": curtain,
         "files": len(out_rows), "genres": dict(genre_count.most_common()),
         "kids_shelf": dict(kids_count.most_common()),
+        "genre_source": dict(genre_source.most_common()), "imdb_lookups": imdb_lookups,
         "left_out": dict(dropped.most_common()), "tmdb_detail_lookups": calls,
     }
     (out / "reviewer-feed.json").write_text(json.dumps(feed, ensure_ascii=False, separators=(",", ":")),
@@ -493,6 +520,8 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     write_jsonl(out / "auto-sort.jsonl", out_rows)
     keep_files = {r["file_id"] for r in out_rows}
     write_jsonl(out / "audio-checks.jsonl", [a for a in read_jsonl(audio_path) if a.get("file_id") in keep_files])
+    if imdb_cache_path:
+        (out / "imdb-genres.json").write_text(json.dumps(imdb_cache, ensure_ascii=False, sort_keys=True), encoding="utf-8")
     if cache_path:
         (out / "tmdb-movies.json").write_text(json.dumps(cache, ensure_ascii=False, sort_keys=True), encoding="utf-8")
     (out / "summary.json").write_text(json.dumps(feed["summary"], indent=2, ensure_ascii=False) + "\n")
@@ -510,13 +539,16 @@ def main() -> None:
     f.add_argument("--audio", required=True)
     f.add_argument("--output-dir", required=True)
     f.add_argument("--tmdb-cache", help="earlier tmdb-movies.json (genres already looked up)")
+    f.add_argument("--imdb-cache", help="earlier imdb-genres.json (IMDb genres already looked up)")
+    f.add_argument("--genre-overrides", default=str(DEFAULT_OVERRIDES), help="hand-written genres per movie")
     f.add_argument("--pages-read", type=int)
     a = ap.parse_args()
     if a.step == "keep-long":
         s = keep_long(Path(a.model_dir))
     else:
         s = finish(Path(a.model_dir), Path(a.auto_sort), Path(a.audio), Path(a.output_dir),
-                   Path(a.tmdb_cache) if a.tmdb_cache else None, a.pages_read)
+                   Path(a.tmdb_cache) if a.tmdb_cache else None, a.pages_read,
+                   Path(a.imdb_cache) if a.imdb_cache else None, Path(a.genre_overrides))
     s["built_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     print(json.dumps(s, indent=2, ensure_ascii=False))
 

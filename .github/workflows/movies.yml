@@ -6,7 +6,7 @@ name: Find VHS movies
 #   3. reads every page so far, keeps only recordings 40 minutes or longer that
 #      aren't split, taped off TV, tape openings or DVD/Blu-ray
 #   4. matches those to TMDB and checks their sound and picture
-#   5. keeps only full-length VHS movies, cleans up the names, adds TMDB genres, names each
+#   5. keeps only full-length VHS movies, cleans up the names, adds genres (IMDb's, with TMDB's as the fallback), names each
 #      tape ("1992 VHS · Full screen") and picks the copy that plays first
 #   6. publishes the one movie list to the movies-data branch, which both apps read
 # Then, when data/batches/auto.json says keep_going, it starts the next run.
@@ -46,7 +46,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run tests
-        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items tests.test_unsure_kinds tests.test_tape_copies
+        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items tests.test_unsure_kinds tests.test_tape_copies tests.test_imdb_genres
 
       - name: What the bot found and read before
         run: |
@@ -144,6 +144,7 @@ jobs:
             prev/bot/audio-checks.jsonl
             prev/bot/picture-checks.jsonl
             prev/bot/tmdb-movies.json
+            prev/bot/imdb-genres.json
             all-pages.txt
           retention-days: 3
 
@@ -206,7 +207,7 @@ jobs:
           python scripts/merge_sound_checks.py --output model/audio-checks.jsonl prev/bot/audio-checks.jsonl parts/*.jsonl
           python scripts/auto_sort.py --model-dir model --audio model/audio-checks.jsonl --output-dir sorted
           python scripts/vhs_movies.py finish --model-dir model --auto-sort sorted/auto-sort.jsonl \
-            --audio model/audio-checks.jsonl --output-dir site --tmdb-cache prev/bot/tmdb-movies.json \
+            --audio model/audio-checks.jsonl --output-dir site --tmdb-cache prev/bot/tmdb-movies.json --imdb-cache prev/bot/imdb-genres.json \
             --pages-read "$(python -c 'import json;print(json.load(open("model/catalog-model.summary.json"))["pages_read"])' 2>/dev/null || wc -l < all-pages.txt)"
           # Name every tape ("1992 VHS · Full screen") and pick the copy that plays first. New files get a
           # quick look for black bars first (earlier looks are reused; anything left over is done next run).
@@ -220,6 +221,7 @@ jobs:
           cp model/audio-checks.jsonl site/bot/audio-checks.jsonl
           cp model/picture-checks.jsonl site/bot/picture-checks.jsonl
           mv site/tmdb-movies.json site/bot/tmdb-movies.json
+          mv site/imdb-genres.json site/bot/imdb-genres.json
           cp found/new-items.jsonl found/more-items.jsonl site/bot/
           cp found/more-sources-state.json site/bot/ 2>/dev/null || echo '{}' > site/bot/more-sources-state.json
           gzip -9f site/bot/*.jsonl
@@ -239,7 +241,7 @@ jobs:
           - `auto-sort.jsonl`: the bot's call for each file (sure / not sure / bad, and why)
           - `audio-checks.jsonl`: sound and picture check for each file
           - `summary.json`: counts, genres, and what was left out
-          - `bot/`: what the bot remembers between runs (pages found, TMDB matches, sound and picture checks)
+          - `bot/`: what the bot remembers between runs (pages found, TMDB matches, IMDb genres, sound and picture checks)
           MD
           sed -i 's/^          //' site/README.md
           touch site/.nojekyll
