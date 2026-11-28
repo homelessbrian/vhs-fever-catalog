@@ -154,7 +154,10 @@ import java.util.concurrent.ConcurrentHashMap
        if(!hostCookies.isNullOrBlank()) put("Cookie",hostCookies)
       }
      }
-     val http=DefaultHttpDataSource.Factory().setUserAgent("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+     // Match the actual inspection WebView User-Agent instead of a guessed Chrome version.
+     val browserUserAgent=webView?.settings?.userAgentString?.takeIf { it.isNotBlank() }
+       ?: System.getProperty("http.agent").orEmpty().ifBlank { "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36" }
+     val http=DefaultHttpDataSource.Factory().setUserAgent(browserUserAgent)
        .setAllowCrossProtocolRedirects(true).setDefaultRequestProperties(requestHeaders)
      player.setMediaSource(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(ctx).setDataSourceFactory(http).createMediaSource(MediaItem.fromUri(Uri.parse(url))))
      player.prepare();player.playWhenReady=true
