@@ -76,6 +76,7 @@ fun App(m: AppModel, installApk: (File) -> Unit) {
     BackHandler(enabled = m.stack.size > 1) { m.back() }
     when (val s = m.stack.last()) {
         Screen.Queue -> QueueScreen(m)
+        Screen.VidRockTest -> VidRockTestScreen(m)
         is Screen.Review -> ReviewScreen(m, s.fileId)
         is Screen.MovieEdit -> MovieScreen(m, s.fileId)
         Screen.Settings -> SettingsScreen(m, installApk)

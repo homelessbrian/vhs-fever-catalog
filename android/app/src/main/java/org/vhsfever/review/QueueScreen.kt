@@ -108,6 +108,7 @@ fun QueueScreen(m: AppModel) {
                     m.listInfo?.let { Text(it, color = C.muted, fontSize = 12.sp) }
                 }
                 IconButton(onClick = { m.open(Screen.BoxArt) }) { Icon(Icons.Filled.PhotoLibrary, "Box art", tint = C.text) }
+                TextButton(onClick = { m.open(Screen.VidRockTest) }) { Text("VidRock test", color = C.gold, fontSize = 12.sp) }
                 IconButton(onClick = { m.open(Screen.Settings) }) { Icon(Icons.Filled.Settings, "Settings", tint = C.text) }
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.panel).padding(12.dp),
