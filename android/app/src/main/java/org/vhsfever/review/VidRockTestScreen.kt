@@ -1,6 +1,13 @@
 package org.vhsfever.review
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import android.webkit.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,10 +38,22 @@ import java.util.concurrent.ConcurrentHashMap
  var pageStatus by remember{mutableStateOf("Enter an IMDb ID and start inspection.")}
  var progress by remember{mutableIntStateOf(0)}
  var webView by remember{mutableStateOf<WebView?>(null)}
+ var playbackUrl by remember{mutableStateOf("")}
+ var playbackStatus by remember{mutableStateOf("Choose a captured HLS URL or paste a stream URL.")}
+ var playbackError by remember{mutableStateOf<String?>(null)}
+ val player=remember(ctx){ExoPlayer.Builder(ctx).build()}
  val events=remember{mutableStateListOf<VidRockEvent>()}
  val seen=remember{ConcurrentHashMap.newKeySet<String>()}
  val media=events.filter{e->e.kind.contains("media")||e.kind.contains("video")||e.kind.contains("audio")||e.url.contains(".m3u8",true)||e.url.contains(".mp4",true)||e.url.contains(".mpd",true)||e.detail.contains("mpegurl",true)||e.detail.contains("dash",true)}
  val report=remember(events.size,imdb,pageStatus){JSONObject().put("tool","VHS Fever VidRock Playback Inspector").put("imdb_id",imdb).put("page_status",pageStatus).put("generated_at",Instant.now().toString()).put("note","Captures request metadata and up to 24 KB of HLS manifest text only. Does not collect cookies, request headers, or media segment bodies.").put("events",JSONArray().also{a->events.forEach{a.put(it.toJson())}}).toString(2)}
+ DisposableEffect(player){
+  val listener=object:Player.Listener{
+   override fun onPlaybackStateChanged(state:Int){playbackStatus=when(state){Player.STATE_BUFFERING->"Buffering…";Player.STATE_READY->"Ready · playing";Player.STATE_ENDED->"Playback ended";else->playbackStatus}}
+   override fun onPlayerError(error:PlaybackException){playbackError=error.message?:error.errorCodeName;playbackStatus="Playback failed"}
+  }
+  player.addListener(listener)
+  onDispose{player.removeListener(listener);player.release()}
+ }
  DisposableEffect(Unit){
   VidRockEventBus.sink={e->val k=e.kind+"|"+e.url+"|"+e.detail;if(seen.add(k))events.add(e)}
   onDispose{VidRockEventBus.sink=null;webView?.apply{stopLoading();removeJavascriptInterface("VidRockCapture");loadUrl("about:blank");destroy()};webView=null}
@@ -70,7 +89,29 @@ import java.util.concurrent.ConcurrentHashMap
   }
   Row(verticalAlignment=Alignment.CenterVertically){Text("DISCOVERED MEDIA / MANIFESTS",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("${media.size} candidates",color=C.muted,fontSize=11.sp)}
   if(media.isEmpty())Text("No media URL detected yet. Start playback in the browser above. Player API and script requests are still being recorded.",color=C.warn,fontSize=12.sp)
-  else LazyColumn(Modifier.fillMaxWidth().weight(0.25f),verticalArrangement=Arrangement.spacedBy(4.dp)){items(media.takeLast(30).asReversed()){e->Column(Modifier.fillMaxWidth().padding(vertical=3.dp)){Text(e.kind.uppercase(),color=C.good,fontSize=10.sp,fontWeight=FontWeight.Bold);Text(e.url,color=C.blue,fontSize=10.sp);if(e.detail.isNotBlank())Text(e.detail,color=C.muted,fontSize=10.sp)}}}
+  else LazyColumn(Modifier.fillMaxWidth().weight(0.25f),verticalArrangement=Arrangement.spacedBy(4.dp)){items(media.takeLast(30).asReversed()){e->Column(Modifier.fillMaxWidth().padding(vertical=3.dp)){Text(e.kind.uppercase(),color=C.good,fontSize=10.sp,fontWeight=FontWeight.Bold);Text(e.url,color=C.blue,fontSize=10.sp);if(e.detail.isNotBlank())Text(e.detail.take(180),color=C.muted,fontSize=10.sp);if(e.kind=="playlist-body"||e.url.contains(".m3u8",true))TextButton(onClick={playbackUrl=e.url;playbackStatus="Selected captured manifest";playbackError=null}){Text("Load in native player",color=C.gold,fontSize=10.sp)}}}}
+  Text("NATIVE PLAYER",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold)
+  OutlinedTextField(value=playbackUrl,onValueChange={playbackUrl=it;playbackError=null},label={Text("HLS / MP4 / DASH URL")},singleLine=true,shape=RoundedCornerShape(12.dp),colors=fieldColors(),modifier=Modifier.fillMaxWidth())
+  Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){
+   Button(onClick={
+    val url=playbackUrl.trim()
+    if(!(url.startsWith("https://")||url.startsWith("http://"))){playbackError="Enter a valid http(s) media URL"}
+    else {runCatching{
+     playbackError=null;playbackStatus="Connecting…"
+     val http=DefaultHttpDataSource.Factory().setUserAgent("VHSFeverReview/1.0").setAllowCrossProtocolRedirects(true)
+       .setDefaultRequestProperties(mapOf("Referer" to "https://vidrock.to/"))
+     player.setMediaSource(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(ctx).setDataSourceFactory(http).createMediaSource(MediaItem.fromUri(Uri.parse(url))))
+     player.prepare();player.playWhenReady=true
+    }.onFailure{playbackError=it.message;playbackStatus="Could not start playback"}}
+   },enabled=playbackUrl.isNotBlank(),colors=ButtonDefaults.buttonColors(containerColor=C.gold,contentColor=Color(0xFF1A1206))){Text("Play URL",fontWeight=FontWeight.Bold)}
+   OutlinedButton(onClick={player.stop();playbackStatus="Stopped";playbackError=null}){Text("Stop")}
+   Text(playbackStatus,color=C.muted,fontSize=10.sp,modifier=Modifier.weight(1f))
+  }
+  playbackError?.let{Text("Player error: $it",color=C.bad,fontSize=11.sp)}
+  Surface(color=Color.Black,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().height(190.dp)){
+   AndroidView(factory={context->PlayerView(context).apply{this.player=player;useController=true;keepScreenOn=true}},update={it.player=player},modifier=Modifier.fillMaxSize())
+  }
+  Text("Tap a captured .m3u8 candidate above to load it here, then press Play URL. Native playback uses the manifest URL; the browser session may still be required by the host.",color=C.muted,fontSize=10.sp)
   Text("Signed URLs may contain temporary tokens. Export includes URLs but never cookies or request headers; share privately.",color=C.muted,fontSize=10.sp)
  }
 }
