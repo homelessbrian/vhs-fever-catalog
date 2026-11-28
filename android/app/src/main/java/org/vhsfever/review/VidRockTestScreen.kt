@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
  val events=remember{mutableStateListOf<VidRockEvent>()}
  val seen=remember{ConcurrentHashMap.newKeySet<String>()}
  val media=events.filter{e->e.kind.contains("media")||e.kind.contains("video")||e.kind.contains("audio")||e.url.contains(".m3u8",true)||e.url.contains(".mp4",true)||e.url.contains(".mpd",true)||e.detail.contains("mpegurl",true)||e.detail.contains("dash",true)}
- val report=remember(events.size,imdb,pageStatus){JSONObject().put("tool","VHS Fever VidRock Playback Inspector").put("imdb_id",imdb).put("page_status",pageStatus).put("generated_at",Instant.now().toString()).put("note","Request metadata only. No cookies, request headers, or response bodies are collected.").put("events",JSONArray().also{a->events.forEach{a.put(it.toJson())}}).toString(2)}
+ val report=remember(events.size,imdb,pageStatus){JSONObject().put("tool","VHS Fever VidRock Playback Inspector").put("imdb_id",imdb).put("page_status",pageStatus).put("generated_at",Instant.now().toString()).put("note","Captures request metadata and up to 24 KB of HLS manifest text only. Does not collect cookies, request headers, or media segment bodies.").put("events",JSONArray().also{a->events.forEach{a.put(it.toJson())}}).toString(2)}
  DisposableEffect(Unit){
   VidRockEventBus.sink={e->val k=e.kind+"|"+e.url+"|"+e.detail;if(seen.add(k))events.add(e)}
   onDispose{VidRockEventBus.sink=null;webView?.apply{stopLoading();removeJavascriptInterface("VidRockCapture");loadUrl("about:blank");destroy()};webView=null}
