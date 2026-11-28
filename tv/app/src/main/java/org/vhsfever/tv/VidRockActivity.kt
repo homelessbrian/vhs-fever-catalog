@@ -2,6 +2,8 @@ package org.vhsfever.tv
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -58,7 +60,8 @@ class VidRockActivity : Activity() {
                     // Keep the provider's own navigation in this player. External links are not
                     // allowed to take the TV app out of its playback screen.
                     val target = request?.url ?: return true
-                    return target.scheme != "https" || target.host.isNullOrBlank()
+                    if (request.isForMainFrame) return target.scheme != "https" || target.host != "vidrock.net"
+                    return false
                 }
             }
             webChromeClient = object : WebChromeClient() {
@@ -125,12 +128,12 @@ class VidRockActivity : Activity() {
     companion object {
         private const val EXTRA_URL = "vidrock_url"
 
-        fun intent(activity: Activity, imdbId: String?, tmdbId: Int?): android.content.Intent? {
+        fun intent(context: Context, imdbId: String?, tmdbId: Int?): Intent? {
             val id = imdbId?.takeIf { it.startsWith("tt") && it.length > 2 }
                 ?: tmdbId?.takeIf { it > 0 }?.toString()
                 ?: return null
             val url = "https://vidrock.net/movie/$id"
-            return android.content.Intent(activity, VidRockActivity::class.java).putExtra(EXTRA_URL, url)
+            return Intent(context, VidRockActivity::class.java).putExtra(EXTRA_URL, url)
         }
     }
 }
