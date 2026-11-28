@@ -88,27 +88,36 @@ import java.util.concurrent.ConcurrentHashMap
    },update={webView=it})
   }
   Row(verticalAlignment=Alignment.CenterVertically){Text("DISCOVERED MEDIA / MANIFESTS",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("${media.size} candidates",color=C.muted,fontSize=11.sp)}
-  val playlists=media.filter{it.kind=="playlist-body" && it.url.contains(".m3u8",true)}
-   .distinctBy{it.url}
+  val playlists=media.filter{it.kind=="playlist-body" && it.url.contains(".m3u8",true)}.distinctBy{it.url}
+  val renditions=playlists.flatMap { manifest ->
+   val lines=manifest.detail.replace("\\\\n","\\n").lineSequence().toList()
+   lines.mapIndexedNotNull { index,line ->
+    if(line.startsWith("#EXT-X-STREAM-INF")) {
+     val next=lines.drop(index+1).firstOrNull{it.trim().startsWith("http://")||it.trim().startsWith("https://")}
+     next?.trim()?.let{url-> val resolution=Regex("RESOLUTION=([0-9]+x[0-9]+)").find(line)?.groupValues?.get(1) ?: "Variant"; val bitrate=Regex("BANDWIDTH=([0-9]+)").find(line)?.groupValues?.get(1)?.toIntOrNull()?.div(1000); Triple(resolution,bitrate?.let{"$it kbps"}?: "",url)}
+    } else null
+   }
+  }.distinctBy{it.third}
   if(playlists.isEmpty()) {
    Text("No HLS manifest captured yet. Start playback in the browser above and wait for PLAYLIST-BODY.",color=C.warn,fontSize=12.sp)
   } else {
-   Text("${playlists.size} captured HLS manifests · choose one to test",color=C.muted,fontSize=11.sp)
-   LazyColumn(Modifier.fillMaxWidth().heightIn(max=260.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+   Text("${playlists.size} master manifest(s) · ${renditions.size} quality variant(s)",color=C.muted,fontSize=11.sp)
+   LazyColumn(Modifier.fillMaxWidth().heightIn(max=300.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
     items(playlists.asReversed()) { candidate ->
      Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
       Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-       Text("HLS MANIFEST ${playlists.indexOf(candidate)+1}",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
-       Text(candidate.url,color=C.blue,fontSize=10.sp)
-       val variants=candidate.detail.lineSequence().filter{it.startsWith("#EXT-X-STREAM-INF")||it.startsWith("http://")||it.startsWith("https://")}.take(6).joinToString("\\n")
-       if(variants.isNotBlank()) Text(variants.take(420),color=C.muted,fontSize=9.sp)
-       Button(onClick={
-        playbackUrl=candidate.url
-        playbackStatus="Manifest selected · press Play URL"
-        playbackError=null
-       },modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=C.gold,contentColor=Color(0xFF1A1206))) {
-        Text("USE THIS MANIFEST",fontWeight=FontWeight.Bold)
-       }
+       Text("MASTER HLS MANIFEST",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
+       Text(candidate.url,color=C.blue,fontSize=9.sp,maxLines=3)
+       Button(onClick={playbackUrl=candidate.url;playbackStatus="Master manifest selected · press Play URL";playbackError=null},modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=C.gold,contentColor=Color(0xFF1A1206))) { Text("TEST MASTER PLAYLIST") }
+      }
+     }
+    }
+    items(renditions) { rendition ->
+     Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
+      Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+       Text("RENDITION · ${rendition.first} · ${rendition.second}",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
+       Text(rendition.third,color=C.blue,fontSize=9.sp,maxLines=3)
+       OutlinedButton(onClick={playbackUrl=rendition.third;playbackStatus="Selected ${rendition.first} rendition · press Play URL";playbackError=null},modifier=Modifier.fillMaxWidth()) { Text("TEST THIS QUALITY") }
       }
      }
     }
