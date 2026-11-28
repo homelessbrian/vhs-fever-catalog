@@ -144,8 +144,18 @@ import java.util.concurrent.ConcurrentHashMap
     if(!(url.startsWith("https://")||url.startsWith("http://"))){playbackError="Enter a valid http(s) media URL"}
     else {runCatching{
      playbackError=null;playbackDiagnostics="Opening: $url";playbackStatus="Connecting…"
-     val http=DefaultHttpDataSource.Factory().setUserAgent("VHSFeverReview/1.0").setAllowCrossProtocolRedirects(true)
-       .setDefaultRequestProperties(mapOf("Referer" to "https://vidrock.to/"))
+     // Reuse only cookies already held by Android WebView for this media host.
+     // Never add them to inspector events, diagnostics, or exported reports.
+     val mediaUri=Uri.parse(url)
+     val hostCookies=runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull()
+     val requestHeaders=buildMap {
+      put("Referer","https://vidrock.to/")
+      if(mediaUri.host=="vercetti.org" || mediaUri.host=="vidrock.to") {
+       if(!hostCookies.isNullOrBlank()) put("Cookie",hostCookies)
+      }
+     }
+     val http=DefaultHttpDataSource.Factory().setUserAgent("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+       .setAllowCrossProtocolRedirects(true).setDefaultRequestProperties(requestHeaders)
      player.setMediaSource(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(ctx).setDataSourceFactory(http).createMediaSource(MediaItem.fromUri(Uri.parse(url))))
      player.prepare();player.playWhenReady=true
     }.onFailure{playbackError=it.message;playbackStatus="Could not start playback"}}
