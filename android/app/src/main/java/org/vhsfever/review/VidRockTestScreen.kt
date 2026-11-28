@@ -88,8 +88,21 @@ import java.util.concurrent.ConcurrentHashMap
    },update={webView=it})
   }
   Row(verticalAlignment=Alignment.CenterVertically){Text("DISCOVERED MEDIA / MANIFESTS",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("${media.size} candidates",color=C.muted,fontSize=11.sp)}
-  if(media.isEmpty())Text("No media URL detected yet. Start playback in the browser above. Player API and script requests are still being recorded.",color=C.warn,fontSize=12.sp)
-  else LazyColumn(Modifier.fillMaxWidth().weight(0.12f),verticalArrangement=Arrangement.spacedBy(4.dp)){items(media.takeLast(30).asReversed()){e->Column(Modifier.fillMaxWidth().padding(vertical=3.dp)){Text(e.kind.uppercase(),color=C.good,fontSize=10.sp,fontWeight=FontWeight.Bold);Text(e.url,color=C.blue,fontSize=10.sp);if(e.detail.isNotBlank())Text(e.detail.take(180),color=C.muted,fontSize=10.sp);if(e.kind=="playlist-body"||e.url.contains(".m3u8",true))TextButton(onClick={playbackUrl=e.url;playbackStatus="Selected captured manifest";playbackError=null}){Text("Load in native player",color=C.gold,fontSize=10.sp)}}}}
+  val latestPlaylist=media.lastOrNull{it.kind=="playlist-body" && it.url.contains(".m3u8",true)}
+  if(latestPlaylist==null) {
+   Text("No HLS manifest captured yet. Start playback in the browser above and wait for PLAYLIST-BODY.",color=C.warn,fontSize=12.sp)
+  } else {
+   Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+     Text("CAPTURED HLS MANIFEST",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
+     Text(latestPlaylist.url,color=C.blue,fontSize=10.sp,maxLines=3)
+     Text(latestPlaylist.detail.lineSequence().filter{it.startsWith("#EXT-X-STREAM-INF")||it.startsWith("https://")}.take(4).joinToString("\n").take(260),color=C.muted,fontSize=9.sp,maxLines=4)
+     Button(onClick={playbackUrl=latestPlaylist.url;playbackStatus="Manifest loaded · press Play URL";playbackError=null},modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=C.gold,contentColor=Color(0xFF1A1206))) {
+      Text("USE THIS MANIFEST",fontWeight=FontWeight.Bold)
+     }
+    }
+   }
+  }
   Text("NATIVE PLAYER",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold)
   OutlinedTextField(value=playbackUrl,onValueChange={playbackUrl=it;playbackError=null},label={Text("HLS / MP4 / DASH URL")},singleLine=true,shape=RoundedCornerShape(12.dp),colors=fieldColors(),modifier=Modifier.fillMaxWidth())
   Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){
