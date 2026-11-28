@@ -11,6 +11,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import android.webkit.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,7 +71,7 @@ import java.util.concurrent.ConcurrentHashMap
   VidRockEventBus.sink={e->val k=e.kind+"|"+e.url+"|"+e.detail;if(seen.add(k))events.add(e)}
   onDispose{VidRockEventBus.sink=null;webView?.apply{stopLoading();removeJavascriptInterface("VidRockCapture");loadUrl("about:blank");destroy()};webView=null}
  }
- Column(Modifier.fillMaxSize().padding(horizontal=16.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+ Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
   Row(verticalAlignment=Alignment.CenterVertically){IconButton(onClick={m.back()}){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Back",tint=C.text)};Text("VidRock Playback Inspector",color=C.text,fontSize=19.sp,fontWeight=FontWeight.Bold)}
   Text("Live browser + network inspection. Only VidRock is opened; no VHS Vault or BackWhen services.",color=C.muted,fontSize=11.sp)
   Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){
@@ -113,8 +115,8 @@ import java.util.concurrent.ConcurrentHashMap
    Text("No HLS manifest captured yet. Start playback in the browser above and wait for PLAYLIST-BODY.",color=C.warn,fontSize=12.sp)
   } else {
    Text("${playlists.size} master manifest(s) · ${renditions.size} quality variant(s)",color=C.muted,fontSize=11.sp)
-   LazyColumn(Modifier.fillMaxWidth().heightIn(max=300.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-    items(playlists.asReversed()) { candidate ->
+   Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+    playlists.asReversed().forEach { candidate ->
      Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
       Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
        Text("MASTER HLS MANIFEST",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
@@ -123,7 +125,7 @@ import java.util.concurrent.ConcurrentHashMap
       }
      }
     }
-    items(renditions) { rendition ->
+    renditions.forEach { rendition ->
      Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
       Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
        Text("RENDITION · ${rendition.first} · ${rendition.second}",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
@@ -153,7 +155,7 @@ import java.util.concurrent.ConcurrentHashMap
   }
   playbackError?.let{Text("Player error: $it",color=C.bad,fontSize=11.sp)}
   Text(playbackDiagnostics,color=C.muted,fontSize=10.sp)
-  Surface(color=Color.Black,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().height(155.dp)){
+  Surface(color=Color.Black,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().aspectRatio(16f / 9f)){
    AndroidView(factory={context->PlayerView(context).apply{this.player=player;useController=true;keepScreenOn=true}},update={it.player=player},modifier=Modifier.fillMaxSize())
   }
   Text("Tap a captured .m3u8 candidate above to load it here, then press Play URL. Native playback uses the manifest URL; the browser session may still be required by the host.",color=C.muted,fontSize=10.sp)
