@@ -70,7 +70,7 @@ import java.util.concurrent.ConcurrentHashMap
    Text("${events.size} requests",color=C.blue,fontSize=11.sp,fontWeight=FontWeight.Bold)
    IconButton(onClick={val send=Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_SUBJECT,"VidRock inspection · $imdb").putExtra(Intent.EXTRA_TEXT,report);ctx.startActivity(Intent.createChooser(send,"Export inspection report"))},enabled=events.isNotEmpty()){Icon(Icons.Default.Share,"Export report",tint=C.gold)}
   }
-  Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().weight(0.55f)){
+  Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().weight(0.32f)){
    AndroidView(modifier=Modifier.fillMaxSize(),factory={context->
     WebView(context).apply{
      webView=this;settings.javaScriptEnabled=true;settings.domStorageEnabled=true;settings.loadsImagesAutomatically=true;settings.mediaPlaybackRequiresUserGesture=true;settings.javaScriptCanOpenWindowsAutomatically=false;settings.setSupportMultipleWindows(false);settings.allowFileAccess=false;settings.allowContentAccess=false;settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -89,7 +89,7 @@ import java.util.concurrent.ConcurrentHashMap
   }
   Row(verticalAlignment=Alignment.CenterVertically){Text("DISCOVERED MEDIA / MANIFESTS",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("${media.size} candidates",color=C.muted,fontSize=11.sp)}
   if(media.isEmpty())Text("No media URL detected yet. Start playback in the browser above. Player API and script requests are still being recorded.",color=C.warn,fontSize=12.sp)
-  else LazyColumn(Modifier.fillMaxWidth().weight(0.25f),verticalArrangement=Arrangement.spacedBy(4.dp)){items(media.takeLast(30).asReversed()){e->Column(Modifier.fillMaxWidth().padding(vertical=3.dp)){Text(e.kind.uppercase(),color=C.good,fontSize=10.sp,fontWeight=FontWeight.Bold);Text(e.url,color=C.blue,fontSize=10.sp);if(e.detail.isNotBlank())Text(e.detail.take(180),color=C.muted,fontSize=10.sp);if(e.kind=="playlist-body"||e.url.contains(".m3u8",true))TextButton(onClick={playbackUrl=e.url;playbackStatus="Selected captured manifest";playbackError=null}){Text("Load in native player",color=C.gold,fontSize=10.sp)}}}}
+  else LazyColumn(Modifier.fillMaxWidth().weight(0.12f),verticalArrangement=Arrangement.spacedBy(4.dp)){items(media.takeLast(30).asReversed()){e->Column(Modifier.fillMaxWidth().padding(vertical=3.dp)){Text(e.kind.uppercase(),color=C.good,fontSize=10.sp,fontWeight=FontWeight.Bold);Text(e.url,color=C.blue,fontSize=10.sp);if(e.detail.isNotBlank())Text(e.detail.take(180),color=C.muted,fontSize=10.sp);if(e.kind=="playlist-body"||e.url.contains(".m3u8",true))TextButton(onClick={playbackUrl=e.url;playbackStatus="Selected captured manifest";playbackError=null}){Text("Load in native player",color=C.gold,fontSize=10.sp)}}}}
   Text("NATIVE PLAYER",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold)
   OutlinedTextField(value=playbackUrl,onValueChange={playbackUrl=it;playbackError=null},label={Text("HLS / MP4 / DASH URL")},singleLine=true,shape=RoundedCornerShape(12.dp),colors=fieldColors(),modifier=Modifier.fillMaxWidth())
   Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){
@@ -108,7 +108,7 @@ import java.util.concurrent.ConcurrentHashMap
    Text(playbackStatus,color=C.muted,fontSize=10.sp,modifier=Modifier.weight(1f))
   }
   playbackError?.let{Text("Player error: $it",color=C.bad,fontSize=11.sp)}
-  Surface(color=Color.Black,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().height(190.dp)){
+  Surface(color=Color.Black,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().height(155.dp)){
    AndroidView(factory={context->PlayerView(context).apply{this.player=player;useController=true;keepScreenOn=true}},update={it.player=player},modifier=Modifier.fillMaxSize())
   }
   Text("Tap a captured .m3u8 candidate above to load it here, then press Play URL. Native playback uses the manifest URL; the browser session may still be required by the host.",color=C.muted,fontSize=10.sp)
