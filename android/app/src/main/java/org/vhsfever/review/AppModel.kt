@@ -20,6 +20,7 @@ import java.time.Instant
 
 sealed interface Screen {
     data object Queue : Screen
+    data object VidRockTest : Screen
     data class Review(val fileId: String) : Screen
     data class MovieEdit(val fileId: String) : Screen
     data object Settings : Screen
