@@ -1,0 +1,173 @@
+{
+  "note": "Archive files added by hand (from Brian's VHS Vault export, Nov 27 2026). The movie bot reads each page, keeps only the files listed here from it (nothing else on that page), and keeps them even when they look like a DVD/Blu-ray rip instead of a tape. They always go to the review app, never straight to the TV shelves. imdb_id, title and year are for reference.",
+  "files": [
+    {
+      "page": "1980-stanley-kubrick-the-shining",
+      "file": "(1980) Stanley Kubrick- The Shining.mp4",
+      "imdb_id": "tt0081505",
+      "title": "The Shining",
+      "year": 1980
+    },
+    {
+      "page": "a_nightmare_on_elm_street",
+      "file": "A Nightmare on Elm Street/01. A Nightmare on Elm Street (1984)/A.Nightmare.On.Elm.Street.1984.720p.BrRip.x264.bitloks.YIFY.mp4",
+      "imdb_id": "tt0087800",
+      "title": "A Nightmare on Elm Street",
+      "year": 1984
+    },
+    {
+      "page": "a_nightmare_on_elm_street",
+      "file": "A Nightmare on Elm Street/07. Wes Craven's New Nightmare (1994)/Wes Cravens New Nightmare (1994) - BRrip 1080p.mp4",
+      "imdb_id": "tt0111686",
+      "title": "Wes Craven's New Nightmare",
+      "year": 1994
+    },
+    {
+      "page": "BehindEnemyLines_201704",
+      "file": "Behind Enemy Lines.mp4",
+      "imdb_id": "tt0159273",
+      "title": "Behind Enemy Lines",
+      "year": 2001
+    },
+    {
+      "page": "die-hard-1988-1",
+      "file": "Die Hard (1988) (1).mp4",
+      "imdb_id": "tt0095016",
+      "title": "Die Hard",
+      "year": 1988
+    },
+    {
+      "page": "ferris-buellers-day-off-1986_202511",
+      "file": "Ferris Bueller's Day Off (1986).mp4",
+      "imdb_id": "tt0091042",
+      "title": "Ferris Bueller's Day Off",
+      "year": 1986
+    },
+    {
+      "page": "fight.club.10th.anniversary.edition.1999.1080p.brrip.x264.yify_201908",
+      "file": "Fight.Club.10th.Anniversary.Edition.1999.1080p.BrRip.x264.YIFY.mp4",
+      "imdb_id": "tt0137523",
+      "title": "Fight Club",
+      "year": 1999
+    },
+    {
+      "page": "hocus-pocus-1993_202409",
+      "file": "Hocus Pocus (1993).mp4",
+      "imdb_id": "tt0107120",
+      "title": "Hocus Pocus",
+      "year": 1993
+    },
+    {
+      "page": "jurassic-park_202405",
+      "file": "JURASSIC_PARK.mp4",
+      "imdb_id": "tt0107290",
+      "title": "Jurassic Park",
+      "year": 1993
+    },
+    {
+      "page": "masters-of-the-universe-1987_202304",
+      "file": "Masters of the universe 1987.mp4",
+      "imdb_id": "tt0093507",
+      "title": "Masters of the Universe",
+      "year": 1987
+    },
+    {
+      "page": "Popcornarchive-aceVenturaPetDetective1994",
+      "file": "Popcornarchive-aceVenturaPetDetective1994.mp4",
+      "imdb_id": "tt0109040",
+      "title": "Ace Ventura: Pet Detective",
+      "year": 1994
+    },
+    {
+      "page": "Popcornarchive-findingNemo2003_ej7bm",
+      "file": "Popcornarchive-findingNemo2003_ej7bm.mp4",
+      "imdb_id": "tt0266543",
+      "title": "Finding Nemo",
+      "year": 2003
+    },
+    {
+      "page": "Popcornarchive-fridayThe13th1980",
+      "file": "Popcornarchive-fridayThe13th1980.mp4",
+      "imdb_id": "tt0080761",
+      "title": "Friday the 13th",
+      "year": 1980
+    },
+    {
+      "page": "Popcornarchive-labyrinth1986",
+      "file": "Popcornarchive-labyrinth1986.mp4",
+      "imdb_id": "tt0091369",
+      "title": "Labyrinth",
+      "year": 1986
+    },
+    {
+      "page": "Popcornarchive-theBlairWitchProject1999",
+      "file": "Popcornarchive-theBlairWitchProject1999.mp4",
+      "imdb_id": "tt0185937",
+      "title": "The Blair Witch Project",
+      "year": 1999
+    },
+    {
+      "page": "Popcornarchive-theEmperorsNewGroove2000",
+      "file": "Popcornarchive-theEmperorsNewGroove2000.mp4",
+      "imdb_id": "tt0120917",
+      "title": "The Emperor's New Groove",
+      "year": 2000
+    },
+    {
+      "page": "Popcornarchive-theLionKing_7b7i5",
+      "file": "Popcornarchive-theLionKing_7b7i5.mp4",
+      "imdb_id": "tt0110357",
+      "title": "The Lion King",
+      "year": 1994
+    },
+    {
+      "page": "Popcornarchive-titanicExtendedCut",
+      "file": "Popcornarchive-titanicExtendedCut.mp4",
+      "imdb_id": "tt0120338",
+      "title": "Titanic",
+      "year": 1997
+    },
+    {
+      "page": "pulp-fiction-tv-version_2",
+      "file": "Pulp Fiction TV Version.mp4",
+      "imdb_id": "tt0110912",
+      "title": "Pulp Fiction",
+      "year": 1994
+    },
+    {
+      "page": "session.-9.2001.-multi.-vfi.-1080p.-blu-ray.-e-ac-3-5.1.x-265-dread-team",
+      "file": "Session.9.2001.MULTi.VFi.1080p.BluRay.E-AC3-5.1.x265-Dread-Team.mkv",
+      "imdb_id": "tt0261983",
+      "title": "Session 9",
+      "year": 2001
+    },
+    {
+      "page": "terminator-2-judgment-day-1991-blu-ray-v-2-720p-fzmovies.net-4beb-52c-21b-25a-27018a-52684ae-967a-6d",
+      "file": "Terminator_2__Judgment_Day_(1991)_BluRay v2_720p_(fzmovies.net)_4beb52c21b25a27018a52684ae967a6d.mkv",
+      "imdb_id": "tt0103064",
+      "title": "Terminator 2: Judgment Day",
+      "year": 1991
+    },
+    {
+      "page": "the-secret-of-the-sword-1985-original-theatrical-print-recreation-ntsc-original-pitch-correction",
+      "file": "The Secret of the Sword.mp4",
+      "imdb_id": "tt0089984",
+      "title": "The Secret of the Sword",
+      "year": 1985
+    },
+    {
+      "page": "the-thing_202010",
+      "file": "The Thing.mp4",
+      "imdb_id": "tt0084787",
+      "title": "The Thing",
+      "year": 1982
+    },
+    {
+      "page": "totofox",
+      "file": "totofox.mp4",
+      "imdb_id": "tt0096283",
+      "title": "My Neighbor Totoro",
+      "year": 1988
+    }
+  ]
+}

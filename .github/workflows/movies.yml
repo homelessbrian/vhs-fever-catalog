@@ -46,7 +46,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run tests
-        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items tests.test_unsure_kinds tests.test_tape_copies tests.test_imdb_genres
+        run: python -m unittest tests.test_vhs_movies tests.test_auto_sort tests.test_title_search tests.test_catalog_model tests.test_match_titles_tmdb tests.test_discover_more_items tests.test_unsure_kinds tests.test_tape_copies tests.test_imdb_genres tests.test_hand_added
 
       - name: What the bot found and read before
         run: |
@@ -112,7 +112,7 @@ jobs:
 
       - name: Read every page so far and keep recordings 40 minutes or longer
         run: |
-          grep -hv '^#' data/batches/batch-*.txt | sed '/^\s*$/d' | sort -u > all-pages.txt
+          { grep -hv '^#' data/batches/batch-*.txt; python scripts/hand_added.py pages; } | sed '/^\s*$/d' | sort -u > all-pages.txt
           echo "$(wc -l < all-pages.txt) Archive pages in all"
           # If the saved pages are ever gone, download for at most 75 minutes; pages not reached are
           # picked up next run (the ones downloaded are saved first), so a run can't run out of time.

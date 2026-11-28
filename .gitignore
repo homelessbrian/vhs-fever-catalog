@@ -229,3 +229,6 @@ data/*
 # Batch lists are kept in Git (they are small and say what is in the catalog)
 !data/batches/
 !data/batches/*.txt
+
+# Files picked by hand are kept in Git
+!data/hand-added.json

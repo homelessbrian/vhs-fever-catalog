@@ -37,6 +37,7 @@ import not_movies  # noqa: E402
 import kids_tapes  # noqa: E402
 import imdb_genres  # noqa: E402
 import unsure_kinds  # noqa: E402
+import hand_added  # noqa: E402
 
 MIN_SECONDS = 40 * 60
 DROP_CATEGORIES = {"tv_recording", "vhs_opening_or_previews", "other_media_release"}
@@ -63,10 +64,12 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 # --------------------------------------------------------------------------
 # Trimming the catalog model down to some recordings
 # --------------------------------------------------------------------------
-def is_long_candidate(rec: dict[str, Any]) -> bool:
+def is_long_candidate(rec: dict[str, Any], by_hand: bool = False) -> bool:
+    """Long, whole (not split) and not a TV recording / tape opening / disc release.
+    A file listed in data/hand-added.json skips the kind-of-release check."""
     return ((rec.get("duration_seconds") or 0) >= MIN_SECONDS
             and (rec.get("part_count") or 1) == 1
-            and rec.get("catalog_category") not in DROP_CATEGORIES)
+            and (by_hand or rec.get("catalog_category") not in DROP_CATEGORIES))
 
 
 def trim_model(model: dict[str, list[dict[str, Any]]], keep_recs: set[str]) -> dict[str, list[dict[str, Any]]]:
@@ -107,13 +110,22 @@ def save_model(d: Path, model: dict[str, list[dict[str, Any]]], extra_summary: d
     (d / "catalog-model.summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
 
-def keep_long(model_dir: Path) -> dict[str, Any]:
+def keep_long(model_dir: Path, hand_path: Path | None = hand_added.DEFAULT) -> dict[str, Any]:
     model = load_model(model_dir)
     total_pages = len(model["archive-items"])
     total = len(model["recordings"])
     blocked = {i["archive_identifier"] for i in model["archive-items"] if i.get("blocked")}
-    keep = {r["recording_id"] for r in model["recordings"] if is_long_candidate(r)
-            and not blocked & set(r.get("archive_identifiers") or [])}
+    entries = hand_added.load(hand_path)
+    keep = set()
+    for r in model["recordings"]:
+        if blocked & set(r.get("archive_identifiers") or []):
+            continue
+        listed = hand_added.is_listed(r, entries)
+        # From a page picked by hand, only the listed files count (a page can hold a whole collection).
+        if hand_added.on_hand_page(r, entries) and not listed:
+            continue
+        if is_long_candidate(r, by_hand=listed):
+            keep.add(r["recording_id"])
     trimmed = trim_model(model, keep)
     summary = {"pages_read": total_pages, "recordings_read": total, "long_enough": len(keep),
                "blocked_adult_pages": len(blocked)}
@@ -153,6 +165,28 @@ def tmdb_details(ids: list[int], cache: dict[str, Any], token: str | None, delay
             "overview": (d.get("overview") or "")[:600] or None,
         }
     return calls
+
+
+def tmdb_find(imdb_ids: list[str], cache: dict[str, Any], token: str | None, delay: float = 0.05) -> dict[str, int]:
+    """TMDB's movie id for each IMDb id (from the cache when it is there, else looked up). Misses are left out."""
+    found = {v["imdb_id"]: int(k) for k, v in cache.items() if v.get("imdb_id") and str(k).isdigit()}
+    out = {i: found[i] for i in imdb_ids if i in found}
+    for imdb in imdb_ids:
+        if imdb in out or not token:
+            continue
+        url = f"{TMDB}/find/{urllib.parse.quote(imdb)}?" + urllib.parse.urlencode({"external_source": "imdb_id"})
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    hit = (json.load(r).get("movie_results") or [None])[0]
+                if hit and hit.get("id"):
+                    out[imdb] = int(hit["id"])
+                break
+            except Exception:  # noqa: BLE001 - retry, then leave it for the next run
+                time.sleep(2 * (attempt + 1))
+        time.sleep(delay)
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -215,7 +249,14 @@ def tape_sign(row: dict[str, Any], title: dict[str, Any] | None, page: dict[str,
 
 
 def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None,
-                 page: dict[str, Any] | None = None, check_tape: bool = False) -> str | None:
+                 page: dict[str, Any] | None = None, check_tape: bool = False, by_hand: bool = False) -> str | None:
+    if by_hand:
+        # Picked by a person (data/hand-added.json): only a file that is too short or won't play is left out.
+        if (row.get("duration_seconds") or 0) < MIN_SECONDS:
+            return "shorter than 40 minutes"
+        if row["verdict"] == "bad":
+            return "doesn't play (" + (row.get("reason") or "bad") + ")"
+        return None
     if ((title or {}).get("tmdb") or {}).get("status") == "skipped_not_english":
         return "not in English"
     words = not_movies.not_a_movie(row.get("name"), (title or {}).get("display_title"),
@@ -240,10 +281,13 @@ def why_not_kept(row: dict[str, Any], title: dict[str, Any] | None,
     return None
 
 
-def bot_sure(row: dict[str, Any], title: dict[str, Any] | None, is_adult: bool = False) -> list[str]:
+def bot_sure(row: dict[str, Any], title: dict[str, Any] | None, is_adult: bool = False,
+             by_hand: bool = False) -> list[str]:
     """Why the bot can't put this movie on the shelf by itself (empty = sure)."""
     if is_adult:
         return ["adult tape: always checked by hand"]
+    if by_hand:
+        return ["added by hand: always checked in the review app"]
     cand, conf = best_candidate(title)
     worries = []
     if conf != "sure" or cand.get("media_type") != "movie":
@@ -342,9 +386,22 @@ def _foreign_name(name: str) -> str | None:
 DEFAULT_OVERRIDES = Path(__file__).resolve().parent.parent / "data" / "genre-overrides.json"
 
 
+def hand_entry_for(title: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The hand-added entry for one of the movie list's titles (matched on Archive page + file name), if any."""
+    by_file = {(e["page"], hand_added.stem(e["file"])): e for e in entries}
+    for rec in title.get("un", []) + [r for e in title.get("eds", []) for r in e.get("recs", [])]:
+        for seg in rec.get("segs", []):
+            for x in seg.get("src", []):
+                hit = by_file.get((x.get("item"), hand_added.stem(x.get("n"))))
+                if hit:
+                    return hit
+    return None
+
+
 def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_path: Path | None,
            pages_read: int | None, imdb_cache_path: Path | None = None,
-           overrides_path: Path | None = DEFAULT_OVERRIDES) -> dict[str, Any]:
+           overrides_path: Path | None = DEFAULT_OVERRIDES,
+           hand_path: Path | None = hand_added.DEFAULT) -> dict[str, Any]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import catalog_model  # noqa: E402
 
@@ -356,6 +413,9 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     pages = {i["archive_identifier"]: i for i in model["archive-items"]}
     rec_pages = {r["recording_id"]: set(r.get("archive_identifiers") or []) for r in model["recordings"]}
     adult_recs = {rid for rid, pages in rec_pages.items() if pages & adult_pages}
+    # Files a person added by hand (data/hand-added.json): kept as they are, always checked in the review app.
+    hand_entries = hand_added.load(hand_path)
+    hand_recs = {r["recording_id"] for r in model["recordings"] if hand_added.is_listed(r, hand_entries)}
     rows = read_jsonl(sort_path)
     rows_by_rec: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -371,7 +431,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
         on_pages = [pages[p] for p in sorted(rec_pages.get(rid, set()) | {group[0].get("archive_identifier")})
                     if p in pages] or [None]
         on_pages.sort(key=lambda pg: tape_sign(group[0], title, pg) is None)
-        why = why_not_kept(group[0], title, on_pages[0], check_tape=True)
+        why = why_not_kept(group[0], title, on_pages[0], check_tape=True, by_hand=rid in hand_recs)
         if rec_pages.get(rid, set()) & blocked_pages:
             why = "blocked adult tape"
         if why is None:
@@ -386,7 +446,12 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
     want = sorted({c["tmdb_id"] for rid in keep_recs - adult_recs for r in rows_by_rec[rid][:1]
                    for c, conf in [best_candidate(titles.get(r.get("title_suggestion_id")))]
                    if c.get("media_type") == "movie" and c.get("tmdb_id") and conf in {"sure", "likely", "several"}})
-    calls = tmdb_details(want, cache, os.environ.get("TMDB_API_READ_ACCESS_TOKEN"))
+    # For files added by hand the list gives the exact IMDb id, so that movie is looked up too.
+    token = os.environ.get("TMDB_API_READ_ACCESS_TOKEN")
+    hand_tmdb = tmdb_find(sorted({e["imdb_id"] for e in hand_entries if e.get("imdb_id")}), cache, token) \
+        if hand_entries else {}
+    want = sorted(set(want) | set(hand_tmdb.values()))
+    calls = tmdb_details(want, cache, token)
 
     # IMDb's genres for the same movies (see imdb_genres.py); TMDB's are the fallback.
     imdb_cache: dict[str, list[str]] = {}
@@ -416,7 +481,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
             if r["verdict"] == "bad":
                 out_rows.append(r)
                 continue
-            worries = bot_sure(r, titles.get(r.get("title_suggestion_id")), rid in adult_recs)
+            worries = bot_sure(r, titles.get(r.get("title_suggestion_id")), rid in adult_recs, rid in hand_recs)
             if worries:
                 r = dict(r, verdict="review", confidence="low", verdict_why=worries)
             else:
@@ -424,7 +489,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
             out_rows.append(r)
     # Kids' TV / series tapes, home videos, instructional and foreign-language
     # tapes stay only when the bot is sure about them; the rest are left out.
-    for rid in sorted(keep_recs - adult_recs):
+    for rid in sorted(keep_recs - adult_recs - hand_recs):
         group = rows_by_rec[rid]
         if any(r["file_id"] in sure_files for r in group):
             continue
@@ -503,6 +568,22 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
             if info:
                 t["guess"] = dict(info, genres=genres_of(info))    # TMDB's best guess, for the review screen; not confirmed
             t["genres"] = []
+        # Added by hand: the list's own IMDb id gives the first TMDB candidate and the name.
+        mine = hand_entry_for(t, hand_entries)
+        if mine:
+            t["hand"] = True
+            exact = cache.get(str(hand_tmdb.get(mine.get("imdb_id"))))
+            if exact and not t.get("movie"):
+                t["t"] = exact["title"] or mine["title"]
+                t["guess"] = dict(exact, genres=genres_of(exact))
+                cands = t.setdefault("tmdb", {}).setdefault("c", [])
+                cands[:] = [c for c in cands if c.get("tmdb_id") != exact["tmdb_id"]]
+                cands.insert(0, {"tmdb_id": exact["tmdb_id"], "source": "IMDb id from the list added by hand",
+                                 "media_type": "movie", "title": exact["title"], "release_date": exact.get("year"),
+                                 "poster": exact.get("poster"), "overview": exact.get("overview"),
+                                 "runtime": exact.get("runtime")})
+            elif not t.get("movie"):
+                t["t"] = mine["title"]
     feed["titles"].sort(key=lambda t: t["t"].casefold())
     feed["summary"] = {
         "pages_read": pages_read, "vhs_movies": len(feed["titles"]), "bot_sure": sure_titles,
