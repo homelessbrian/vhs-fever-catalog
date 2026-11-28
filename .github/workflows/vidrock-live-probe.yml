@@ -21,7 +21,7 @@ jobs:
           GH_REF: ${{ github.ref_name }}
         run: |
           python3 - <<'PY'
-          import base64, json, os, re, time, urllib.request, urllib.error
+          import base64, json, os, re, time, urllib.request, urllib.error, subprocess
           from urllib.parse import urljoin
           KEY = bytes.fromhex("7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f")
           UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -74,7 +74,16 @@ jobs:
                           else:
                               lane["hls"]=False
                               lane["body_prefix_hex"]=b[:16].hex()
-                          lane["playable_candidate"]=bool(lane.get("hls") and lane.get("stream_status",0)==200 and lane.get("segment_status",0) in (200,206) and lane.get("segment_bytes",0)>256)
+                          lane["playable_candidate"]=False
+                          if lane.get("hls") and lane.get("stream_status")==200:
+                              hdr="User-Agent: "+UA+"\\r\\nReferer: https://vidrock.to/\\r\\nOrigin: https://vidrock.to\\r\\n"
+                              try:
+                                  p=subprocess.run(["ffmpeg","-nostdin","-v","error","-headers",hdr,"-i",u,"-frames:v","1","-f","image2pipe","-vcodec","mjpeg","pipe:1"],capture_output=True,timeout=35)
+                                  lane["ffmpeg_exit"]=p.returncode
+                                  lane["decoded_frame_bytes"]=len(p.stdout)
+                                  lane["decoded_frame"]=p.returncode==0 and len(p.stdout)>1000
+                                  lane["playable_candidate"]=lane["decoded_frame"]
+                              except Exception as e: lane["ffmpeg_error"]=str(e)
                       except Exception as e: lane["decrypt_or_probe_error"]=str(e)
                       item["lanes"].append(lane)
               out["results"].append(item)
