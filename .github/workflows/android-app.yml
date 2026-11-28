@@ -2,7 +2,7 @@ name: Build review app (Android)
 
 on:
   push:
-    branches: [main, rebuild/data-model]
+    branches: [main, rebuild/data-model, feat/manual-vidrock-review]
     paths:
       - 'android/**'
       - '.github/workflows/android-app.yml'
