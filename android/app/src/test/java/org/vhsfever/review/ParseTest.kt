@@ -56,6 +56,12 @@ class ParseTest {
         assertNull(FileDecision.fromJson(FileDecision(status = "good").toJson()).robot)
     }
 
+    @Test fun addedDateIsSavedAndKept() {
+        val d = FileDecision.fromJson(FileDecision(status = "good", managerPick = true, addedAt = "2026-11-01T00:00:00Z").toJson())
+        assertEquals("2026-11-01T00:00:00Z", d.addedAt)
+        assertEquals("", FileDecision.fromJson(FileDecision(status = "good").toJson()).addedAt)
+    }
+
     @Test fun playFirstIsSavedAndCleared() {
         val on = FileDecision(status = "good", playFirst = true).toJson()
         assertEquals(true, on.getBoolean("play_first"))

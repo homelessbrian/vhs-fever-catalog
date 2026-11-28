@@ -120,6 +120,8 @@ data class FileDecision(
     /** Brian put this movie on the Manager's Picks shelf. */
     val managerPick: Boolean = false,
     val extra: JSONObject? = null,
+    /** When it was first marked good. Picks, play-first and edits don't change it, so New Arrivals only shows really new tapes. */
+    val addedAt: String = "",
 ) {
     fun toJson(): JSONObject {
         val o = JSONObject(extra?.toString() ?: "{}")
@@ -128,10 +130,11 @@ data class FileDecision(
             .put("movie", movie?.toJson()).put("release", release?.toJson()).put("updated_at", updatedAt)
             .put("robot", robot).apply { if (playFirst) put("play_first", true) else remove("play_first") }
             .apply { if (managerPick) put("manager_pick", true) else remove("manager_pick") }
+            .apply { if (addedAt.isNotBlank()) put("added_at", addedAt) else remove("added_at") }
     }
 
     companion object {
-        private val OWN = setOf("status", "reasons", "other_reason", "notes", "movie", "release", "updated_at", "robot", "play_first", "manager_pick")
+        private val OWN = setOf("status", "reasons", "other_reason", "notes", "movie", "release", "updated_at", "robot", "play_first", "manager_pick", "added_at")
 
         fun fromJson(o: JSONObject): FileDecision {
             val extra = JSONObject()
@@ -140,7 +143,8 @@ data class FileDecision(
                 o.optStringOrNull("status"), o.optJSONArray("reasons").strings(), o.optString("other_reason", ""),
                 o.optString("notes", ""), Movie.fromJson(o.optJSONObject("movie")),
                 ReleaseInfo.fromJson(o.optJSONObject("release")), o.optString("updated_at", ""),
-                o.optStringOrNull("robot"), o.optBoolean("play_first"), o.optBoolean("manager_pick"), extra.takeIf { it.length() > 0 })
+                o.optStringOrNull("robot"), o.optBoolean("play_first"), o.optBoolean("manager_pick"), extra.takeIf { it.length() > 0 },
+                addedAt = o.optString("added_at", ""))
         }
     }
 }

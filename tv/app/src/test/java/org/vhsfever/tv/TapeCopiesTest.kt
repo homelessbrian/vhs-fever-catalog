@@ -36,6 +36,11 @@ class TapeCopiesTest {
         assertTrue(t.tapes[0].pinnedAt != null)
     }
 
+    @Test fun aManagerPickDoesNotMakeATapeNew() {
+        val d = """{"files":{"c1":{"status":"good","manager_pick":true,"added_at":"2026-11-01T00:00:00Z","updated_at":"2026-11-27T12:00:00Z"}}}"""
+        assertEquals("2026-11-01T00:00:00Z", Catalog.build(feed, d).titles.single().addedAt)
+    }
+
     @Test fun aCopyMarkedBadIsNotABackup() {
         val d = """{"files":{"b1":{"status":"bad","reasons":["Won’t play"]}}}"""
         val ids = Catalog.build(feed, d).titles.single().tapes[0].sources.map { it.id }

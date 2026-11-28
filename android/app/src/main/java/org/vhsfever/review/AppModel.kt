@@ -466,7 +466,11 @@ class AppModel(private val ctx: Context) {
     fun update(fileId: String, label: String? = null, change: (FileDecision) -> FileDecision) {
         val old = decisions[fileId]
         val base = old ?: byId[fileId]?.originalId?.let { decisions[it] }?.copy(updatedAt = "") ?: FileDecision()
-        val new = change(base).copy(updatedAt = now())
+        val edited = change(base)
+        // "Added" is when the tape was first marked good; a pick, play-first or any other edit keeps it.
+        val added = if (edited.status != "good") "" else
+            edited.addedAt.ifBlank { base.addedAt.ifBlank { if (base.status == "good") base.updatedAt else "" } }.ifBlank { now() }
+        val new = edited.copy(updatedAt = now(), addedAt = added)
         if (label != null) {
             undo.addLast(fileId to old)
             while (undo.size > 20) undo.removeFirst()

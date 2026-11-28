@@ -198,7 +198,7 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                                     sources = orderSources(id, srcs),
                                     media = media?.takeIf { it != "TAPE_UNSPECIFIED" },
                                     releaseYear = year,
-                                    addedAt = d.optString("updated_at").ifBlank { listDate },
+                                    addedAt = d.optString("added_at").ifBlank { d.optString("updated_at") }.ifBlank { listDate },
                                     group = src.str("tg") ?: id,
                                     rank = if (src.has("pk")) src.optInt("pk") else Int.MAX_VALUE,
                                     hidden = src.optBoolean("hide"),
