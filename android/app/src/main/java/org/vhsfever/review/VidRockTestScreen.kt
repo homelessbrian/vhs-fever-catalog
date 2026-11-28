@@ -48,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap
   }
   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
    Text(if(busy)"Loading · $progress%" else pageStatus,color=C.muted,fontSize=10.sp,modifier=Modifier.weight(1f))
-   Text("\${events.size} requests",color=C.blue,fontSize=11.sp,fontWeight=FontWeight.Bold)
+   Text("${events.size} requests",color=C.blue,fontSize=11.sp,fontWeight=FontWeight.Bold)
    IconButton(onClick={val send=Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_SUBJECT,"VidRock inspection · $imdb").putExtra(Intent.EXTRA_TEXT,report);ctx.startActivity(Intent.createChooser(send,"Export inspection report"))},enabled=events.isNotEmpty()){Icon(Icons.Default.Share,"Export report",tint=C.gold)}
   }
   Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().weight(0.55f)){
@@ -62,13 +62,13 @@ import java.util.concurrent.ConcurrentHashMap
       override fun onPageStarted(view:WebView?,url:String?,favicon:Bitmap?){busy=true;pageStatus="Page loading…";url?.let{VidRockEventBus.emit("navigation",it,"Main-frame navigation")}}
       override fun onPageFinished(view:WebView?,url:String?){busy=false;pageStatus="Page loaded. Press Play in the player; capture remains active.";view?.evaluateJavascript(VidRock.instrumentationScript,null)}
       override fun shouldInterceptRequest(view:WebView?,request:WebResourceRequest?):WebResourceResponse?{request?.url?.toString()?.let{VidRockEventBus.emit(if(request.isForMainFrame)"document-request" else "resource-request",it,request.method+if(request.isForMainFrame)"; main frame" else "; subresource")};return null}
-      override fun onReceivedError(view:WebView?,request:WebResourceRequest?,error:WebResourceError?){if(request?.isForMainFrame==true)pageStatus="Page error: \${error?.description?:"unknown"}";VidRockEventBus.emit("load-error",request?.url?.toString().orEmpty(),error?.description?.toString().orEmpty())}
+      override fun onReceivedError(view:WebView?,request:WebResourceRequest?,error:WebResourceError?){if(request?.isForMainFrame==true)pageStatus="Page error: ${error?.description?:"unknown"}";VidRockEventBus.emit("load-error",request?.url?.toString().orEmpty(),error?.description?.toString().orEmpty())}
      }
      loadUrl("about:blank")
     }
    },update={webView=it})
   }
-  Row(verticalAlignment=Alignment.CenterVertically){Text("DISCOVERED MEDIA / MANIFESTS",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("\${media.size} candidates",color=C.muted,fontSize=11.sp)}
+  Row(verticalAlignment=Alignment.CenterVertically){Text("DISCOVERED MEDIA / MANIFESTS",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("${media.size} candidates",color=C.muted,fontSize=11.sp)}
   if(media.isEmpty())Text("No media URL detected yet. Start playback in the browser above. Player API and script requests are still being recorded.",color=C.warn,fontSize=12.sp)
   else LazyColumn(Modifier.fillMaxWidth().weight(0.25f),verticalArrangement=Arrangement.spacedBy(4.dp)){items(media.takeLast(30).asReversed()){e->Column(Modifier.fillMaxWidth().padding(vertical=3.dp)){Text(e.kind.uppercase(),color=C.good,fontSize=10.sp,fontWeight=FontWeight.Bold);Text(e.url,color=C.blue,fontSize=10.sp);if(e.detail.isNotBlank())Text(e.detail,color=C.muted,fontSize=10.sp)}}}
   Text("Signed URLs may contain temporary tokens. Export includes URLs but never cookies or request headers; share privately.",color=C.muted,fontSize=10.sp)
