@@ -166,6 +166,14 @@ import java.util.concurrent.ConcurrentHashMap
    OutlinedButton(onClick={player.stop();playbackStatus="Stopped";playbackError=null}){Text("Stop")}
    Text(playbackStatus,color=C.muted,fontSize=10.sp,modifier=Modifier.weight(1f))
   }
+  OutlinedButton(onClick={
+   val target=playbackUrl.trim()
+   if(target.startsWith("https://")||target.startsWith("http://")) {
+    playbackStatus="Testing same URL in inspection WebView…"
+    val js="(async()=>{try{const r=await fetch("+JSONObject.quote(target)+",{credentials:'include'});const t=await r.text();VidRockCapture.record('webview-direct-test',r.url,'status='+r.status+'; content-type='+(r.headers.get('content-type')||'')+'; body='+t.slice(0,1200));}catch(e){VidRockCapture.record('webview-direct-test-error',"+JSONObject.quote(target)+",String(e));}})();"
+    webView?.evaluateJavascript(js,null)
+   }
+  },enabled=playbackUrl.isNotBlank()&&webView!=null,modifier=Modifier.fillMaxWidth()){Text("TEST SAME URL IN WEBVIEW")}
   playbackError?.let{Text("Player error: $it",color=C.bad,fontSize=11.sp)}
   Text(playbackDiagnostics,color=C.muted,fontSize=10.sp)
   Surface(color=Color.Black,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().aspectRatio(16f / 9f)){
