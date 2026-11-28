@@ -737,6 +737,38 @@ def _adult_marks(item: dict[str, Any], files: list[dict[str, Any]]) -> dict[str,
     return out
 
 
+def _similar_title_pairs(keys: list[str], cutoff: float = 0.9) -> list[tuple[str, str]]:
+    """Pairs of title keys (same first letter) whose look-alike score is at least ``cutoff``.
+
+    Same answer, in the same order, as comparing every key with every later key, but it only
+    compares keys of a similar length (a score of 0.9 is impossible when one is much longer than
+    the other) and skips the slow exact score when a cheap upper bound is already too low. The
+    all-against-all version took over an hour once tens of thousands of titles were read.
+    """
+    import bisect
+    index = {k: n for n, k in enumerate(keys)}
+    by_first: dict[str, list[str]] = {}
+    for k in keys:
+        by_first.setdefault(k[:1], []).append(k)
+    found: list[tuple[int, int, str, str]] = []
+    for group in by_first.values():
+        by_len = sorted(group, key=len)
+        lens = [len(k) for k in by_len]
+        for a in group:
+            la = len(a)
+            # score <= 2*min/(la+lb); lb must be within about 0.81x .. 1.23x of la (margins kept wide).
+            lo = bisect.bisect_left(lens, int(la * 0.81))
+            hi = bisect.bisect_right(lens, int(la * 1.23) + 1)
+            for b in by_len[lo:hi]:
+                if index[b] <= index[a]:
+                    continue
+                m = difflib.SequenceMatcher(None, a, b)
+                if m.real_quick_ratio() >= cutoff and m.quick_ratio() >= cutoff and m.ratio() >= cutoff:
+                    found.append((index[a], index[b], a, b))
+    found.sort(key=lambda f: (f[0], f[1]))
+    return [(a, b) for _i, _j, a, b in found]
+
+
 def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     archive_items: list[dict[str, Any]] = []
     archive_files: list[dict[str, Any]] = []
@@ -1062,12 +1094,9 @@ def build(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             ed.setdefault("flags", []).append("recordings_carry_edition_notes_check_if_separate_release")
 
     # Near-identical title keys (typos such as "Dalmatisns"): hint only.
-    keys = sorted(titles)
-    for i, a in enumerate(keys):
-        for b in keys[i + 1:]:
-            if a[:1] == b[:1] and difflib.SequenceMatcher(None, a, b).ratio() >= 0.9:
-                titles[a].setdefault("possibly_same_as", []).append(titles[b]["title_suggestion_id"])
-                titles[b].setdefault("possibly_same_as", []).append(titles[a]["title_suggestion_id"])
+    for a, b in _similar_title_pairs(sorted(titles)):
+        titles[a].setdefault("possibly_same_as", []).append(titles[b]["title_suggestion_id"])
+        titles[b].setdefault("possibly_same_as", []).append(titles[a]["title_suggestion_id"])
 
     for rec in recordings:
         rec["catalog_category"], rec["category_reasons"] = categorize(rec)
@@ -1386,7 +1415,10 @@ def main() -> None:
     else:
         with open(args.archive_json, encoding="utf-8") as fh:
             items = json.load(fh)["items"]
+    import time
+    started = time.time()
     model = build(items)
+    print(f"Built the model from {len(items)} pages in {(time.time() - started) / 60:.1f} minutes", flush=True)
     from pathlib import Path
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
