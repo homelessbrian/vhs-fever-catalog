@@ -5,9 +5,6 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.source.LoadEventInfo
-import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -65,15 +62,8 @@ import java.util.concurrent.ConcurrentHashMap
     playbackDiagnostics="Media3 ${error.errorCodeName} (code ${error.errorCode})\\n${causes}"
    }
   }
-  val analytics=object:AnalyticsListener{
-   override fun onLoadError(eventTime:AnalyticsListener.EventTime,loadEventInfo:AnalyticsListener.LoadEventInfo,mediaLoadData:AnalyticsListener.MediaLoadData,error:java.io.IOException,wasCanceled:Boolean){
-    val http=generateSequence<Throwable>(error){it.cause}.filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()
-    playbackDiagnostics="Load failed: ${loadEventInfo.uri}\\n${if(http!=null)"HTTP ${http.responseCode} · " else ""}${error.javaClass.simpleName}: ${error.message}\\nCanceled: $wasCanceled"
-   }
-  }
   player.addListener(listener)
-  player.addAnalyticsListener(analytics)
-  onDispose{player.removeListener(listener);player.removeAnalyticsListener(analytics);player.release()}
+  onDispose{player.removeListener(listener);player.release()}
  }
  DisposableEffect(Unit){
   VidRockEventBus.sink={e->val k=e.kind+"|"+e.url+"|"+e.detail;if(seen.add(k))events.add(e)}
