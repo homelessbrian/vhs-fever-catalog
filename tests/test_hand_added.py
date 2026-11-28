@@ -64,7 +64,9 @@ class HandAdded(unittest.TestCase):
         entries = ha.load()
         self.assertTrue(entries)
         for e in entries:
-            self.assertTrue(e["page"] and e["file"] and e["imdb_id"].startswith("tt"), e)
+            self.assertTrue(e["page"] and e["file"], e)
+            # An IMDb id is optional (the bot then matches the name on TMDB, as for any tape).
+            self.assertTrue(e.get("imdb_id", "tt").startswith("tt"), e)
 
 
 if __name__ == "__main__":
