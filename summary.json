@@ -1,0 +1,55 @@
+{
+  "pages_read": 33143,
+  "vhs_movies": 4653,
+  "bot_sure": 1028,
+  "waiting_for_review": 3525,
+  "behind_the_curtain": 100,
+  "files": 11413,
+  "genres": {
+    "Comedy": 440,
+    "Animation": 303,
+    "Adventure": 298,
+    "Family": 242,
+    "Drama": 211,
+    "Action": 155,
+    "Horror": 122,
+    "Sci-Fi": 101,
+    "Fantasy": 84,
+    "Crime": 68,
+    "Music": 65,
+    "Thriller": 61,
+    "No genre": 55,
+    "Documentary": 55,
+    "Mystery": 36,
+    "War": 31,
+    "Romance": 26,
+    "History": 20,
+    "Western": 4,
+    "TV Movie": 1
+  },
+  "kids_shelf": {
+    "kids' show": 222,
+    "short cartoon or family special": 160,
+    "learning or sing-along tape": 41
+  },
+  "genre_source": {
+    "IMDb": 2414,
+    "TMDB (nothing from IMDb)": 385
+  },
+  "imdb_lookups": 2025,
+  "left_out": {
+    "not VHS": 4255,
+    "not a movie": 3554,
+    "taped off TV or a TV episode": 1898,
+    "kids' TV or series tape (not bot sure)": 732,
+    "TMDB says it's a TV show": 553,
+    "not in English": 38,
+    "instructional tape (not bot sure)": 26,
+    "not in English (not bot sure)": 24,
+    "home video (not bot sure)": 21,
+    "doesn't play": 8,
+    "shorter than 40 minutes": 2
+  },
+  "tmdb_detail_lookups": 2343,
+  "built_at": "2026-11-28T04:35:19Z"
+}
