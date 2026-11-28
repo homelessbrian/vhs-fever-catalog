@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -41,6 +43,7 @@ import java.util.concurrent.ConcurrentHashMap
  var playbackUrl by remember{mutableStateOf("")}
  var playbackStatus by remember{mutableStateOf("Choose a captured HLS URL or paste a stream URL.")}
  var playbackError by remember{mutableStateOf<String?>(null)}
+ var playbackDiagnostics by remember{mutableStateOf("No playback diagnostics yet.")}
  val player=remember(ctx){ExoPlayer.Builder(ctx).build()}
  val events=remember{mutableStateListOf<VidRockEvent>()}
  val seen=remember{ConcurrentHashMap.newKeySet<String>()}
@@ -49,10 +52,26 @@ import java.util.concurrent.ConcurrentHashMap
  DisposableEffect(player){
   val listener=object:Player.Listener{
    override fun onPlaybackStateChanged(state:Int){playbackStatus=when(state){Player.STATE_BUFFERING->"Buffering…";Player.STATE_READY->"Ready · playing";Player.STATE_ENDED->"Playback ended";else->playbackStatus}}
-   override fun onPlayerError(error:PlaybackException){playbackError=error.message?:error.errorCodeName;playbackStatus="Playback failed"}
+   override fun onPlayerError(error:PlaybackException){
+    playbackError=error.message?:error.errorCodeName
+    playbackStatus="Playback failed"
+    val causes=generateSequence<Throwable>(error){it.cause}.take(8).joinToString("\\n"){cause->
+     val http=cause as? HttpDataSource.InvalidResponseCodeException
+     if(http!=null) "HTTP ${http.responseCode} · ${cause.javaClass.simpleName}: ${cause.message}"
+     else "${cause.javaClass.simpleName}: ${cause.message}"
+    }
+    playbackDiagnostics="Media3 ${error.errorCodeName} (code ${error.errorCode})\\n${causes}"
+   }
+  }
+  val analytics=object:AnalyticsListener{
+   override fun onLoadError(eventTime:AnalyticsListener.EventTime,loadEventInfo:AnalyticsListener.LoadEventInfo,mediaLoadData:AnalyticsListener.MediaLoadData,error:java.io.IOException,wasCanceled:Boolean){
+    val http=generateSequence<Throwable>(error){it.cause}.filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()
+    playbackDiagnostics="Load failed: ${loadEventInfo.uri}\\n${if(http!=null)"HTTP ${http.responseCode} · " else ""}${error.javaClass.simpleName}: ${error.message}\\nCanceled: $wasCanceled"
+   }
   }
   player.addListener(listener)
-  onDispose{player.removeListener(listener);player.release()}
+  player.addAnalyticsListener(analytics)
+  onDispose{player.removeListener(listener);player.removeAnalyticsListener(analytics);player.release()}
  }
  DisposableEffect(Unit){
   VidRockEventBus.sink={e->val k=e.kind+"|"+e.url+"|"+e.detail;if(seen.add(k))events.add(e)}
@@ -130,7 +149,7 @@ import java.util.concurrent.ConcurrentHashMap
     val url=playbackUrl.trim()
     if(!(url.startsWith("https://")||url.startsWith("http://"))){playbackError="Enter a valid http(s) media URL"}
     else {runCatching{
-     playbackError=null;playbackStatus="Connecting…"
+     playbackError=null;playbackDiagnostics="Opening: $url";playbackStatus="Connecting…"
      val http=DefaultHttpDataSource.Factory().setUserAgent("VHSFeverReview/1.0").setAllowCrossProtocolRedirects(true)
        .setDefaultRequestProperties(mapOf("Referer" to "https://vidrock.to/"))
      player.setMediaSource(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(ctx).setDataSourceFactory(http).createMediaSource(MediaItem.fromUri(Uri.parse(url))))
@@ -141,6 +160,7 @@ import java.util.concurrent.ConcurrentHashMap
    Text(playbackStatus,color=C.muted,fontSize=10.sp,modifier=Modifier.weight(1f))
   }
   playbackError?.let{Text("Player error: $it",color=C.bad,fontSize=11.sp)}
+  Text(playbackDiagnostics,color=C.muted,fontSize=10.sp)
   Surface(color=Color.Black,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().height(155.dp)){
    AndroidView(factory={context->PlayerView(context).apply{this.player=player;useController=true;keepScreenOn=true}},update={it.player=player},modifier=Modifier.fillMaxSize())
   }
