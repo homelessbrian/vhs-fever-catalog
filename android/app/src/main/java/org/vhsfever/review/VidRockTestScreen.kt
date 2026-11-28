@@ -88,17 +88,28 @@ import java.util.concurrent.ConcurrentHashMap
    },update={webView=it})
   }
   Row(verticalAlignment=Alignment.CenterVertically){Text("DISCOVERED MEDIA / MANIFESTS",color=C.gold,fontSize=11.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("${media.size} candidates",color=C.muted,fontSize=11.sp)}
-  val latestPlaylist=media.lastOrNull{it.kind=="playlist-body" && it.url.contains(".m3u8",true)}
-  if(latestPlaylist==null) {
+  val playlists=media.filter{it.kind=="playlist-body" && it.url.contains(".m3u8",true)}
+   .distinctBy{it.url}
+  if(playlists.isEmpty()) {
    Text("No HLS manifest captured yet. Start playback in the browser above and wait for PLAYLIST-BODY.",color=C.warn,fontSize=12.sp)
   } else {
-   Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
-    Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-     Text("CAPTURED HLS MANIFEST",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
-     Text(latestPlaylist.url,color=C.blue,fontSize=10.sp,maxLines=3)
-     Text(latestPlaylist.detail.lineSequence().filter{it.startsWith("#EXT-X-STREAM-INF")||it.startsWith("https://")}.take(4).joinToString("\n").take(260),color=C.muted,fontSize=9.sp,maxLines=4)
-     Button(onClick={playbackUrl=latestPlaylist.url;playbackStatus="Manifest loaded · press Play URL";playbackError=null},modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=C.gold,contentColor=Color(0xFF1A1206))) {
-      Text("USE THIS MANIFEST",fontWeight=FontWeight.Bold)
+   Text("${playlists.size} captured HLS manifests · choose one to test",color=C.muted,fontSize=11.sp)
+   LazyColumn(Modifier.fillMaxWidth().heightIn(max=260.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+    items(playlists.asReversed()) { candidate ->
+     Surface(color=C.panel,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) {
+      Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+       Text("HLS MANIFEST ${playlists.indexOf(candidate)+1}",color=C.good,fontSize=11.sp,fontWeight=FontWeight.Bold)
+       Text(candidate.url,color=C.blue,fontSize=10.sp)
+       val variants=candidate.detail.lineSequence().filter{it.startsWith("#EXT-X-STREAM-INF")||it.startsWith("http://")||it.startsWith("https://")}.take(6).joinToString("\\n")
+       if(variants.isNotBlank()) Text(variants.take(420),color=C.muted,fontSize=9.sp)
+       Button(onClick={
+        playbackUrl=candidate.url
+        playbackStatus="Manifest selected · press Play URL"
+        playbackError=null
+       },modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=C.gold,contentColor=Color(0xFF1A1206))) {
+        Text("USE THIS MANIFEST",fontWeight=FontWeight.Bold)
+       }
+      }
      }
     }
    }
