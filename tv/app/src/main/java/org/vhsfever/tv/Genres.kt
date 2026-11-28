@@ -116,6 +116,7 @@ fun genreCard(name: String): Int? = when (name) {
     "Action" -> R.drawable.genre_action
     "Adventure" -> R.drawable.genre_adventure
     "Animation" -> R.drawable.genre_animation
+    "Kids" -> R.drawable.genre_kids
     "Comedy" -> R.drawable.genre_comedy
     "Drama" -> R.drawable.genre_drama
     "Romance" -> R.drawable.genre_romance

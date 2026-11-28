@@ -55,10 +55,11 @@ data class Title(
     val colors: BoxColors? = null,   // colours picked from the poster
     val posterFrom: String = "TMDB", // where the poster came from: "btttr.cc" first, TMDB as backup
     val kidsLook: Boolean = false,   // made-up box uses the kids' looks (see withKidsLooks)
+    val kids: Boolean = false,       // the bot says it is for small children: it sits on the Kids shelf
     val managerPick: Boolean = false, // Brian hand-picked it in the review app for Manager's Picks
 ) {
     /** The one store section this tape sits in (like a real rental store, never two). */
-    val section: String by lazy { storeSection(genres, year) }
+    val section: String by lazy { if (kids) "Kids" else storeSection(genres, year) }
 
     /** Fills in TMDB art and blurb; the poster counts as confirmed only when the TMDB match is. */
     fun withArt(a: Art?): Title = if (a == null) this else copy(
@@ -230,7 +231,7 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                                     tmdbId = candidate?.optInt("tmdb_id"), tmdbType = candidate?.str("media_type") ?: "movie",
                                     feedName = t.optString("t"),
                                 )
-                                found += Triple(t.optString("id"), tape, meta)
+                                found += Triple(t.optString("id"), tape, meta.copy(kids = t.optBoolean("kids")))
                             }
                         }
                     }
@@ -274,6 +275,7 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
                     // Tape years are release years of the tape, not the film, so they are not used here.
                     searchYear = searchQuery(metas.firstNotNullOfOrNull { it.feedName } ?: best.name).second,
                     adult = metas.any { it.adult },
+                    kids = metas.any { it.kids },
                     managerPick = list.any { it.first.fileId in picks },
                 )
             }.sortedBy { sortKey(it.name) }
@@ -288,6 +290,7 @@ data class Catalog(val titles: List<Title>, val curtain: List<Title> = emptyList
             val genres: List<String> = emptyList(),
             val backdrop: String? = null,
             val adult: Boolean = false,
+            val kids: Boolean = false,
         )
 
         fun tapeLabel(media: String?, year: String?, version: String?, notes: List<String>): String {
@@ -399,7 +402,7 @@ private fun JSONArray?.strings(): List<String> =
 
 /** Brian's store shelves, in the order they're stocked. A movie TMDB gives no genre goes on "Other", last. */
 val STORE_SHELVES = listOf(
-    "Action", "Adventure", "Animation", "Comedy", "Drama", "Romance", "Thriller", "Horror", "Science Fiction",
+    "Action", "Adventure", "Animation", "Kids", "Comedy", "Drama", "Romance", "Thriller", "Horror", "Science Fiction",
     "Fantasy", "Mystery", "Crime", "Family", "Western", "War", "Music & Musicals", "Documentary", "Classics",
 )
 
@@ -409,6 +412,7 @@ const val CLASSICS_BEFORE = 1960
 /**
  * Where a rental store would file a movie with these TMDB genres, thinking like a Blockbuster clerk:
  * what will the customer feel watching it? One shelf only.
+ *  - Tapes made for small children (Bob the Builder, sing-alongs, ABCs; the bot tags them) go in Kids.
  *  - Cartoons go in Animation, whatever their age.
  *  - Other movies made before 1960 go in Classics.
  *  - Concert tapes go in Music & Musicals; other documentaries in Documentary.
@@ -427,11 +431,12 @@ fun storeSection(genres: List<String>, year: String? = null): String {
     val top2 = g.take(2)
     val made = year?.take(4)?.toIntOrNull()
     return when {
+        "Kids" in g -> "Kids"
         "Animation" in g -> "Animation"
         made != null && made < CLASSICS_BEFORE -> "Classics"
         "Music" in g && "Documentary" in g -> "Music & Musicals"
         "Documentary" in g -> "Documentary"
-        "Family" in g || "Kids" in g -> "Family"
+        "Family" in g -> "Family"
         "Horror" in g -> "Horror"
         "Music" in top2 -> "Music & Musicals"
         main == "Comedy" || (second == "Comedy" && main != "Drama") -> "Comedy"

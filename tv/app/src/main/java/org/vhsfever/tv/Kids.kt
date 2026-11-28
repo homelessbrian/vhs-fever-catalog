@@ -58,7 +58,7 @@ import kotlin.math.sin
  */
 
 /** Cartoons and family movies get the kids' box looks. */
-fun isKidsMovie(t: Title) = t.section == "Animation" || t.section == "Family"
+fun isKidsMovie(t: Title) = t.section == "Animation" || t.section == "Family" || t.section == "Kids"
 
 /** Marks the boxes that get kids' looks: kids' movies, and every movie in a series that has one, so a series still matches. */
 fun withKidsLooks(titles: List<Title>): List<Title> {

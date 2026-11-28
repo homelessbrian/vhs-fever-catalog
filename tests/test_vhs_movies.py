@@ -199,5 +199,12 @@ class TvFeed(unittest.TestCase):
         self.assertEqual(t["eds"][0]["media"], "VHS")
         self.assertEqual(t["un"][0]["notes"], ["Hi-Fi"])
 
+    def test_kids_flag_reaches_the_tv(self):
+        feed = {"generated_at": "x", "titles": [{"id": "t1", "t": "Bob the Builder: Pets in a Pickle", "kids": True, "genres": []},
+                                                {"id": "t2", "t": "Aladdin", "genres": ["Animation"]}]}
+        out = vm.tv_feed(feed)["titles"]
+        self.assertTrue(out[0]["kids"])
+        self.assertNotIn("kids", out[1])
+
     def test_archive_url_encodes_like_the_tv(self):
         self.assertEqual(vm.archive_url("item", "A B/[c] é.mp4"), "https://archive.org/download/item/A%20B/%5Bc%5D%20%C3%A9.mp4")

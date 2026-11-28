@@ -27,7 +27,9 @@ Everything else waits in the review app.
   TMDB match, mark files good or bad. Reviews are saved to `review/decisions.json` on
   the `review-data` branch.
 - **TV app** (`tv/`): the video store. Movies the bot is sure about plus the ones you
-  marked good, on shelves by genre.
+  marked good, on shelves by genre. Tapes made for small children (Bob the Builder,
+  Thomas, sing-alongs, ABCs, short cartoon specials) are tagged `kids` by the bot
+  (`scripts/kids_tapes.py`) and go on the Kids shelf instead of Animation or Family.
 
 Both read the same list: `movies-data/reviewer-feed.json`.
 

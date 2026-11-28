@@ -14,6 +14,9 @@ class ShelvesTest {
     @Test fun storeSections() {
         assertEquals("Horror", storeSection(listOf("Comedy", "Horror")))
         assertEquals("Animation", storeSection(listOf("Adventure", "Animation", "Family")))
+        // the bot's Kids tag wins over Animation and Family
+        assertEquals("Kids", storeSection(listOf("Kids", "Animation", "Family")))
+        assertEquals("Kids", storeSection(listOf("Kids")))
         assertEquals("Science Fiction", storeSection(listOf("Action", "Thriller", "Science Fiction")))
         assertEquals("Science Fiction", storeSection(listOf("Adventure", "Action", "Science Fiction")))
         // Dude, Where's My Car? and friends: a comedy first, whatever the premise
@@ -57,6 +60,18 @@ class ShelvesTest {
         for (g in listOf("Action", "Adventure", "Comedy", "Crime", "Documentary", "Drama", "Family", "Fantasy", "History",
                 "Horror", "Music", "Mystery", "Romance", "Science Fiction", "Thriller", "War", "Western", "Kids", "Reality"))
             assertTrue(storeSection(listOf(g)).let { it in STORE_SHELVES || it == Catalog.OTHER })
+    }
+
+    @Test fun tapesForSmallChildrenSitOnTheKidsShelf() {
+        val bob = title("Bob the Builder: Pets in a Pickle").copy(kids = true)
+        val aladdin = title("Aladdin", "Animation", "Family", "Adventure")
+        val c = Catalog(listOf(bob, aladdin, title("Barney's Good Day").copy(kids = true, genres = listOf("Animation"))))
+        val shelves = c.genreShelves.toMap()
+        assertEquals(listOf("Barney's Good Day", "Bob the Builder: Pets in a Pickle"), shelves["Kids"]!!.map { it.name }.sorted())
+        assertEquals(listOf("Aladdin"), shelves["Animation"]!!.map { it.name })
+        assertEquals(c.titles.size, shelves.values.sumOf { it.size })
+        // Kids comes right after Animation in the store
+        assertEquals(listOf("Animation", "Kids"), c.genreShelves.map { it.first })
     }
 
     @Test fun shelvesFollowTheStoreOrder() {

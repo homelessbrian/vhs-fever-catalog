@@ -34,6 +34,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import not_movies  # noqa: E402
+import kids_tapes  # noqa: E402
 import unsure_kinds  # noqa: E402
 
 MIN_SECONDS = 40 * 60
@@ -285,7 +286,7 @@ def clean_title(text: str) -> str:
 
 
 # What the TV app reads from the movie list; everything else is only for the review app.
-_TV_TITLE = ("id", "t", "adult", "genres")
+_TV_TITLE = ("id", "t", "adult", "genres", "kids")
 _TV_MOVIE = ("tmdb_id", "title", "year", "poster", "overview", "backdrop")
 _TV_GUESS = ("tmdb_id", "title", "release_date", "poster", "overview", "media_type")
 _TV_SRC = ("id", "ok", "role", "n", "item", "dur", "url", "fmt", "lab", "tg", "pk", "hide")
@@ -426,6 +427,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
 
     # Clean names, genres, and which files the bot is sure about.
     genre_count: Counter[str] = Counter()
+    kids_count: Counter[str] = Counter()
     sure_titles = 0
     curtain = 0
     for t in feed["titles"]:
@@ -452,6 +454,18 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
                 x["ok"] = True
                 any_sure = True
         t["raw"] = t["t"]
+        # Little kids' tapes go on the TV app's Kids shelf (see kids_tapes.py).
+        item_pages = [pages[i] for r in recs_out for i in r.get("items") or [] if i in pages]
+        why_kids = kids_tapes.reason(
+            [t["raw"], (info or {}).get("title")] + [r.get("name") for r in recs_out]
+            + [pg.get("archive_title") for pg in item_pages if 0 < (pg.get("video_file_count") or 0) <= 2],
+            overview=(info or {}).get("overview"), genres=(info or {}).get("genres"),
+            runtime=(info or {}).get("runtime"), year=(info or {}).get("year"),
+            minutes=max([(r.get("dur") or 0) for r in recs_out] or [0]) / 60,
+            collections={c for pg in item_pages for c in pg.get("collection") or []})
+        if why_kids:
+            t["kids"] = True
+            kids_count[why_kids.split(" (")[0]] += 1
         if any_sure and info:
             t["t"] = info["title"] or cand.get("title") or clean_title(t["t"])
             t["movie"] = info
@@ -469,6 +483,7 @@ def finish(model_dir: Path, sort_path: Path, audio_path: Path, out: Path, cache_
         "waiting_for_review": len(feed["titles"]) - sure_titles - curtain,
         "behind_the_curtain": curtain,
         "files": len(out_rows), "genres": dict(genre_count.most_common()),
+        "kids_shelf": dict(kids_count.most_common()),
         "left_out": dict(dropped.most_common()), "tmdb_detail_lookups": calls,
     }
     (out / "reviewer-feed.json").write_text(json.dumps(feed, ensure_ascii=False, separators=(",", ":")),
